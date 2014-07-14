@@ -10,9 +10,9 @@ import scrapy
 
 class WeatherItem(scrapy.Item):
     # define the fields for your item here like:
-    # name = scrapy.Field()
     id = scrapy.Field()
     province = scrapy.Field()
     city = scrapy.Field()
     county = scrapy.Field()
     data = scrapy.Field()
+	# 123
