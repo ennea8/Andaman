@@ -47,7 +47,7 @@ class WeatherSpider(CrawlSpider):
         city = response.meta['WeatherData']
         # {'prov_code':10101, 'city_code':01}  1010101
         # {"02":"兴国县"}
-        data = json.loads(response.body.encode())
+        data = json.loads(response.body, encoding='utf-8')
 
         for county_code, county_name in data.items():
             m = copy.deepcopy(city)
@@ -61,7 +61,7 @@ class WeatherSpider(CrawlSpider):
     def parse_final(self, response):
         allInf = response.meta['WeatherData']
         item = WeatherItem()
-        item['data'] = json.loads(response.body)
+        item['data'] = json.loads(response.body, encoding='utf-8')
 
         item['province'] = allInf['prov_name']
         item['city'] = allInf['city_name']
@@ -69,7 +69,6 @@ class WeatherSpider(CrawlSpider):
 
         item['id'] = '%s%s%s' % (allInf['prov_code'], allInf['city_code'],
                   allInf['county_code'])
-        print item
         yield item
 
 

@@ -5,6 +5,7 @@ from scrapy.settings import Settings
 from twisted.internet import reactor
 from spiders.weather_spider import WeatherSpider
 
+
 __author__ = 'zephyre'
 
 
