@@ -15,4 +15,3 @@ class WeatherItem(scrapy.Item):
     city = scrapy.Field()
     county = scrapy.Field()
     data = scrapy.Field()
-	# 123

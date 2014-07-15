@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-
 # Define your item pipelines here
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
@@ -8,12 +7,17 @@
 import json
 import re
 import pymongo
+import sys
+
+reload(sys)
+sys.setdefaultencoding("utf-8")
 
 
 class TravelcrawlerPipeline(object):
     def __init__(self):
-        self.client = pymongo.MongoClient('zephyre.me', 27017)
-        self.db = self.client.geo
+        client = pymongo.MongoClient('zephyre.me', 27017)
+        self.db = client.geo
+
     def process_item(self, item, spider):
         province = item['province']
         city = item['city']
@@ -22,24 +26,25 @@ class TravelcrawlerPipeline(object):
         id = item['id']
         data = item['data']
 
-        # 遍历mongo数据库中的locality
         # 先找到city，验证其parent为province
-        flag = 0
-        for city_obj in self.db.locality.find({'zhName': re.compile(r'^' + city)}):
-            if city_obj.get('parent') and (re.compile(r'^' + province)).match(city_obj['parent']['name']):
-                # 找到对应的county
-                if city_obj.get('siblings'):
-                    for t in city_obj['siblings']:
-                        if (re.compile(r'^' + county)).match(t['name']):
-                            self.db.weather.save({'weatherId': id, 'localityId': t['_id'],
-                                             'Data': data, 'province': province, 'city': city, 'county': county})
-                            flag = 1
-                # 找不到县区级，则尝试找到市级,eg长沙 长沙
-                if flag == 0 and city == county:
-                    city_id = city_obj.get('_id')
-                    self.db.weather.save({'weatherId': id, 'localityId': city_id,
-                                     'Data': data, 'province': province, 'city': city, 'county': county})
-                    flag = 1
+        city_obj = self.db.locality.find_one({'zhName': re.compile(r'^' + city),
+                                              'parent.name': re.compile(r'^' + province)})
+        if city_obj:
+            # 找到对应的county
+            if 'siblings' in city_obj:
+                for t in city_obj['siblings']:
+                    if (re.compile(r'^' + county)).match(t['name']):
+                        county_id = t['_id']
+                        self.db.weather.save({'weatherId': id, 'localityId': county_id,
+                                              'Data': data, 'province': province, 'city': city, 'county': county})
+                        return item
+
+            # 找不到则为对应的城市Id eg. 长沙 长沙
+            if '_id' in city_obj and city == county:
+                city_id = city_obj['_id']
+                self.db.weather.save({'weatherId': id, 'localityId': city_id,
+                                      'Data': data, 'province': province, 'city': city, 'county': county})
+                return item
         return item
 
 
