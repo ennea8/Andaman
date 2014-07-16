@@ -15,3 +15,11 @@ class WeatherItem(scrapy.Item):
     city = scrapy.Field()
     county = scrapy.Field()
     data = scrapy.Field()
+
+class QiniuyunItem(scrapy.Item):
+    # define the fields for your item here like:
+    # name = scrapy.Field()
+    pic = scrapy.Field()
+    url = scrapy.Field()
+    key = scrapy.Field()
+    hash_value = scrapy.Field()
