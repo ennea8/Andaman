@@ -4,7 +4,7 @@ from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 from spiders.PicSpider import PicSpider
-from spiders.weather_spider import WeatherSpider
+# from spiders.weather_spider import WeatherSpider
 
 
 __author__ = 'zephyre'
