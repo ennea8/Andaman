@@ -48,3 +48,10 @@ class TravelcrawlerPipeline(object):
         return item
 
 
+
+class MofengwoPipeline(object):
+    def process_item(self, item, spider):
+        return item
+
+
+

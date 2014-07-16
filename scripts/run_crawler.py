@@ -4,7 +4,7 @@ from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 from spiders.weather_spider import WeatherSpider
-
+from spiders.mofengwo_spider import blogspider
 
 __author__ = 'zephyre'
 
@@ -12,10 +12,12 @@ __author__ = 'zephyre'
 def setup_spider():
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
-    crawler.settings.set('ITEM_PIPELINES', {'pipelines.TravelcrawlerPipeline': 800})
+    #crawler.settings.set('ITEM_PIPELINES', {'pipelines.TravelcrawlerPipeline': 800})
+    crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 800})
     crawler.configure()
 
-    spider = WeatherSpider()
+    #spider = WeatherSpider()
+    spider = blogspider()
     crawler.crawl(spider)
     crawler.start()
 
