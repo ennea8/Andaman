@@ -19,8 +19,10 @@ class WeatherItem(scrapy.Item):
 class BlogItem(Item):
     # define the fields for your item here like:
     # name = Field()
-    author_url=Field()
+    author_id=Field()
     author_name=Field()
+    date=Field()
+    url=Field()
     hot=Field()
     tag=Field()
     desc=Field()

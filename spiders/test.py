@@ -4,14 +4,11 @@ from bs4 import BeautifulSoup
 from scrapy import Request
 import json
 import MySQLdb
-import random
-from twisted.internet import defer
 
 class blogspider(CrawlSpider):
     def __init__(self, *a, **kw):
         self.name = 'weather'
         super(blogspider, self).__init__(*a, **kw)
-    #def chooseProxy(self):
     def start_requests(self):
         conn = MySQLdb.connect(host='127.0.0.1', #@UndefinedVariable
                                         user='root',
@@ -24,18 +21,16 @@ class blogspider(CrawlSpider):
         proxys=cursor.fetchall()
         conn.commit()
         proxy_list=[]
-        #print proxy_list
         for it in proxys:
             proxy_list.append(it[0])
         #print proxy_list
-        i=random.randint(0,10)
-        #print i
-        #print proxy_list[i]
-        Max_Request_Nums=5
-        yield Request(url="http://www.mafengwo.cn/",callback=self.parse_city,meta={'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list},errback=self.SetProxy(Max_Request_Nums))
+        i=0
+        print proxy_list[0]
+        yield Request(url="http://www.mafengwo.cn/",callback=self.parse_city,meta={'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list})
+        i=i+2
     def parse_city(self, response):
-        #test=response.meta['proxy']
-        #print test
+        test=response.meta['proxy']
+        print test
         proxy_list=response.meta['proxy_list']
         soup=BeautifulSoup(response.body,from_encoding='utf8')
         intenal=soup.find('div',{'class':'fast-nav-item fast-item-internal'})
@@ -51,17 +46,14 @@ class blogspider(CrawlSpider):
              m['url']=city.get('href')
              m['city']=city.getText()
              #print m['url']
-             i=random.randint(0,10)
-             #print i
-             #print proxy_list[i]
-             Max_Request_Nums=5
-             yield Request(url="http://www.mafengwo.cn/%s" %m['url'],callback=self.parse_pages,meta={'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list},errback=self.SetProxy(Max_Request_Nums))
+             i=2
+             yield Request(url="http://www.mafengwo.cn/%s" %m['url'],callback=self.parse_pages,meta={'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list})
+             i=i+2
     def parse_pages(self,response):
         #soup=BeautifulSoup(response.body,from_encoding='utf8')
         #ti=soup.find('a',{'class':'ti'}).get('href')
         #pass
             proxy_list=response.meta['proxy_list']
-            #print proxy_list
             soup=BeautifulSoup(response.body,from_encoding='utf8')
             p=soup.find('a',{'class':'ti last'}).get('href')
             #print p
@@ -71,10 +63,12 @@ class blogspider(CrawlSpider):
             nums=pa[2].split('.')
             num=int(nums[0])
             #print num
+            j=4
             for i in range(1,num+1):
-                j=random.randint(0,10)
-                Max_Request_Nums=5
-                yield Request(url="http://www.mafengwo.cn%s-0-%s.html"%(pa[0],i),callback=self.parse_blogs,meta={'proxy':"http://%s" % proxy_list[j],'proxy_list':proxy_list},errback=self.SetProxy(Max_Request_Nums))
+                #url="http://www.mafengwo.cn%s-0-%s" %(pa[0],i)
+                #print url
+                yield Request(url="http://www.mafengwo.cn%s-0-%s.html"%(pa[0],i),callback=self.parse_blogs,meta={'proxy':"http://%s" % proxy_list[4],'proxy_list':proxy_list})
+                j=j+2
     def parse_blogs(self,response):
         proxy_list=response.meta['proxy_list']
         soup=BeautifulSoup(response.body,from_encoding='utf8')
@@ -84,9 +78,9 @@ class blogspider(CrawlSpider):
             name=it.find('a').get('href')
             url="http://www.mafengwo.cn%s"%name
             #print url
-            i=random.randint(0,10)
-            Max_Request_Nums=5
-            yield Request(url="http://www.mafengwo.cn%s"%name,callback=self.parse_final,meta={'URL':url,'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list},errback=self.SetProxy(Max_Request_Nums))
+            i=0
+            yield Request(url="http://www.mafengwo.cn%s"%name,callback=self.parse_final,meta={'URL':url,'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list})
+            i=i+2
     def parse_final(self, response):
         url=response.meta['URL']
         print url
@@ -137,32 +131,6 @@ class blogspider(CrawlSpider):
         item['img']=img
         item['url']=url
         yield item
-    def SetProxy(self,Max_Request_Nums):
-        Max_Request_Nums=Max_Request_Nums-1
-        conn = MySQLdb.connect(host='127.0.0.1', #@UndefinedVariable
-                                        user='root',
-                                        passwd='123',
-                                        db='plan',
-                                        charset='utf8')
-        cursor = conn.cursor()
-        SQL_string = 'select ip from proxy'
-        cursor.execute(SQL_string)
-        proxys=cursor.fetchall()
-        conn.commit()
-        proxy_list=[]
-        #print proxy_list
-        for it in proxys:
-            proxy_list.append(it[0])
-        #print proxy_list
-        i=random.randint(0,10)
-        if Max_Request_Nums>0:
-            yield Request(url="http://www.mafengwo.cn/",callback=self.parse_city,meta={'proxy':"http://%s" % proxy_list[i],'proxy_list':proxy_list},errback=self.SetProxy(Max_Request_Nums))
-        else:
-            return
-
-
-
-
 
 
 

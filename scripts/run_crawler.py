@@ -8,7 +8,6 @@ from spiders.mofengwo_spider import blogspider
 
 __author__ = 'zephyre'
 
-
 def setup_spider():
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)

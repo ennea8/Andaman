@@ -50,8 +50,20 @@ class TravelcrawlerPipeline(object):
 
 
 class MofengwoPipeline(object):
-    def process_item(self, item, spider):
-        return item
+    def __init__(self):
+        client = pymongo.MongoClient('localhost', 27017)
+        self.db = client.mydb
 
+    def process_item(self, item, spider):
+        author_id = item['author_id']
+        author_name= item['author_name']
+        url = item['url']
+        date = item['date']
+        tag = item['tag']
+        keyword= item['keyword']
+        desc= item['desc']
+        img= item['img']
+        self.db.mafengwo.save({'author_id':author_id,'author_name':author_name,'tag':tag,'keyword':keyword,'desc':desc,'img':img,'url':url,'date':date})
+        return item
 
 

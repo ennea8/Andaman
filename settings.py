@@ -13,5 +13,10 @@ BOT_NAME = 'TravelCrawler'
 SPIDER_MODULES = ['TravelCrawler.spiders']
 NEWSPIDER_MODULE = 'TravelCrawler.spiders'
 
+
+DOWNLOADER_MIDDLEWARES = {
+    #'scrapy.contrib.downloadermiddleware.httpproxy.HttpProxyMiddleware': 110,
+    'scrapy.contrib.downloadermiddleware.httpproxy.HttpProxyMiddleware'
+}
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'TravelCrawler (+http://www.yourdomain.com)'
