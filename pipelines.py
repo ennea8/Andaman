@@ -56,53 +56,56 @@ class TravelcrawlerPipeline(object):
 
 class QiniuyunPipeline(object):
     def process_item(self, item, spider):
-            # 获得上传权限
-            qiniu.conf.ACCESS_KEY = "gsLdbmFPOFdSAcAp46Vm8c654spHn975sopg8_jP"
-            qiniu.conf.SECRET_KEY = "VvsEmqEBagbFa7LkkJfNchxJ7LQRfygPJxKazFzC"
+        # 获得上传权限
+        qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
+        qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
 
-            # 配置上传策略。
-            # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
-            policy = qiniu.rs.PutPolicy('thefirsttest')
-            # 取得上传token
-            uptoken = policy.token()
+        # 配置上传策略。
+        # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+        policy = qiniu.rs.PutPolicy('lvxingpai-img-store')
+        # 取得上传token
+        uptoken = policy.token()
 
-            # 上传的额外选项
-            extra = io.PutExtra()
-            # 文件自动校验crc
-            extra.check_crc = 1
+        # 上传的额外选项
+        extra = io.PutExtra()
+        # 文件自动校验crc
+        extra.check_crc = 1
 
-            upload_stream = False
+        upload_stream = False
 
-            # 先生成本地文件
-            localfile = str(time.time()) + str(random.random())
-            with open(localfile, 'wb') as f:
-                f.write(item['pic'])
+        # 先生成本地文件
+        localfile = str(time.time()) + str(random.random())
+        with open(localfile, 'wb') as f:
+            f.write(item['pic'])
 
-            if upload_stream:
-                # 上传流
-                with open(localfile, 'rb') as f:
-                    body = f.read()
-                ret, err = io.put(uptoken, str(item['key']), body, extra)
-            else:
-                # 上传本地文件
-                ret, err = io.put_file(uptoken, str(item['key']), localfile, extra)
+        if upload_stream:
+            # 上传流
+            with open(localfile, 'rb') as f:
+                body = f.read()
+            ret, err = io.put(uptoken, str(item['key']), body, extra)
+        else:
+            # 上传本地文件
+            ret, err = io.put_file(uptoken, str(item['key']), localfile, extra)
 
-            if err is not None:
-                sys.stderr.write('error: %s ' % err)
-                return
+        if err is not None:
+            sys.stderr.write('error: %s ' % err)
+            return
 
-            # 将相应的数据存入mongo中
-            client = pymongo.MongoClient('zephyre.me', 27017)
-            db = client.pic
+        # 将相应的数据存入mongo中
+        client = pymongo.MongoClient('zephyre.me', 27017)
+        db = client.imagestore
 
+        # 检查是否已经入mongo库
+        if db.Locality.find_one({'url_hash': str(item['hash_value'])}) is None:
             # 计算文件大小
             file_size = int(getsize(localfile))
-            db.pic_test.save({'url': item['url'], 'key': item['key'],
-                              'url_hash':item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
+            db.Locality.save({'url': item['url'], 'key': item['key'],
+                              'url_hash': item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
 
-            #删除上传成功的文件
-            os.remove(localfile)
-            return item
+        # 删除上传成功的文件
+        os.remove(localfile)
+        # print item['url']
+        return item
 
 
 

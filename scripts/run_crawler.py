@@ -3,8 +3,13 @@ from scrapy import signals
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
-from spiders.PicSpider import PicSpider
 # from spiders.weather_spider import WeatherSpider
+
+import sys
+# print sys.path
+sys.path.append('.')
+
+from spiders.PicSpider import PicSpider
 
 
 __author__ = 'zephyre'
