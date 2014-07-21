@@ -7,6 +7,8 @@ from twisted.internet import reactor
 
 import sys
 # print sys.path
+from spiders.travel_notes import TravelNote
+
 sys.path.append('.')
 
 from spiders.PicSpider import PicSpider
@@ -19,11 +21,13 @@ def setup_spider():
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.TravelcrawlerPipeline': 800})
-    crawler.settings.set('ITEM_PIPELINES', {'pipelines.QiniuyunPipeline': 800})
+    # crawler.settings.set('ITEM_PIPELINES', {'pipelines.QiniuyunPipeline': 800})
+    crawler.settings.set('ITEM_PIPELINES', {'pipelines.TravelNotesPipeline': 800})
     crawler.configure()
 
     # spider = WeatherSpider()
-    spider = PicSpider()
+    # spider = PicSpider()
+    spider = TravelNote()
     crawler.crawl(spider)
     crawler.start()
 

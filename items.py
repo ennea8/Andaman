@@ -16,6 +16,7 @@ class WeatherItem(scrapy.Item):
     county = scrapy.Field()
     data = scrapy.Field()
 
+
 class QiniuyunItem(scrapy.Item):
     # define the fields for your item here like:
     # name = scrapy.Field()
@@ -23,3 +24,24 @@ class QiniuyunItem(scrapy.Item):
     url = scrapy.Field()
     key = scrapy.Field()
     hash_value = scrapy.Field()
+
+
+class TravelNotesItem(scrapy.Item):
+    user_name = scrapy.Field()
+    user_url = scrapy.Field()
+
+    start_year = scrapy.Field()
+    start_month = scrapy.Field()
+    origin = scrapy.Field()
+    destination = scrapy.Field()
+    time = scrapy.Field()
+    cost = scrapy.Field()
+
+    quality = scrapy.Field()
+
+    title = scrapy.Field()
+    content = scrapy.Field()
+    reply = scrapy.Field()
+    view = scrapy.Field()
+    recommend = scrapy.Field()
+    favourite = scrapy.Field()

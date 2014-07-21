@@ -12,12 +12,12 @@ import scrapy
 class PicSpider(scrapy.Spider):
     name = 'pic'
     client = pymongo.MongoClient('zephyre.me', 27017)
-    db = client.geo
+    db = client.poi
     # sys.path.append('E:/Users/Jerry/Desktop/TravelCrawler/spiders')
     # print sys.path
 
     start_urls = []
-    for t in db.Locality.find({"imageList": {'$gte': ""}}, {"imageList": 1}):
+    for t in db.hotel.find({"imageList": {'$gte': ""}}, {"imageList": 1}):
         # 将有效的url加入
         if len(t['imageList'][0]) > 5:
             start_urls = start_urls + t['imageList']

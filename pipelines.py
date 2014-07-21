@@ -73,39 +73,66 @@ class QiniuyunPipeline(object):
 
         upload_stream = False
 
-        # 先生成本地文件
-        localfile = str(time.time()) + str(random.random())
-        with open(localfile, 'wb') as f:
-            f.write(item['pic'])
-
-        if upload_stream:
-            # 上传流
-            with open(localfile, 'rb') as f:
-                body = f.read()
-            ret, err = io.put(uptoken, str(item['key']), body, extra)
-        else:
-            # 上传本地文件
-            ret, err = io.put_file(uptoken, str(item['key']), localfile, extra)
-
-        if err is not None:
-            sys.stderr.write('error: %s ' % err)
-            return
-
         # 将相应的数据存入mongo中
         client = pymongo.MongoClient('zephyre.me', 27017)
         db = client.imagestore
 
         # 检查是否已经入mongo库
-        if db.Locality.find_one({'url_hash': str(item['hash_value'])}) is None:
-            # 计算文件大小
-            file_size = int(getsize(localfile))
-            db.Locality.save({'url': item['url'], 'key': item['key'],
-                              'url_hash': item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
+        if db.Hotel.find_one({'url_hash': str(item['hash_value'])}) is None:
+            # 先生成本地文件
+            localfile = str(time.time()) + str(random.random())
 
-        # 删除上传成功的文件
-        os.remove(localfile)
-        # print item['url']
+            with open(localfile, 'wb') as f:
+                f.write(item['pic'])
+            # 上传
+            if upload_stream:
+                # 上传流
+                with open(localfile, 'rb') as f:
+                    body = f.read()
+                ret, err = io.put(uptoken, str(item['key']), body, extra)
+            else:
+                # 上传本地文件
+                ret, err = io.put_file(uptoken, str(item['key']), localfile, extra)
+
+            if err is not None:
+                sys.stderr.write('error: %s ' % err)
+                return
+
+            # 计算文件大小，进入mongo
+            file_size = int(getsize(localfile))
+            db.Hotel.save({'url': item['url'], 'key': item['key'],
+                           'url_hash': item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
+            # 增加索引
+            db.Hotel.create_index('url_hash')
+
+
+            # 删除上传成功的文件
+            os.remove(localfile)
         return item
+
+
+class TravelNotesPipeline(object):
+    def process_item(self, item, spider):
+        # 将相应的数据存入mongo中
+        client = pymongo.MongoClient('zephyre.me', 27017)
+        db = client.plan
+
+        db.Hotel.save({'user_name': item['user_name'],
+                       'user_url': item['user_url'],
+                       'start_time': item['start_time'],
+                       'origin': item['origin'],
+                       'destination': item['destination'],
+                       'time': item['time'],
+                       'cost': item['cost'],
+                       'title': item['title'],
+                       'content_html': item['content_html'],
+                       'reply': item['reply'],
+                       'view': item['view'],
+                       'recommend': item['recommend'],
+                       'favourite': item['favourite']})
+
+        return item
+
 
 
 
