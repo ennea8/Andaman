@@ -132,7 +132,9 @@ class TravelNote(scrapy.Spider):
         l_url = response.xpath \
             (
                 "//li[@class='paths-item width540 is-good-notes clearfix']//a[@class='path-name path-nslog-name nslog']/@href").extract()
-        list_url = "http://lvyou.baidu.com%s" % str(l_url)
+        if len(l_url) >0:
+            list_url = "http://lvyou.baidu.com%s" % str(l_url[0])
+
         lsit_path = response.xpath \
             ("//li[@class='paths-item width540 is-good-notes clearfix']//span[@class='path-detail']").extract()
         for i in xrange(len(list_title)):
