@@ -6,11 +6,8 @@ from twisted.internet import reactor
 # from spiders.weather_spider import WeatherSpider
 
 import sys
-# print sys.path
-from spiders.travel_notes import TravelNote
-
 sys.path.append('.')
-
+from spiders.travel_notes import TravelNote
 from spiders.PicSpider import PicSpider
 
 

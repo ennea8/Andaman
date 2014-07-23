@@ -115,21 +115,29 @@ class TravelNotesPipeline(object):
     def process_item(self, item, spider):
         # 将相应的数据存入mongo中
         client = pymongo.MongoClient('zephyre.me', 27017)
-        db = client.plan
+        db = client.travel_notes
 
-        db.Hotel.save({'user_name': item['user_name'],
-                       'user_url': item['user_url'],
-                       'start_time': item['start_time'],
-                       'origin': item['origin'],
-                       'destination': item['destination'],
-                       'time': item['time'],
-                       'cost': item['cost'],
-                       'title': item['title'],
-                       'content_html': item['content_html'],
-                       'reply': item['reply'],
-                       'view': item['view'],
-                       'recommend': item['recommend'],
-                       'favourite': item['favourite']})
+        #检查是否入库
+        if db.baidu_notes.find_one({'note_url': str(item['note_url'])}) is None:
+            # 增加索引
+            db.baidu_notes.create_index('note_url')
+            db.baidu_notes.save({'user_name': item['user_name'],
+                           'user_url': item['user_url'],
+                           'note_url': item['note_url'],
+                           'note_list': item['note_list'],
+                           'start_year': item['start_year'],
+                           'start_month': item['start_month'],
+                           'origin': item['origin'],
+                           'destination': item['destination'],
+                           'time': item['time'],
+                           'cost': item['cost'],
+                           'quality': item['quality'],
+                           'title': item['title'],
+                           'reply': item['reply'],
+                           'view': item['view'],
+                           'recommend': item['recommend'],
+                           'favourite': item['favourite'],
+                           'sub_note': item['sub_note']})
 
         return item
 

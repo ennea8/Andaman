@@ -30,6 +30,9 @@ class TravelNotesItem(scrapy.Item):
     user_name = scrapy.Field()
     user_url = scrapy.Field()
 
+    note_url = scrapy.Field()
+    note_list = scrapy.Field()
+
     start_year = scrapy.Field()
     start_month = scrapy.Field()
     origin = scrapy.Field()
@@ -40,8 +43,9 @@ class TravelNotesItem(scrapy.Item):
     quality = scrapy.Field()
 
     title = scrapy.Field()
-    content = scrapy.Field()
     reply = scrapy.Field()
     view = scrapy.Field()
     recommend = scrapy.Field()
     favourite = scrapy.Field()
+
+    sub_note = scrapy.Field()
