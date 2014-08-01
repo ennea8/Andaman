@@ -8,11 +8,12 @@ from items import WeatherItem
 
 class WeatherSpider(CrawlSpider):
     prov_name = ["北京", "上海", "天津", "重庆", "黑龙江", "吉林", "辽宁", "内蒙古", "河北", "山西",
-                 "陕西", "山东", "新疆", "西藏", "青海", "甘肃", "宁夏", "河南", "江苏", "湖北", "浙江", "安徽", "福建", "江西", "湖南", "贵州", "四川", "广东",
+                 "陕西", "山东", "新疆", "西藏", "青海", "甘肃", "宁夏", "河南", "江苏", "湖北", "浙江", "安徽", "福建", "江西", "湖南", "贵州", "四川",
+                 "广东",
                  "云南", "广西", "海南", "香港", "澳门", "台湾"]
     prov_id = [10100 + tem + 1 for tem in xrange(34)]
     prov_list = {str(tem): 'http://bj.weather.com.cn/data/city3jdata/provshi/%s.html'
-                      % str(tem) for tem in prov_id}
+                           % str(tem) for tem in prov_id}
 
 
     def __init__(self, *a, **kw):
@@ -24,7 +25,7 @@ class WeatherSpider(CrawlSpider):
         for prov_code, url in self.prov_list.items():
             m = {}
             m['prov_code'] = prov_code
-            m['prov_name'] = self.prov_name[int(prov_code)-10101]
+            m['prov_name'] = self.prov_name[int(prov_code) - 10101]
             yield Request(url=url, callback=self.parse_prov,
                           meta={'WeatherData': m})
 
@@ -68,7 +69,7 @@ class WeatherSpider(CrawlSpider):
         item['county'] = allInf['county_name']
 
         item['id'] = '%s%s%s' % (allInf['prov_code'], allInf['city_code'],
-                  allInf['county_code'])
+                                 allInf['county_code'])
         yield item
 
 
