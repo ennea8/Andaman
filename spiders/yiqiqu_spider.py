@@ -1,3 +1,4 @@
+# coding=utf-8
 from scrapy.contrib.spiders import CrawlSpider
 from items import YiqiqusightItem
 from bs4 import BeautifulSoup
@@ -20,50 +21,128 @@ class YiqiquSpider(CrawlSpider):
             proxy_list = json.loads(t)
             i = random.randint(0, len(proxy_list) - 1)
             max_request_nums = 5
-            # for id in range(10000, 99999):
-            url = "http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=152038"
-            #print url
-            yield Request(url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=152038",
-                          callback=self.parse_part,
-                          meta={'URL': url, 'proxy_list': proxy_list, 'max_request_nums': max_request_nums},
+            for id in range(12749,12750):
+                url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=%s" %id
+                yield Request(url="http://www.yikuaiqu.com/mudidi/photo.php?scenery_id=%s" %id,
+                          callback=self.parse_images,
+                          meta={'proxy': "http://%s" % proxy_list[i],'proxy_list': proxy_list, 'max_request_nums': max_request_nums,'id':id,'url':url},
                           errback=self.SetProxy(max_request_nums))
-
+    def parse_judge(self,response):
+        url=response.meta['url']
+        #print url
+        id=response.meta['id']
+        #print id
+        proxy_list=response.meta['proxy_list']
+        soup = BeautifulSoup(response.body, from_encoding='utf8')
+        wrap = soup.find('div', {'class': 'detail-wrap box-line'})
+        title = wrap.find('div', {'class': 'detail-title'})
+        clearfix = title.find('div', {'class': 'clearfix'})
+        na = clearfix.find('h1', {'class': 'fl'})
+        print na.getText()
+        if na.getText()and na.getText()!=''and na.getText()!='[浙江 • 温州 • 鹿城区]':
+            #print na.getText()
+            i = random.randint(0, len(proxy_list) - 1)
+            max_request_nums = 5
+            yield Request(url="http://www.yikuaiqu.com/mudidi/photo.php?scenery_id=%s" %id,
+                          callback=self.parse_images,
+                          meta={'proxy': "http://%s" % proxy_list[i],'proxy_list': proxy_list, 'max_request_nums': max_request_nums,'id':id},
+                          errback=self.SetProxy(max_request_nums))
+        else:
+            print '======wrong page!'
+    def parse_images(self,response):
+        id=response.meta['id']
+        proxy_list=response.meta['proxy_list']
+        soup=BeautifulSoup(response.body,from_encoding='utf8')
+        photo=soup.find('div',{'id':'photo'})
+        lis=photo.findAll('li')
+        j=1
+        image_urls=[]
+        for j in range(1,len(lis)):
+            li=lis[j]
+            image_urls.append(li.find('a').get('href'))
+        #print image_urls
+        #print len(image_urls)
+        i = random.randint(0, len(proxy_list) - 1)
+        max_request_nums = 5
+        yield Request(url="http://www.yikuaiqu.com//interface/subject_reason_detail.php?scenery_id=%s" %id,
+                          callback=self.parse_part,
+                          meta={ 'proxy': "http://%s" % proxy_list[i],'proxy_list': proxy_list, 'max_request_nums': max_request_nums,'image_urls':image_urls,'id':id},
+                          errback=self.SetProxy(max_request_nums))
     def parse_part(self, response):
-        url = response.meta['URL']
-        print url
+        id=response.meta['id']
+        image_urls=response.meta['image_urls']
+        print image_urls
         proxy_list = response.meta['proxy_list']
         soup = json.loads(response.body, encoding='utf8')
-        vs = soup['vsource']
-        print vs
-        # resons=vs['reasons']
-        # print resons
-        subjects = vs['subjects']
-        print subjects
-        desc = subjects[0]['sub']
+        #soup=BeautifulSoup(response.body,from_encoding='utf8')
+        #print soup
+        reasons=''
+        desc=''
+        spots=''
+        food=''
+        culture=''
+        traffic=''
+        try:
+            vs = soup['vsource']
+            reasons = vs['reasons']
+            #print reasons
+            #print vs
+            # resons=vs['reasons']
+            # print resons
+            subjects = vs['subjects']
+            #print subjects
+            i=0
+
+            #print subjects
+            #print len(subjects)
+            for i in range(0,len(subjects)):
+                #print subjects[i]['sub']
+                if subjects[i]['name']=='景区介绍':
+                    desc = subjects[i]['sub']
+                elif subjects[i]['name']=='游玩景点':
+                    spots = subjects[i]['sub']
+                elif subjects[i]['name']=='特色美食':
+                    food = subjects[i]['sub']
+                elif subjects[i]['name']=='历史文化':
+                    culture=subjects[i]['sub']
+                elif subjects[i]['name']=='交通路线':
+                    traffic = subjects[i]['sub']
+        except:
+            pass
+        print reasons
         print desc
-        #print desc['desc']
-        spots = subjects[1]['sub']
         print spots
-        food = subjects[2]['sub']
         print food
-        traffic = subjects[3]['sub']
+        print culture
         print traffic
+        '''print desc[0]['desc']
+        print spots[0]['desc']
+        print food[0]['desc']
+        print culture[0]['desc']
+        print traffic[0]['desc']'''
         max_request_nums = 5
-        yield Request(url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=12749",
+        url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=%s"%id
+        yield Request(url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=%s"%id,
                       callback=self.parse_final,
-                      meta={'proxy_list': proxy_list, 'max_request_nums': max_request_nums,
-                            'desc': desc, 'spots': spots, 'food': food, 'traffic': traffic},
+                      meta={'proxy': "http://%s" % proxy_list[i],'proxy_list': proxy_list, 'max_request_nums': max_request_nums,
+                          'reasons':reasons,'culture':culture, 'desc': desc, 'spots': spots, 'food': food, 'traffic': traffic,'URL': url,'image_urls':image_urls},
                       errback=self.SetProxy(max_request_nums))
 
 
     def parse_final(self, response):
+        print 'hello'
         # url=response.meta['URL']
         # print url
         item = YiqiqusightItem()
+        reasons=response.meta['reasons']
+        sight_url=response.meta['URL']
+        image_urls=response.meta['image_urls']
+        print len(image_urls)
         desc = response.meta['desc']
         spots = response.meta['spots']
         food = response.meta['food']
         traffic = response.meta['traffic']
+        culture=response.meta['culture']
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         wrap = soup.find('div', {'class': 'detail-wrap box-line'})
         title = wrap.find('div', {'class': 'detail-title'})
@@ -77,7 +156,10 @@ class YiqiquSpider(CrawlSpider):
         print name
         print province
         print city
-        rate = clearfix.find('span', {'class': 'fl icon-Aqinfei'}).getText()
+        try:
+            rate = clearfix.find('span', {'class': 'fl icon-Aqinfei'}).getText()
+        except:
+            rate=''
         print rate
         p = title.find('p')
         address = p.find('span', {'class': 'fl'}).getText()
@@ -88,11 +170,6 @@ class YiqiquSpider(CrawlSpider):
         mm = wrap.find('div', {'class': 'detail-main clearfix'})
         slide = mm.find('div', {'class': 'fl detail-slide'})
         #conbox=slide.find('div',{'class':'conbox'})
-        pis = slide.findAll('img')
-        img = []
-        for it in pis:
-            img.append(it.get('src'))
-        print img
         side = mm.find('div', {'class': 'detail-side-wrap fr'})
         theme = side.find('dt').getText()
         pp = side.findAll('dd')
@@ -107,6 +184,8 @@ class YiqiquSpider(CrawlSpider):
         print notice
         #print item
         print name
+        item['web_name']='yiqiqu'
+        item['sight_url']=sight_url
         item['name'] = name
         item['province'] = province
         item['city'] = city
@@ -116,13 +195,15 @@ class YiqiquSpider(CrawlSpider):
         item['price'] = price
         item['phone'] = phone
         item['opentime'] = opentime
-        item['img'] = img
+        item['image_urls'] = image_urls
         item['intro'] = intro
         item['notice'] = notice
         item['desc'] = desc
         item['spots'] = spots
         item['food'] = food
         item['traffic'] = traffic
+        item['culture']=culture
+        item['reasons']=reasons
         yield item
 
 
@@ -134,11 +215,11 @@ class YiqiquSpider(CrawlSpider):
                 t = file.readline()
                 proxy_list = json.loads(t)
                 i = random.randint(0, len(proxy_list) - 1)
-            for id in range(10000, 99999):
+            for id in range(12749,12750):
                 url = "http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=%s" % id
                 yield Request(url="http://www.yikuaiqu.com/mudidi/detail.php?scenery_id=%s" % id,
-                              callback=self.parse_final,
-                              meta={'URl': url, 'proxy_list': proxy_list, 'max_request_nums': max_request_nums},
+                              callback=self.parse_judge,
+                              meta={'proxy': "http://%s" % proxy_list[i],'URl': url, 'proxy_list': proxy_list, 'max_request_nums': max_request_nums},
                               errback=self.SetProxy(max_request_nums))
 
 

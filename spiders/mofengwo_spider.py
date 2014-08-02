@@ -174,6 +174,7 @@ class MafengwoSpider(CrawlSpider):
         for it in imgs:
             img.append(it.get('src'))
         print img
+        item['web_name']='mafengwo'
         item['author_id'] = author_id
         item['author_name'] = author_name
         item['author_url'] = author_url

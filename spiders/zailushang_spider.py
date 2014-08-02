@@ -66,7 +66,7 @@ class ZailushangSpider(CrawlSpider):
                     image_urls=[]
                 #print image_urls
             print image_urls
-            print '====================='
+            #print '====================='
             #print content
             like_num = header.find('div', {'class': 't-header-func-t-like'}).getText()
             cmt_num = header.find('div', {'class': 't-header-func-t-cmt'}).getText()
@@ -87,6 +87,7 @@ class ZailushangSpider(CrawlSpider):
                 tt = it.getText()
                 sights.append(tt)
             print sights
+            item['web_name']='zailushang'
             item['author_url'] = author_url
             item['author_name'] = author_name
             item['author_id'] = author_id
