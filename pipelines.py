@@ -4,17 +4,22 @@
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
+import os
+import random
 import re
+from os.path import getsize
 import sys
+import time
 
+from qiniu import io
+import qiniu
+from qiniu.rs import rs
 import pymongo
 
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
 # from scrapy.exceptions import DropItem
-
-
 
 class TravelcrawlerPipeline(object):
     def __init__(self):
@@ -173,3 +178,91 @@ class YiqiquPipeline(object):
                  'phone': phone, 'opentime': opentime, 'intro': intro, 'notice': notice, 'desc': desc, 'spots': spots,
                  'food': food, 'traffic': traffic})
             return item
+
+
+class QiniuyunPipeline(object):
+    def process_item(self, item, spider):
+        # 获得上传权限
+        qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
+        qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
+
+        # 配置上传策略。
+        # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+        policy = qiniu.rs.PutPolicy('lvxingpai-img-store')
+        # 取得上传token
+        uptoken = policy.token()
+
+        # 上传的额外选项
+        extra = io.PutExtra()
+        # 文件自动校验crc
+        extra.check_crc = 1
+
+        upload_stream = False
+
+        # 将相应的数据存入mongo中
+        client = pymongo.MongoClient('zephyre.me', 27017)
+        db = client.imagestore
+
+        # 检查是否已经入mongo库
+        if db.Hotel.find_one({'url_hash': str(item['hash_value'])}) is None:
+            # 先生成本地文件
+            localfile = str(time.time()) + str(random.random())
+
+            with open(localfile, 'wb') as f:
+                f.write(item['pic'])
+            # 上传
+            if upload_stream:
+                # 上传流
+                with open(localfile, 'rb') as f:
+                    body = f.read()
+                ret, err = io.put(uptoken, str(item['key']), body, extra)
+            else:
+                # 上传本地文件
+                ret, err = io.put_file(uptoken, str(item['key']), localfile, extra)
+
+            if err is not None:
+                sys.stderr.write('error: %s ' % err)
+                return
+
+            # 计算文件大小，进入mongo
+            file_size = int(getsize(localfile))
+            db.Hotel.save({'url': item['url'], 'key': item['key'],
+                           'url_hash': item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
+            # 增加索引
+            db.Hotel.create_index('url_hash')
+
+
+            # 删除上传成功的文件
+            os.remove(localfile)
+        return item
+
+
+class TravelNotesPipeline(object):
+    def process_item(self, item, spider):
+        # 将相应的数据存入mongo中
+        client = pymongo.MongoClient('zephyre.me', 27017)
+        db = client.travel_notes
+
+        # 检查是否入库
+        if db.baidu_notes.find_one({'note_url': str(item['note_url'])}) is None:
+            # 增加索引
+            db.baidu_notes.create_index('note_url')
+            db.baidu_notes.save({'user_name': item['user_name'],
+                                 'user_url': item['user_url'],
+                                 'note_url': item['note_url'],
+                                 'note_list': item['note_list'],
+                                 'start_year': item['start_year'],
+                                 'start_month': item['start_month'],
+                                 'origin': item['origin'],
+                                 'destination': item['destination'],
+                                 'time': item['time'],
+                                 'cost': item['cost'],
+                                 'quality': item['quality'],
+                                 'title': item['title'],
+                                 'reply': item['reply'],
+                                 'view': item['view'],
+                                 'recommend': item['recommend'],
+                                 'favourite': item['favourite'],
+                                 'sub_note': item['sub_note']})
+
+        return item

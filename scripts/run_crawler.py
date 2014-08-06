@@ -1,5 +1,4 @@
 # coding=utf-8
-import sys
 
 sys.path.append('.')
 from scrapy import signals
@@ -8,6 +7,10 @@ from scrapy.settings import Settings
 from twisted.internet import reactor
 # from spiders.weather_spider import WeatherSpider
 from spiders.yiqiqu_spider import YiqiquSpider
+
+import sys
+
+sys.path.append('.')
 
 __author__ = 'zephyre'
 
@@ -19,7 +22,7 @@ def setup_spider():
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 100})
     crawler.settings.set('ITEM_PIPELINES', {'pipelines.YiqiquPipeline': 200})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
-    #crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
+    # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
     # crawler.settings.set('ITEM_PIPELINES', {'scrapy.contrib.pipeline.images.ImagesPipeline': 500})
 
     # crawler.settings.set('IMAGES_STORE', 'F:\images\yiqiqu')
@@ -49,6 +52,7 @@ def setup_spider():
     #spider=ZailushangSpider()
     #spider=BreadtripSpider()
     spider = YiqiquSpider()
+
     crawler.crawl(spider)
     crawler.start()
     return spider
