@@ -1,8 +1,10 @@
 # coding=utf-8
 import copy
 import json
+
 from scrapy import Request
 from scrapy.contrib.spiders import CrawlSpider
+
 from items import WeatherItem
 
 

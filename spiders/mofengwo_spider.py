@@ -1,10 +1,11 @@
-from scrapy.contrib.spiders import CrawlSpider
-from items import MafengwoblogItem
-from bs4 import BeautifulSoup
-from scrapy import Request
 import json
 import random
-from twisted.internet import defer
+
+from scrapy.contrib.spiders import CrawlSpider
+from bs4 import BeautifulSoup
+from scrapy import Request
+
+from items import MafengwoblogItem
 
 
 class MafengwoSpider(CrawlSpider):
@@ -20,7 +21,7 @@ class MafengwoSpider(CrawlSpider):
             i = random.randint(0, len(proxy_list) - 1)
             # print len(proxy_list)
         # print i
-        #print proxy_list[i]
+        # print proxy_list[i]
         Max_Request_Nums = 5
         yield Request(url="http://www.mafengwo.cn/", callback=self.parse_city,
                       meta={'proxy': "http://%s" % proxy_list[i], 'proxy_list': proxy_list,
@@ -28,11 +29,11 @@ class MafengwoSpider(CrawlSpider):
 
     def parse_city(self, response):
         # test=response.meta['proxy']
-        #print test
+        # print test
         proxy_list = response.meta['proxy_list']
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         intenal = soup.find('div', {'class': 'fast-nav-item fast-item-internal'})
-        #print intenal
+        # print intenal
         #clear=[]
         #clear=intenal.findAll('dl',{'class':'clearfix'})
         #print clear
@@ -54,8 +55,8 @@ class MafengwoSpider(CrawlSpider):
 
     def parse_pages(self, response):
         # soup=BeautifulSoup(response.body,from_encoding='utf8')
-        #ti=soup.find('a',{'class':'ti'}).get('href')
-        #pass
+        # ti=soup.find('a',{'class':'ti'}).get('href')
+        # pass
         proxy_list = response.meta['proxy_list']
         #print proxy_list
         soup = BeautifulSoup(response.body, from_encoding='utf8')
@@ -95,12 +96,12 @@ class MafengwoSpider(CrawlSpider):
         # url="http://www.mafengwo.cn/i/3101108.html"
         item = MafengwoblogItem()
         soup = BeautifulSoup(response.body, from_encoding='utf8')
-        #po=soup.findAll('a',{'class':'name'})
-        #author_url=po[0].get('href')
+        # po=soup.findAll('a',{'class':'name'})
+        # author_url=po[0].get('href')
         #print author_url
         #print '========soup'
         #print soup
-        hd=soup.find('div',{'class':'post-hd'})
+        hd = soup.find('div', {'class': 'post-hd'})
         #print '========hd'
         #print hd
         tit = hd.find('div', {'class': 'post_title clearfix'})
@@ -111,7 +112,7 @@ class MafengwoSpider(CrawlSpider):
         print hot
         info = soup.find('div', {'class': 'post_info'})
         fl = info.find('div', {'class': 'fl'})
-        author_url=fl.find('a').get('href')
+        author_url = fl.find('a').get('href')
         print author_url
         date = fl.find('span', {'class': 'date'}).getText()
         content = soup.find('div', {'class': 'a_con_text cont'})
@@ -174,7 +175,7 @@ class MafengwoSpider(CrawlSpider):
         for it in imgs:
             img.append(it.get('src'))
         print img
-        item['web_name']='mafengwo'
+        item['web_name'] = 'mafengwo'
         item['author_id'] = author_id
         item['author_name'] = author_name
         item['author_url'] = author_url

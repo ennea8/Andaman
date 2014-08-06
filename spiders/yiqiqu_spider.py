@@ -1,13 +1,12 @@
 # coding=utf-8
 import json
 import random
-import re
 
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy import Request
+from bs4 import BeautifulSoup
 
 from items import YiqiqusightItem
-from bs4 import BeautifulSoup
 
 
 class YiqiquSpider(CrawlSpider):
@@ -35,7 +34,7 @@ class YiqiquSpider(CrawlSpider):
         url = response.meta['url']
         # print url
         id = response.meta['id']
-        #print id
+        # print id
         proxy_list = response.meta['proxy_list']
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         wrap = soup.find('div', {'class': 'detail-wrap box-line'})
@@ -44,7 +43,7 @@ class YiqiquSpider(CrawlSpider):
         na = clearfix.find('h1', {'class': 'fl'})
         print na.getText()
         if na.getText() and na.getText() != '' and na.getText() != '[浙江 • 温州 • 鹿城区]':
-            #print na.getText()
+            # print na.getText()
             i = random.randint(0, len(proxy_list) - 1)
             max_request_nums = 5
             yield Request(url="http://www.yikuaiqu.com/mudidi/photo.php?scenery_id=%s" % id,
@@ -67,7 +66,7 @@ class YiqiquSpider(CrawlSpider):
             li = lis[j]
             image_urls.append(li.find('a').get('href'))
         # print image_urls
-        #print len(image_urls)
+        # print len(image_urls)
         i = random.randint(0, len(proxy_list) - 1)
         max_request_nums = 5
         yield Request(url="http://www.yikuaiqu.com//interface/subject_reason_detail.php?scenery_id=%s" % id,
@@ -83,7 +82,7 @@ class YiqiquSpider(CrawlSpider):
         proxy_list = response.meta['proxy_list']
         soup = json.loads(response.body, encoding='utf8')
         # soup=BeautifulSoup(response.body,from_encoding='utf8')
-        #print soup
+        # print soup
         reasons = ''
         desc = ''
         spots = ''
@@ -93,8 +92,8 @@ class YiqiquSpider(CrawlSpider):
         try:
             vs = soup['vsource']
             reasons = vs['reasons']
-            #print reasons
-            #print vs
+            # print reasons
+            # print vs
             # resons=vs['reasons']
             # print resons
             subjects = vs['subjects']
@@ -192,7 +191,7 @@ class YiqiquSpider(CrawlSpider):
         print intro
         notice = soup.find('table', {'class': 'notice-main'}).getText()
         print notice
-        #print item
+        # print item
         print name
         item['web_name'] = 'yiqiqu'
         item['sight_url'] = sight_url

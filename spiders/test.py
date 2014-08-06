@@ -1,9 +1,9 @@
 from scrapy.contrib.spiders import CrawlSpider
-from items import BlogItem
 from bs4 import BeautifulSoup
 from scrapy import Request
-import json
 import MySQLdb
+
+from items import BlogItem
 
 
 class blogspider(CrawlSpider):
@@ -39,8 +39,8 @@ class blogspider(CrawlSpider):
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         intenal = soup.find('div', {'class': 'fast-nav-item fast-item-internal'})
         # print intenal
-        #clear=[]
-        #clear=intenal.findAll('dl',{'class':'clearfix'})
+        # clear=[]
+        # clear=intenal.findAll('dl',{'class':'clearfix'})
         #print clear
         citys = []
         citys = intenal.findAll('a')
@@ -57,8 +57,8 @@ class blogspider(CrawlSpider):
 
     def parse_pages(self, response):
         # soup=BeautifulSoup(response.body,from_encoding='utf8')
-        #ti=soup.find('a',{'class':'ti'}).get('href')
-        #pass
+        # ti=soup.find('a',{'class':'ti'}).get('href')
+        # pass
         proxy_list = response.meta['proxy_list']
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         p = soup.find('a', {'class': 'ti last'}).get('href')
@@ -97,8 +97,8 @@ class blogspider(CrawlSpider):
         item = BlogItem()
         soup = BeautifulSoup(response.body, from_encoding='utf8')
         # print soup
-        #hd=soup.find('div',{'class':'post-hd-wrap clearfix'})
-        #print hd
+        # hd=soup.find('div',{'class':'post-hd-wrap clearfix'})
+        # print hd
         title = soup.find('div', {'class': 'post_title clearfix'})
         #print title
         tag = title.find('h1').getText()
