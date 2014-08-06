@@ -1,9 +1,11 @@
 # coding=utf-8
+import json
 import sys
+
 import scrapy
 
-from spiders.BaiduPoiSpider import BaiduPoiSpider
 from spiders.QunarPoiSpider import QunarPoiSpider
+
 
 sys.path.append('.')
 
@@ -25,6 +27,8 @@ def setup_spider():
     settings.setdict({'ITEM_PIPELINES': {'pipelines.BaiduPoiPipeline': 300,
                                          'pipelines.QunarPoiPipeline': 400}})
 
+    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
+
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
 
@@ -42,14 +46,14 @@ def setup_spider():
     # elif argv == 'zailushang':
     # crawler.settings.set('IMAGES_STORE', 'F:\images\zailushang')
     # elif argv == 'breaktrip':
-    #      crawler.settings.set('IMAGES_STORE', 'F:\images\breaktrip')'''
+    # crawler.settings.set('IMAGES_STORE', 'F:\images\breaktrip')'''
 
     settings.set('IMAGES_MIN_HEIGHT', 110)
     settings.set('IMAGES_MIN_WIDTH', 110)
 
     crawler.configure()
-    #if argv=='Travel':
-    #    spider = WeatherSpider()
+    # if argv=='Travel':
+    # spider = WeatherSpider()
     '''if argv == 'mafengwo':
         spider = MafengwoSpider()
     elif argv == 'yiqiqu':
@@ -58,7 +62,7 @@ def setup_spider():
         spider = ZailushangSpider()
     elif argv == 'breaktrip':
         spider = BreadtripSpider()'''
-    #spider=MafengwoSpider()
+    # spider=MafengwoSpider()
     #spider=ZailushangSpider()
     #spider=BreadtripSpider()
     # spider = YiqiquSpider()
@@ -78,6 +82,12 @@ def main():
 
 
 if __name__ == "__main__":
+    # with open('./scripts/proxy.json', 'r') as f:
+    #     proxy = json.load(f)
+    #
+    # with open('./data/proxy_list.txt', 'w') as f:
+    #     for p in proxy:
+    #         f.write('%s\n' % p.strip())
     # argv = sys.argv[1]
     # main(argv)
     main()
