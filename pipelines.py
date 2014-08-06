@@ -16,6 +16,8 @@ import qiniu
 from qiniu.rs import rs
 import pymongo
 
+from items import QunarPoiItem, BaiduPoiItem
+
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
@@ -264,5 +266,54 @@ class TravelNotesPipeline(object):
                                  'recommend': item['recommend'],
                                  'favourite': item['favourite'],
                                  'sub_note': item['sub_note']})
+
+        return item
+
+
+class QunarPoiPipeline(object):
+    def __init__(self):
+        self.db = None
+
+    def connect(self):
+        self.db = pymongo.MongoClient().QunarPoiRaw
+
+    def process_item(self, item, spider):
+        if not isinstance(item, QunarPoiItem):
+            return item
+
+        if not self.db:
+            self.connect()
+
+        data = item['data']
+        ret = self.db.Poi.find_one({'id': data['id']}, {'id': 1})
+        if not ret:
+            self.db.Poi.insert(data)
+
+        return item
+
+
+class BaiduPoiPipeline(object):
+    def __init__(self):
+        self.db = None
+
+    def connect(self):
+        self.db = pymongo.MongoClient().BaiduPoiRaw
+
+    def process_item(self, item, spider):
+        if not isinstance(item, BaiduPoiItem):
+            return item
+
+        if not self.db:
+            self.db = pymongo.MongoClient().BaiduPoiRaw
+
+        data = item['data']
+        if 'scene_total' in data:
+            ret = self.db.LocInfo.find_one({'sid': data['sid']}, {'sid': 1})
+            if not ret:
+                self.db.LocInfo.insert(data)
+        else:
+            ret = self.db.Poi.find_one({'sid': data['sid']}, {'sid': 1})
+            if not ret:
+                self.db.Poi.insert(data)
 
         return item

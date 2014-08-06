@@ -132,6 +132,14 @@ class JsonItem(scrapy.Item):
     data = scrapy.Field()
 
 
+class BaiduPoiItem(JsonItem):
+    pass
+
+
+class QunarPoiItem(JsonItem):
+    pass
+
+
 class QiniuyunItem(scrapy.Item):
     # define the fields for your item here like:
     # name = scrapy.Field()

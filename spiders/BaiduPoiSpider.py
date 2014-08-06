@@ -5,7 +5,7 @@ from MySQLdb.cursors import DictCursor
 from scrapy import Request
 from scrapy.contrib.spiders import CrawlSpider
 
-from items import JsonItem
+from items import BaiduPoiItem
 
 
 __author__ = 'zephyre'
@@ -44,12 +44,12 @@ class BaiduPoiSpider(CrawlSpider):
 
         scene_list = data.pop('scene_list')
         if page == 1:
-            item = JsonItem()
+            item = BaiduPoiItem()
             item['data'] = data
             yield item
 
         for scene in scene_list:
-            item = JsonItem()
+            item = BaiduPoiItem()
             item['data'] = scene
             yield item
 
