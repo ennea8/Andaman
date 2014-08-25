@@ -10,6 +10,8 @@ from items import BaiduPoiItem
 
 __author__ = 'zephyre'
 
+# Crawler
+
 
 class BaiduPoiSpider(CrawlSpider):
     def __init__(self, *a, **kw):
