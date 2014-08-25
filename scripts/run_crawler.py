@@ -1,10 +1,11 @@
 # coding=utf-8
 import json
 import sys
+from cssselect import Selector
 
 import scrapy
 
-from spiders.QunarPoiSpider import QunarPoiSpider
+from spiders.QunarPoiSpider import QunarPoiSpider, QunarImageSpider
 
 
 sys.path.append('.')
@@ -27,7 +28,7 @@ def setup_spider():
     settings.setdict({'ITEM_PIPELINES': {'pipelines.BaiduPoiPipeline': 300,
                                          'pipelines.QunarPoiPipeline': 400}})
 
-    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
+    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
@@ -68,7 +69,8 @@ def setup_spider():
     # spider = YiqiquSpider()
     # spider = BaiduPoiSpider()
 
-    spider = QunarPoiSpider(4)
+    # spider = QunarPoiSpider(2)
+    spider = QunarImageSpider()
 
     crawler.crawl(spider)
     crawler.start()
@@ -91,3 +93,5 @@ if __name__ == "__main__":
     # argv = sys.argv[1]
     # main(argv)
     main()
+
+    Selector

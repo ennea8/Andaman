@@ -65,7 +65,7 @@ class ProxySwitchMiddleware(object):
                 d = self.proxy_list[proxy]
                 d['fail'] += 1
                 # 代理是否存活？
-                if float(d['fail']) / float['req'] > 0.7:
+                if float(d['fail']) / float(d['req']) > 0.7:
                     d['enabled'] = False
 
         return request

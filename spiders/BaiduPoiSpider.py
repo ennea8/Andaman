@@ -2,7 +2,7 @@ import json
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
-from scrapy import Request
+from scrapy import Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
 
 from items import BaiduPoiItem
@@ -34,6 +34,16 @@ class BaiduPoiSpider(CrawlSpider):
             yield Request(url=url, callback=self.parse, meta={'data': m})
 
     def parse(self, response):
+
+        sel=Selector(response)
+
+        for item in sel.xpath('//div[@class="J_allview-scene"]/article[@class="scene-pic-item"]/div[@class="scene-pic-info"]/p').extract():
+            next_url = item['href']
+            yield Request(url=next_url)
+
+
+            pass
+
         try:
             data = json.loads(response.body)['data']
         except ValueError:
