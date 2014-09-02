@@ -179,3 +179,18 @@ class ChanyoujiItem(scrapy.Item):
     num_youji = scrapy.Field()
     weibo_url = scrapy.Field()
     weibo_uid = scrapy.Field()
+    triped = scrapy.Field()
+
+class ChanyoujiYoujiItem(scrapy.Item):
+    trips_id = scrapy.Field()
+    data = scrapy.Field()
+
+    # trips_id = scrapy.Field()
+    # note_day_index = scrapy.Field()
+    # note_day_date = scrapy.Field()
+    # note_day_weather = scrapy.Field()
+    # note_node_name = scrapy.Field()
+    # note_node_desc = scrapy.Field()
+    # note_photo_src = scrapy.Field()
+    # note_photo_caption = scrapy.Field()
+    # note_text = scrapy.Field()

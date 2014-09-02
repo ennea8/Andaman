@@ -5,9 +5,9 @@ from cssselect import Selector
 
 import scrapy
 
-from spiders.QunarPoiSpider import QunarPoiSpider, QunarImageSpider
-
-
+#from spiders.QunarPoiSpider import QunarPoiSpider, QunarImageSpider
+from spiders.ChanyoujiUserSpiser import ChanyoujiUserSpider
+from spiders.ChanyoujiYoujiSpider import ChanyoujiYoujiSpider
 sys.path.append('.')
 
 from scrapy import signals
@@ -25,15 +25,14 @@ def setup_spider():
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'pipelines.BaiduPoiPipeline': 300,
-                                         'pipelines.QunarPoiPipeline': 400}})
+    settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiUserPipeline': 300,'pipelines.ChanyoujiYoujiPipline':200}})
 
-    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
+    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
 
-    # crawler.settings.set('ITEM_PIPELINES', {'pipelines.TravelcrawlerPipeline': 800})
+    #crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiUserPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 100})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.YiqiquPipeline': 200})
 
@@ -70,7 +69,7 @@ def setup_spider():
     # spider = BaiduPoiSpider()
 
     # spider = QunarPoiSpider(2)
-    spider = QunarImageSpider()
+    spider = ChanyoujiUserSpider()
 
     crawler.crawl(spider)
     crawler.start()
@@ -93,5 +92,4 @@ if __name__ == "__main__":
     # argv = sys.argv[1]
     # main(argv)
     main()
-
     Selector

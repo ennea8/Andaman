@@ -16,7 +16,8 @@ import qiniu
 from qiniu.rs import rs
 import pymongo
 
-from items import QunarPoiItem, BaiduPoiItem
+from items import QunarPoiItem, BaiduPoiItem,ChanyoujiItem,ChanyoujiYoujiItem
+
 
 
 reload(sys)
@@ -316,4 +317,51 @@ class BaiduPoiPipeline(object):
             if not ret:
                 self.db.Poi.insert(data)
 
+        return item
+
+class ChanyoujiUserPipeline(object):
+    def __init__(self):
+        self.db = None
+
+    def connect(self):
+        self.db = pymongo.MongoClient().Chanyoujidb
+
+    def process_item(self,item,spider):
+        if not isinstance(item,ChanyoujiItem):
+            return item
+
+        if not self.db:
+            self.db = pymongo.MongoClient().Chanyoujidb
+
+        user_id = item['user_id']
+        user_name = item['user_name']
+        num_youji = item['num_youji']
+        weibo_url = item['weibo_url']
+        triped =item['triped']
+        data = {"user_id":user_id,"user_name":user_name,"num_youji":num_youji,"weibo_url":weibo_url,"triped":triped}
+        ret = self.db.users.find_one({'user_id':user_id})
+        if not ret:
+            self.db.users.insert(data)
+
+        return item
+
+class ChanyoujiYoujiPipline(object):
+    def __init__(self):
+        self.db = None
+
+    def connect(self):
+        self.db = pymongo.MongoClient.ChanyoujiYoujidb
+
+    def process_item(self,item,spider):
+        if not isinstance(item,ChanyoujiYoujiItem):
+            return item
+        if not self.db:
+            self.db = pymongo.MongoClient().ChanyoujiYoujidb
+        trips_id = item['trips_id']
+        contents = item['data']
+
+        youji_data = {'trips_id':trips_id,'contents':contents}
+        ret=self.db.youji.find_one({'trips_id':trips_id})
+        if not ret:
+            self.db.youji.insert(youji_data)
         return item
