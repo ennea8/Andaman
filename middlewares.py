@@ -4,11 +4,35 @@ import random
 __author__ = 'zephyre'
 
 
+class TestMiddleware(object):
+    def process_request(self, request, spider):
+        request.meta['test'] = 1
+        return None
+
+    def process_response(self, request, response, spider):
+        # response.meta['test2'] = 1
+        return response
+
+
+class TestMiddleware2(object):
+    def process_request(self, request, spider):
+        request.meta['testa'] = 1
+        return None
+
+    def process_response(self, request, response, spider):
+        # response.meta['testa2'] = 1
+        return response
+
+
 class ProxySwitchMiddleware(object):
     def __init__(self):
         # 加载代理列表
         proxy_list = {}
+<<<<<<< HEAD
         with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
+=======
+        with open('data/proxy_list.txt', 'r') as f:
+>>>>>>> origin/dev
             for line in f:
                 proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
         self.proxy_list = proxy_list
@@ -17,19 +41,13 @@ class ProxySwitchMiddleware(object):
         proxy_list = filter(lambda val: self.proxy_list[val]['enabled'], self.proxy_list.keys())
         if not proxy_list:
             return None
-        idx = random.randint(0, len(proxy_list) - 1)
-        return proxy_list[idx]
+        return proxy_list[random.randint(0, len(proxy_list) - 1)]
 
     def process_request(self, request, spider):
-        # # 如果request.meta中没有指定proxy，则从proxy_list中随机选择一个
-        # if 'proxy' not in request.meta:
-
         proxy = self.pick_proxy()
         if proxy:
             request.meta['proxy'] = proxy
             self.proxy_list[proxy]['req'] += 1
-        else:
-            del request.meta['proxy']
 
         # # 加入request统计
         # if 'proxySwitchStat' not in request.meta:
