@@ -16,7 +16,7 @@ import qiniu
 from qiniu.rs import rs
 import pymongo
 
-from items import QunarPoiItem, BaiduPoiItem,ChanyoujiItem,ChanyoujiYoujiItem
+from items import QunarPoiItem, BaiduPoiItem,ChanyoujiItem,ChanyoujiYoujiItem,MafengwoYoujiItem
 
 
 
@@ -350,7 +350,7 @@ class ChanyoujiYoujiPipline(object):
         self.db = None
 
     def connect(self):
-        self.db = pymongo.MongoClient.ChanyoujiYoujidb
+        self.db = pymongo.MongoClient().ChanyoujiYoujidb
 
     def process_item(self,item,spider):
         if not isinstance(item,ChanyoujiYoujiItem):
@@ -365,3 +365,29 @@ class ChanyoujiYoujiPipline(object):
         if not ret:
             self.db.youji.insert(youji_data)
         return item
+
+class MafengwoYoujiPipline(object):
+    def __init__(self):
+        self.db = None
+
+    def connect(self):
+        self.db = pymongo.MongoClient().MafengwoYoujidb
+
+    def process_item(self,item,spider):
+        if not isinstance(item,MafengwoYoujiItem):
+            return item
+        if not self.db:
+           self.db = pymongo.MongoClient().MafengwoYoujidb
+        title = item['title']
+        place = item['place']
+        author = item['author']
+        title = item['title']
+        public_time = item['public_time']
+        cost = item['cost']
+        way = item['way']
+        days = item['days']
+        contents = item['contents']
+        reply = item['reply']
+        youji_data={'title':title,'place':place,'author':author,'title':title,'public_time':public_time,'cost':cost,'way':way,'days':days,'contents':contents,'reply':reply}
+        self.db.youji.insert(youji_data)
+

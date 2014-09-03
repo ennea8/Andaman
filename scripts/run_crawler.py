@@ -8,6 +8,7 @@ import scrapy
 #from spiders.QunarPoiSpider import QunarPoiSpider, QunarImageSpider
 from spiders.ChanyoujiUserSpiser import ChanyoujiUserSpider
 from spiders.ChanyoujiYoujiSpider import ChanyoujiYoujiSpider
+from spiders.MafengwoSpider import MafengwoYoujiSpider
 sys.path.append('.')
 
 from scrapy import signals
@@ -25,7 +26,7 @@ def setup_spider():
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiUserPipeline': 300,'pipelines.ChanyoujiYoujiPipline':200}})
+    settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiUserPipeline': 300,'pipelines.ChanyoujiYoujiPipline':200,'pipelines.MafengwoYoujiPipline':100}})
 
     settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
@@ -69,7 +70,7 @@ def setup_spider():
     # spider = BaiduPoiSpider()
 
     # spider = QunarPoiSpider(2)
-    spider = ChanyoujiUserSpider()
+    spider = MafengwoYoujiSpider()
 
     crawler.crawl(spider)
     crawler.start()

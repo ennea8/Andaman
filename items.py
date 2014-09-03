@@ -185,12 +185,14 @@ class ChanyoujiYoujiItem(scrapy.Item):
     trips_id = scrapy.Field()
     data = scrapy.Field()
 
-    # trips_id = scrapy.Field()
-    # note_day_index = scrapy.Field()
-    # note_day_date = scrapy.Field()
-    # note_day_weather = scrapy.Field()
-    # note_node_name = scrapy.Field()
-    # note_node_desc = scrapy.Field()
-    # note_photo_src = scrapy.Field()
-    # note_photo_caption = scrapy.Field()
-    # note_text = scrapy.Field()
+class MafengwoYoujiItem(scrapy.Item):
+    place = scrapy.Field()  #景观地点
+    author = scrapy.Field() #游记作者
+    title = scrapy.Field()  #游记标题
+    public_time = scrapy.Field()#游记发表时间
+    cost = scrapy.Field()   #人均费用
+    way = scrapy.Field()    #旅行方法
+    days = scrapy.Field()   #旅行用的时间
+    contents = scrapy.Field()#内容
+    reply = scrapy.Field()  #回复
+
