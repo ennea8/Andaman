@@ -7,9 +7,10 @@ from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
-from spiders.BaiduPoiSpider import BaiduPoiImageSpider
-
 # from spiders.weather_spider import WeatherSpider
+from spiders.notes.baidu_notes import BaiduNoteSpider
+
+import json
 
 __author__ = 'zephyre'
 
@@ -20,11 +21,10 @@ def setup_spider(start, count):
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'pipelines.BaiduPoiPipeline': 300,
-                                         'pipelines.QunarPoiPipeline': 400}})
+    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
 
-    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
-                                            'middlewares.TestMiddleware': 400})
+    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
+    # 'middlewares.TestMiddleware': 400})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
@@ -57,7 +57,7 @@ def setup_spider(start, count):
 
     # spider = QunarPoiSpider(2)
     # spider = QunarImageSpider()
-    spider = BaiduPoiImageSpider(start=start, count=count)
+    spider = BaiduNoteSpider()
 
     crawler.crawl(spider)
     crawler.start()
@@ -76,12 +76,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # with open('./scripts/proxy.json', 'r') as f:
-    # proxy = json.load(f)
-    #
-    # with open('./data/proxy_list.txt', 'w') as f:
-    # for p in proxy:
-    # f.write('%s\n' % p.strip())
-    # argv = sys.argv[1]
-    # main(argv)
     main()
