@@ -2,20 +2,19 @@
 import sys
 
 import scrapy
-from spiders.MafengwoSpider import MafengwoYoujiSpider
-
 from scrapy import signals
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
 # from spiders.weather_spider import WeatherSpider
-from spiders.notes.baidu_notes import BaiduNoteSpider
 
 __author__ = 'zephyre'
 
 
-def setup_spider(start, count):
+def setup_spider(spider_name):
+    import conf
+
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
 
@@ -29,7 +28,7 @@ def setup_spider(start, count):
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
 
-    #crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiUserPipeline': 300})
+    # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiUserPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 100})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.YiqiquPipeline': 200})
 
@@ -39,41 +38,68 @@ def setup_spider(start, count):
     settings.set('IMAGES_MIN_WIDTH', 110)
 
     crawler.configure()
-    # if argv=='Travel':
-    # spider = WeatherSpider()
-    '''if argv == 'mafengwo':
-        spider = MafengwoSpider()
-    elif argv == 'yiqiqu':
-        spider = YiqiquSpider()
-    elif argv == 'zailushang':
-        spider = ZailushangSpider()
-    elif argv == 'breaktrip':
-        spider = BreadtripSpider()'''
-    # spider=MafengwoSpider()
-    # spider=ZailushangSpider()
-    # spider=BreadtripSpider()
-    # spider = YiqiquSpider()
-    # spider = BaiduPoiSpider()
 
-    # spider = QunarPoiSpider(2)
-    # spider = QunarImageSpider()
-    spider = BaiduNoteSpider()
+    if spider_name in conf.global_conf:
+        spider = conf.global_conf[spider_name]()
 
-    crawler.crawl(spider)
-    crawler.start()
-    return spider
+        crawler.crawl(spider)
+        crawler.start()
+        return spider
+    else:
+        return None
+
+
+def reg_spiders(spider_dir=None):
+    """
+    将spiders路径下的爬虫类进行注册
+    """
+    import os
+    import imp
+    from scrapy.contrib.spiders import CrawlSpider
+    import conf
+
+    if not spider_dir:
+        root_dir = os.path.normpath(os.path.join(os.path.split(__file__)[0], '..'))
+        spider_dir = os.path.normpath(os.path.join(root_dir, 'spiders'))
+
+    for cur, d_list, f_list in os.walk(spider_dir):
+        for f in f_list:
+            f = os.path.normpath(os.path.join(cur, f))
+            tmp, ext = os.path.splitext(f)
+            if ext != '.py':
+                continue
+            p, fname = os.path.split(tmp)
+
+            try:
+                ret = imp.find_module(fname, [p]) if p else imp.find_module(fname)
+                mod = imp.load_module(fname, *ret)
+
+                for attr_name in dir(mod):
+                    try:
+                        c = getattr(mod, attr_name)
+                        if issubclass(c, CrawlSpider) and c != CrawlSpider:
+                            name = getattr(c, 'name')
+                            if name:
+                                conf.global_conf[name] = c
+                    except TypeError:
+                        pass
+            except ImportError:
+                pass
 
 
 def main():
-    if len(sys.argv) == 3:
-        start = int(sys.argv[1])
-        count = int(sys.argv[2])
-    else:
-        start, count = 0, 0
-    setup_spider(start, count)
-    scrapy.log.start(loglevel=scrapy.log.INFO)
-    reactor.run()  # the script will block here until the spider_closed signal was sent
+    spider_name = sys.argv[1]
+    # if len(sys.argv) == 3:
+    # start = int(sys.argv[1])
+    # count = int(sys.argv[2])
+    # else:
+    #     start, count = 0, 0
+    s = setup_spider(spider_name)
+    if s:
+        scrapy.log.start(loglevel=scrapy.log.INFO)
+        reactor.run()  # the script will block here until the spider_closed signal was sent
 
 
 if __name__ == "__main__":
+    reg_spiders()
     main()

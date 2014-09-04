@@ -22,8 +22,10 @@ __author__ = 'zephyre'
 
 
 class BaiduPoiImageSpider(CrawlSpider):
+    name = 'baidu_poi_image'
+
     def __init__(self, *a, **kw):
-        self.name = 'baidu_poi_image'
+        # self.name = 'baidu_poi_image'
         super(BaiduPoiImageSpider, self).__init__(*a, **kw)
         self.start = kw['start'] if 'start' in kw else 0
         self.count = kw['count'] if 'count' in kw else 0
