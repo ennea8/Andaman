@@ -24,6 +24,7 @@ class WeatherBaiduSpider(CrawlSpider):
 
     def __init__(self, *a, **kw):
         super(WeatherBaiduSpider, self).__init__(*a, **kw)
+        self.item_class = WeatherItem
 
     def start_requests(self):
         col = pymongo.MongoClient().geo.Locality
@@ -65,7 +66,11 @@ class WeatherPipeline(object):
         self.db = client.misc
 
     def process_item(self, item, spider):
-        weather_entry = {'data': item['data'], 'loc': item['loc']}
+        if not isinstance(item, spider.item_class):
+            return item
+        weather_entry = {'loc': item['loc']}
+        for k in item['data']:
+            weather_entry[k] = item['data'][k]
 
         col = pymongo.MongoClient().misc.Weather
         ret = col.find_one({'loc.id': item['loc']['id']}, {'_id': 1})

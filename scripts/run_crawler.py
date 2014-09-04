@@ -20,7 +20,8 @@ def setup_spider(spider_name):
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
+    settings.setdict({'ITEM_PIPELINES': {tmp: 100 for tmp in conf.global_conf[
+        'pipelines']}})  # {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
 
     # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
     # 'middlewares.TestMiddleware': 400})
@@ -39,8 +40,8 @@ def setup_spider(spider_name):
 
     crawler.configure()
 
-    if spider_name in conf.global_conf:
-        spider = conf.global_conf[spider_name]()
+    if spider_name in conf.global_conf['spiders']:
+        spider = conf.global_conf['spiders'][spider_name]()
 
         crawler.crawl(spider)
         crawler.start()
@@ -62,7 +63,22 @@ def reg_spiders(spider_dir=None):
         root_dir = os.path.normpath(os.path.join(os.path.split(__file__)[0], '..'))
         spider_dir = os.path.normpath(os.path.join(root_dir, 'spiders'))
 
+    conf.global_conf['spiders'] = {}
+    conf.global_conf['pipelines'] = []
+
     for cur, d_list, f_list in os.walk(spider_dir):
+
+        # 获得包路径
+        package_path = []
+        tmp = cur
+        while True:
+            d1, d2 = os.path.split(tmp)
+            package_path.insert(0, d2)
+            if d2 == 'spiders' or d1 == '/' or not d1:
+                break
+            tmp = d1
+        package_path = '.'.join(package_path)
+
         for f in f_list:
             f = os.path.normpath(os.path.join(cur, f))
             tmp, ext = os.path.splitext(f)
@@ -80,7 +96,10 @@ def reg_spiders(spider_dir=None):
                         if issubclass(c, CrawlSpider) and c != CrawlSpider:
                             name = getattr(c, 'name')
                             if name:
-                                conf.global_conf[name] = c
+                                conf.global_conf['spiders'][name] = c
+                        elif hasattr(c, 'process_item'):
+                            conf.global_conf['pipelines'].append(package_path + '.' + c.__module__ + '.' + c.__name__)
+
                     except TypeError:
                         pass
             except ImportError:
@@ -93,7 +112,7 @@ def main():
     # start = int(sys.argv[1])
     # count = int(sys.argv[2])
     # else:
-    #     start, count = 0, 0
+    # start, count = 0, 0
     s = setup_spider(spider_name)
     if s:
         scrapy.log.start(loglevel=scrapy.log.INFO)
