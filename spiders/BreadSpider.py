@@ -16,6 +16,8 @@ class BreadTripItem(scrapy.Item):
         trip_info = scrapy.Field()
         blog = scrapy.Field()
         trip_days = scrapy.Field()
+        user_url = scrapy.Field()
+        user_img = scrapy.Field()
 
 
 class BreadTripSpider(CrawlSpider):
@@ -78,6 +80,10 @@ class BreadTripSpider(CrawlSpider):
         item["trip_info"] = allInf["trip_info"]
         item["trip_days"] = allInf["day_count"]
         sel = Selector(response)
+        item["user_url"] = sel.xpath('//div[@id="trip-info"]/a[@class = "trip-user fl"]/@href').extract()[0]
+        user_img_url = sel.xpath('//div[@id="trip-info"]/a[@class = "trip-user fl"]/img/@src').extract()[0]
+        img_url = user_img_url.split('-')
+        item["user_img"] = img_url[0]
         alltravles = []
         for day_node in sel.xpath('//div[@class="trip-wps"]/div[@class="trip-days" and @id]'):
             # tmp = day_node.xpath('./@id').extract()[0]
@@ -138,8 +144,12 @@ class BreadTripPipeline(object):
         trips_info = item["trip_info"]
         blog = item["blog"]
         trip_days = item["trip_days"]
-        trip_entry = ({'city_name': city_name, 'city_id': city_id, 'trips_info': trips_info,
-                       'trip_days_num': trip_days, 'blog': blog})
+        user_homepage_url = "http://breadtrip.com/%s/" % item["user_url"]
+        user_head_img = item["user_img"]
+        blog_url = "http://breadtrip.com/trips/%d" % trips_info["encrypt_id"]
+        trip_entry = ({"user":{'user_homepage_url': user_homepage_url, 'user_head_img': user_head_img},
+                       'city_name': city_name, 'city_id': city_id, 'trips_info': trips_info,
+                       'trip_days_num': trip_days, 'blog': blog , "blog_url": blog_url})
         entry_exist = self.db.BreadTrip.find_one({'trips_info.encrypt_id':trips_info["encrypt_id"]})
         if entry_exist:
             trip_entry['_id'] = entry_exist['_id']
