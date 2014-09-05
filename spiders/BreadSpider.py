@@ -19,8 +19,8 @@ class BreadTripItem(scrapy.Item):
 
 
 class BreadTripSpider(CrawlSpider):
+    name = 'BreadTripSpider'
     def __init__(self, *a, **kw):
-        self.name = 'BreadTripSpider'
         super(BreadTripSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
@@ -91,7 +91,11 @@ class BreadTripSpider(CrawlSpider):
                 url = wp_node.xpath('./div[@class="photo-ctn"]/a/@href').extract()[0]
                 url_list = url.split('?')
                 spot_img = url_list[0]
-                blog = wp_node.xpath('./div[@class="photo-ctn"]/a/@data-caption').extract()[0]
+                blog = wp_node.xpath('./div[@class="photo-ctn"]/a/@data-caption').extract()
+                if blog:
+                    spot_record = blog[0]
+                else:
+                    spot_record = None
                 like = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
                                      'div[@class="wp-btns float-right"]/a/@data-time').extract()[0]
                 time = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
@@ -115,12 +119,11 @@ class BreadTripSpider(CrawlSpider):
                     else:
                         spot_locality = None
                 spot_blog = {'spot_travel_time': time, 'spot_locality': spot_locality, 'spot_locality_href': spot_href,
-                        'spot_img': spot_img, 'spot_record': blog, 'like_num': like}
+                             'spot_img': spot_img, 'spot_record': spot_record, 'like_num': like}
                 blogs_list.append(spot_blog)
             alltravles.append(blogs_list)
         item["blog"] = alltravles
         yield item
-
 
 class BreadTripPipeline(object):
     def __init__(self):

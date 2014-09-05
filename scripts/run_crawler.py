@@ -21,6 +21,7 @@ def setup_spider(spider_name):
     settings = crawler.settings
 
     settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
+    settings.setdict({'ITEM_PIPELINES': {'spiders.BreadSpider.BreadTripPipeline': 100}})
 
     # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
     # 'middlewares.TestMiddleware': 400})
