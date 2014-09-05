@@ -20,8 +20,9 @@ def setup_spider(spider_name):
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
-    settings.setdict({'ITEM_PIPELINES': {'spiders.BreadSpider.BreadTripPipeline': 100}})
+    # settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
+    # settings.setdict({'ITEM_PIPELINES': {'spiders.BreadSpider.BreadTripPipeline': 100}})
+    settings.set('ITEM_PIPELINES', {'spiders.BreadSpider.BreadTripPipeline': 300})
 
     # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
     # 'middlewares.TestMiddleware': 400})
@@ -35,8 +36,8 @@ def setup_spider(spider_name):
 
     # crawler.settings.set('ITEM_PIPELINES', {'scrapy.contrib.pipeline.images.ImagesPipeline': 500})
 
-    settings.set('IMAGES_MIN_HEIGHT', 110)
-    settings.set('IMAGES_MIN_WIDTH', 110)
+    # settings.set('IMAGES_MIN_HEIGHT', 110)
+    # settings.set('IMAGES_MIN_WIDTH', 110)
 
     crawler.configure()
 
