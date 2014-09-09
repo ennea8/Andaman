@@ -62,8 +62,9 @@ class WeatherBaiduSpider(CrawlSpider):
 
 class WeatherPipeline(object):
     def __init__(self):
-        client = pymongo.MongoClient('localhost', 27017)
-        self.db = client.misc
+        ret = conf.global_conf['weather']
+        # self.host = ret['host']
+        # self.port = int(ret['port'])
 
     def process_item(self, item, spider):
         if not isinstance(item, spider.item_class):
@@ -72,29 +73,11 @@ class WeatherPipeline(object):
         for k in item['data']:
             weather_entry[k] = item['data'][k]
 
+        # col = pymongo.MongoClient(host=self.host, port=self.port).misc.Weather
         col = pymongo.MongoClient().misc.Weather
         ret = col.find_one({'loc.id': item['loc']['id']}, {'_id': 1})
         if ret:
             weather_entry['_id'] = ret['_id']
 
         col.save(weather_entry)
-        #
-        #
-        #
-        # # log.msg("Sving", level=log.INFO)
-        # countyId = item['id']
-        # superAdmId = item['superAdm_id']
-        # superAdmName = item['superAdm_name']
-        # county = item['county']
-        # data = item['data']
-        # # if data['error']==0:
-        #
-        # weather_entry = {'localityId': countyId, 'Data': data,
-        # 'superAdm': {'id': superAdmId, 'zhName': superAdmName}, 'county_or_city': county}
-        #
-        # weather_id = self.db.Weather.find_one({'localityId': countyId})
-        # if weather_id:
-        # weather_entry['_id'] = weather_id['_id']
-        # if data['error'] != 0:
-        # self.db.weather.save(weather_entry)
         return item
