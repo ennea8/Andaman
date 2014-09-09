@@ -1,27 +1,27 @@
-import re
-
 __author__ = 'zwh'
 import json
 import copy
+
 import pymongo
+
 import scrapy
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy import Request, Selector
-from scrapy import log
 
 
 class BreadTripItem(scrapy.Item):
-        city_name = scrapy.Field()
-        city_id = scrapy.Field()
-        trip_info = scrapy.Field()
-        blog = scrapy.Field()
-        trip_days = scrapy.Field()
-        user_url = scrapy.Field()
-        user_img = scrapy.Field()
+    city_name = scrapy.Field()
+    city_id = scrapy.Field()
+    trip_info = scrapy.Field()
+    blog = scrapy.Field()
+    trip_days = scrapy.Field()
+    user_url = scrapy.Field()
+    user_img = scrapy.Field()
 
 
 class BreadTripSpider(CrawlSpider):
-    name = 'BreadTripSpider'
+    name = 'breadtrip_spider'
+
     def __init__(self, *a, **kw):
         super(BreadTripSpider, self).__init__(*a, **kw)
 
@@ -29,8 +29,9 @@ class BreadTripSpider(CrawlSpider):
         yield Request(url="http://breadtrip.com/destinations", callback=self.parse_city)
 
     def parse_city(self, response):
-        sel=Selector(response)
-        for item in sel.xpath('//div[@id="domestic-dest-popup"]//div[@class="level-2 float-left"]/a'):
+        sel = Selector(response)
+
+        for item in sel.xpath('//div[@id="domestic-dest-popup"]//div[contains(@class, "level-2")]/a'):
             m = {}
             next_url = item.xpath('./@href').extract()
             m["city_name"] = item.xpath('./span[@class = "ellipsis_text"]/text()').extract()[0]
@@ -39,7 +40,7 @@ class BreadTripSpider(CrawlSpider):
 
     def parse_trip(self, response):
         prov = response.meta['cityInfo']
-        sel=Selector(response)
+        sel = Selector(response)
         m = copy.deepcopy(prov)
         city_id_list = sel.xpath('//div[@id="content"]/@data-id').extract()
         m["city_id"] = city_id_list[0]
@@ -47,7 +48,7 @@ class BreadTripSpider(CrawlSpider):
         yield Request(url="http://breadtrip.com/scenic/3/%s/trip/more/?next_start=0" % city_id_list[0],
                       callback=self.parse_intro, meta={'cityInfo': m})
 
-    def parse_intro(self,response):
+    def parse_intro(self, response):
         prov = response.meta['cityInfo']
         city_id = prov["city_id"]
         data = json.loads(response.body, encoding='utf-8')
@@ -55,22 +56,22 @@ class BreadTripSpider(CrawlSpider):
             next_start = data["next_start"]
             for trip_dict in data["trips"]:
                 prov["trips_list"].append(trip_dict)
-            yield Request(url="http://breadtrip.com/scenic/3/%s/trip/more/?next_start=%d" % (city_id,next_start),
+            yield Request(url="http://breadtrip.com/scenic/3/%s/trip/more/?next_start=%d" % (city_id, next_start),
                           callback=self.parse_intro, meta={'cityInfo': prov})
         else:
             for trip_dict in data["trips"]:
                 prov["trips_list"].append(trip_dict)
             for trip in prov["trips_list"]:
-                day_count=trip["day_count"]
-                if day_count<3:
+                day_count = trip["day_count"]
+                if day_count < 3:
                     Info = {}
                     Info["day_count"] = day_count
                     Info["trip_info"] = trip
                     Info["city_name"] = prov["city_name"]
                     Info["city_id"] = city_id
                     encrypt_id = trip["encrypt_id"]
-                    yield Request(url = "http://breadtrip.com/trips/%d/" % encrypt_id,
-                                  callback=self.parse_blog,meta ={'tripsInfo': Info})
+                    yield Request(url="http://breadtrip.com/trips/%d/" % encrypt_id,
+                                  callback=self.parse_blog, meta={'tripsInfo': Info})
 
     def parse_blog(self, response):
         allInf = response.meta['tripsInfo']
@@ -89,9 +90,9 @@ class BreadTripSpider(CrawlSpider):
             # tmp = day_node.xpath('./@id').extract()[0]
             # matcher = re.search(r'(\d+)$', tmp)
             # if not matcher:
-            #     continue
+            # continue
             # day_idx = int(matcher.groups()[0])
-            blogs_list=[]
+            blogs_list = []
             for wp_node in day_node.xpath('./div[@class="waypoint "]'):
                 url = wp_node.xpath('./div[@class="photo-ctn"]/a/@href').extract()[0]
                 url_list = url.split('?')
@@ -126,15 +127,14 @@ class BreadTripSpider(CrawlSpider):
                 spot_blog = {'spot_travel_time': time, 'spot_locality': spot_locality, 'spot_locality_href': spot_href,
                              'spot_img': spot_img, 'spot_record': spot_record, 'like_num': like}
                 blogs_list.append(spot_blog)
+
             alltravles.append(blogs_list)
+
         item["blog"] = alltravles
         yield item
 
 
 class BreadTripPipeline(object):
-    def __init__(self):
-        client = pymongo.MongoClient('localhost', 27017)
-        self.db = client.geo
 
     def process_item(self, item, spider):
         if not isinstance(item, BreadTripItem):
@@ -148,11 +148,14 @@ class BreadTripPipeline(object):
         user_homepage_url = "http://breadtrip.com/%s/" % item["user_url"]
         user_head_img = item["user_img"]
         blog_url = "http://breadtrip.com/trips/%d" % trips_info["encrypt_id"]
-        trip_entry = ({"user":{'user_homepage_url': user_homepage_url, 'user_head_img': user_head_img},
+        trip_entry = ({"user": {'user_homepage_url': user_homepage_url, 'user_head_img': user_head_img},
                        'city_name': city_name, 'city_id': city_id, 'trips_info': trips_info,
-                       'trip_days_num': trip_days, 'blog': blog , "blog_url": blog_url})
-        entry_exist = self.db.BreadTrip.find_one({'trips_info.encrypt_id':trips_info["encrypt_id"]})
+                       'trip_days_num': trip_days, 'blog': blog, "blog_url": blog_url})
+        entry_exist = self.db.BreadTrip.find_one({'trips_info.encrypt_id': trips_info["encrypt_id"]})
         if entry_exist:
             trip_entry['_id'] = entry_exist['_id']
-        self.db.BreadTrip.save(trip_entry)
+
+        col = pymongo.MongoClient('localhost', 27017).geo.BreadTrip
+        col.save(trip_entry)
+
         return item
