@@ -17,7 +17,6 @@ class WeatherBaiduSpider(CrawlSpider):
 
     def __init__(self, *a, **kw):
         super(WeatherBaiduSpider, self).__init__(*a, **kw)
-        self.item_class = WeatherItem
 
     def start_requests(self):
         col = pymongo.MongoClient().geo.Locality

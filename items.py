@@ -163,7 +163,7 @@ class TravelNotesItem(scrapy.Item):
     favourite = scrapy.Field()
 
     sub_note = scrapy.Field()
-    
+
 
 class ChanyoujiItem(scrapy.Item):
     user_id = scrapy.Field()
