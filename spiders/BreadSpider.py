@@ -7,23 +7,14 @@ import pymongo
 import scrapy
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy import Request, Selector
-
-
-class BreadTripItem(scrapy.Item):
-    city_name = scrapy.Field()
-    city_id = scrapy.Field()
-    trip_info = scrapy.Field()
-    blog = scrapy.Field()
-    trip_days = scrapy.Field()
-    user_url = scrapy.Field()
-    user_img = scrapy.Field()
-
+from items import BreadTripItem
 
 class BreadTripSpider(CrawlSpider):
     name = 'breadtrip_spider'
 
     def __init__(self, *a, **kw):
         super(BreadTripSpider, self).__init__(*a, **kw)
+        self.item_class = BreadTripItem
 
     def start_requests(self):
         yield Request(url="http://breadtrip.com/destinations", callback=self.parse_city)
@@ -81,8 +72,8 @@ class BreadTripSpider(CrawlSpider):
         item["trip_info"] = allInf["trip_info"]
         item["trip_days"] = allInf["day_count"]
         sel = Selector(response)
-        item["user_url"] = sel.xpath('//div[@id="trip-info"]/a[@class = "trip-user fl"]/@href').extract()[0]
-        user_img_url = sel.xpath('//div[@id="trip-info"]/a[@class = "trip-user fl"]/img/@src').extract()[0]
+        item["user_url"] = sel.xpath('//div[@id="trip-info"]/a[contains(@class, "trip-user")]/@href').extract()[0]
+        user_img_url = sel.xpath('//div[@id="trip-info"]/a[contains(@class, "trip-user")]/img/@src').extract()[0]
         img_url = user_img_url.split('-')
         item["user_img"] = img_url[0]
         alltravles = []
@@ -102,30 +93,30 @@ class BreadTripSpider(CrawlSpider):
                     spot_record = blog[0]
                 else:
                     spot_record = None
-                like = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
+                like = wp_node.xpath('./div[@class="stats-wrapper"]/div[contains(@class,"wp-stats")]/'
                                      'div[@class="wp-btns float-right"]/a/@data-time').extract()[0]
-                time = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
+                time = wp_node.xpath('./div[@class="stats-wrapper"]/div[contains(@class,"wp-stats")]/'
                                      'div[@class="time float-left"]/text()').extract()[0]
-                href_next = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
+                href_next = wp_node.xpath('./div[@class="stats-wrapper"]/div[contains(@class,"wp-stats")]/'
                                           'a/@href').extract()
                 if href_next:
                     spot_href = href_next[0]
                 else:
                     spot_href = None
-                locality = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
+                locality = wp_node.xpath('./div[@class="stats-wrapper"]/div[contains(@class,"wp-stats")]/'
                                          'a[@class="location location-icon float-left"]/'
                                          'span/text()').extract()
                 if locality:
                     spot_locality = locality[0]
                 else:
-                    locality = wp_node.xpath('./div[@class="stats-wrapper"]/div[@class="wp-stats fn-clear"]/'
+                    locality = wp_node.xpath('./div[@class="stats-wrapper"]/div[contains(@class,"wp-stats")]/'
                                              'a[@class="wp-poi-name float-left"]/span/text()').extract()
                     if locality:
                         spot_locality = locality[0]
                     else:
                         spot_locality = None
-                spot_blog = {'spot_travel_time': time, 'spot_locality': spot_locality, 'spot_locality_href': spot_href,
-                             'spot_img': spot_img, 'spot_record': spot_record, 'like_num': like}
+                spot_blog = {'SpotTravelTime': time, 'SpotLocality': spot_locality, 'SpotLocalityUrl': spot_href,
+                             'SpotImg': spot_img, 'SpotRecord': spot_record, 'SpotPraiseNum': like}
                 blogs_list.append(spot_blog)
 
             alltravles.append(blogs_list)
@@ -135,7 +126,6 @@ class BreadTripSpider(CrawlSpider):
 
 
 class BreadTripPipeline(object):
-
     def process_item(self, item, spider):
         if not isinstance(item, BreadTripItem):
             return item
@@ -148,14 +138,13 @@ class BreadTripPipeline(object):
         user_homepage_url = "http://breadtrip.com/%s/" % item["user_url"]
         user_head_img = item["user_img"]
         blog_url = "http://breadtrip.com/trips/%d" % trips_info["encrypt_id"]
-        trip_entry = ({"user": {'user_homepage_url': user_homepage_url, 'user_head_img': user_head_img},
-                       'city_name': city_name, 'city_id': city_id, 'trips_info': trips_info,
-                       'trip_days_num': trip_days, 'blog': blog, "blog_url": blog_url})
-        entry_exist = self.db.BreadTrip.find_one({'trips_info.encrypt_id': trips_info["encrypt_id"]})
+        trip_entry = ({"Author": {'AuthorHomepageUrl': user_homepage_url, 'AuthorHeadImg': user_head_img},
+                       'CityName': city_name, 'CityId': city_id, 'TripsInfo': trips_info,
+                       'TripDaysNum': trip_days, 'TripBlog': blog, "TripBlogUrl": blog_url})
+        col = pymongo.MongoClient('localhost', 27017).geo.BreadTrip
+        entry_exist = col.find_one({'TripsInfo.encrypt_id': trips_info["encrypt_id"]})
         if entry_exist:
             trip_entry['_id'] = entry_exist['_id']
-
-        col = pymongo.MongoClient('localhost', 27017).geo.BreadTrip
         col.save(trip_entry)
 
         return item

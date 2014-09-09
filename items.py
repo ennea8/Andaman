@@ -194,3 +194,12 @@ class MafengwoYoujiItem(scrapy.Item):
 class WeatherItem(scrapy.Item):
     data = scrapy.Field()
     loc = scrapy.Field()
+
+class BreadTripItem(scrapy.Item):
+    city_name = scrapy.Field()
+    city_id = scrapy.Field()
+    trip_info = scrapy.Field()
+    blog = scrapy.Field()
+    trip_days = scrapy.Field()
+    user_url = scrapy.Field()
+    user_img = scrapy.Field()
