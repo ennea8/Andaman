@@ -1,22 +1,15 @@
 import random
 
+from items import WeatherItem
+
+
 __author__ = 'zwh'
 import json
 
-import scrapy
 import pymongo
 from scrapy import Request
 from scrapy.contrib.spiders import CrawlSpider
 import conf
-
-
-class WeatherItem(scrapy.Item):
-    # id = scrapy.Field()
-    # superAdm_id = scrapy.Field()
-    # superAdm_name = scrapy.Field()
-    # county = scrapy.Field()
-    data = scrapy.Field()
-    loc = scrapy.Field()
 
 
 class WeatherBaiduSpider(CrawlSpider):
@@ -67,7 +60,7 @@ class WeatherPipeline(object):
         # self.port = int(ret['port'])
 
     def process_item(self, item, spider):
-        if not isinstance(item, spider.item_class):
+        if not isinstance(item, WeatherItem):
             return item
         weather_entry = {'loc': item['loc']}
         for k in item['data']:

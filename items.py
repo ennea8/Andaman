@@ -9,15 +9,6 @@ import scrapy
 from scrapy.item import Item, Field
 
 
-class WeatherItem(scrapy.Item):
-    # define the fields for your item here like:
-    id = scrapy.Field()
-    province = scrapy.Field()
-    city = scrapy.Field()
-    county = scrapy.Field()
-    data = scrapy.Field()
-
-
 class SightItem(Item):
     web_name = Field()
     sight_url = Field()
@@ -172,6 +163,7 @@ class TravelNotesItem(scrapy.Item):
     favourite = scrapy.Field()
 
     sub_note = scrapy.Field()
+    
 
 class ChanyoujiItem(scrapy.Item):
     user_id = scrapy.Field()
@@ -181,9 +173,11 @@ class ChanyoujiItem(scrapy.Item):
     weibo_uid = scrapy.Field()
     triped = scrapy.Field()
 
+
 class ChanyoujiYoujiItem(scrapy.Item):
     trips_id = scrapy.Field()
     data = scrapy.Field()
+
 
 class MafengwoYoujiItem(scrapy.Item):
     place = scrapy.Field()  #景观地点
@@ -196,3 +190,7 @@ class MafengwoYoujiItem(scrapy.Item):
     contents = scrapy.Field()#内容
     reply = scrapy.Field()  #回复
 
+
+class WeatherItem(scrapy.Item):
+    data = scrapy.Field()
+    loc = scrapy.Field()
