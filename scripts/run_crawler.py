@@ -11,6 +11,7 @@ from twisted.internet import reactor
 
 # from spiders.weather_spider import WeatherSpider
 from spiders.notes.baidu_notes import BaiduNoteSpider
+from spiders.MafengwoSpider import MafengwoYoujiSpider
 
 __author__ = 'zephyre'
 
@@ -21,10 +22,9 @@ def setup_spider(start, count):
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 100}})
+    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 200,'pipelines.MafengwoYoujiPipline':100}})
 
-    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
-    # 'middlewares.TestMiddleware': 400})
+    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
@@ -57,7 +57,7 @@ def setup_spider(start, count):
 
     # spider = QunarPoiSpider(2)
     # spider = QunarImageSpider()
-    spider = BaiduNoteSpider()
+    spider = MafengwoYoujiSpider()
 
     crawler.crawl(spider)
     crawler.start()
