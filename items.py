@@ -203,3 +203,7 @@ class BreadTripItem(scrapy.Item):
     trip_days = scrapy.Field()
     user_url = scrapy.Field()
     user_img = scrapy.Field()
+
+class BaiduTripItem(scrapy.Item):
+    scene_img =  scrapy.Field()
+    scene_info = scrapy.Field()
