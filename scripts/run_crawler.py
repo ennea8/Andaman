@@ -108,11 +108,6 @@ def reg_spiders(spider_dir=None):
 
 def main():
     spider_name = sys.argv[1]
-    # if len(sys.argv) == 3:
-    # start = int(sys.argv[1])
-    # count = int(sys.argv[2])
-    # else:
-    # start, count = 0, 0
     s = setup_spider(spider_name)
     if s:
         scrapy.log.start(loglevel=scrapy.log.INFO)
