@@ -23,8 +23,7 @@ def setup_spider(spider_name):
     settings.setdict({'ITEM_PIPELINES': {tmp: 100 for tmp in conf.global_conf[
         'pipelines']}})
 
-    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.TestMiddleware2': 300,
-    # 'middlewares.TestMiddleware': 400})
+    # settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
