@@ -1,7 +1,9 @@
+import pymongo
+
 __author__ = 'wdx'
 
 from scrapy import Request ,Selector
-from items import ChanyoujiYoujiItem
+from items import ChanyoujiYoujiItem, ChanyoujiUser
 from scrapy.contrib.spiders import CrawlSpider
 import json
 import re

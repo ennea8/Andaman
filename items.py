@@ -165,13 +165,17 @@ class TravelNotesItem(scrapy.Item):
     sub_note = scrapy.Field()
 
 
-class ChanyoujiItem(scrapy.Item):
+class ChanyoujiUser(scrapy.Item):
     user_id = scrapy.Field()
     user_name = scrapy.Field()
-    num_youji = scrapy.Field()
+    num_notes = scrapy.Field()
     weibo_url = scrapy.Field()
     weibo_uid = scrapy.Field()
-    triped = scrapy.Field()
+    douban_url = scrapy.Field()
+    douban_uid = scrapy.Field()
+    renren_url = scrapy.Field()
+    renren_uid = scrapy.Field()
+    traveled = scrapy.Field()
 
 
 class ChanyoujiYoujiItem(scrapy.Item):
