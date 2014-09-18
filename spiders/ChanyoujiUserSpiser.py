@@ -19,8 +19,16 @@ class ChanyoujiUserSpider(CrawlSpider):
     def start_requests(self):
         url_template = 'http://chanyouji.com/users/%d'
 
-        # for user_id in range(1, 400000):
-        for user_id in range(1, 11):
+        lower = 1
+        upper = 400000
+        if 'param' in dir(self):
+            param = getattr(self, 'param')
+            if 'lower' in param:
+                lower = int(param['lower'][0])
+            if 'upper' in param:
+                upper = int(param['upper'][0])
+
+        for user_id in range(lower, upper):
             url = url_template % user_id
             m = {'user_id': user_id}
             yield Request(url=url, callback=self.parse, meta={'data': m})
@@ -100,17 +108,17 @@ class ChanyoujiUserPipeline(object):
                 'numNotes': item['num_notes']}
 
         if 'weibo_url' in item:
-            data['weiboUrl']=item['weibo_url']
+            data['weiboUrl'] = item['weibo_url']
         if 'weibo_uid' in item:
-            data['weiboUid']=item['weibo_uid']
+            data['weiboUid'] = item['weibo_uid']
         if 'renren_url' in item:
-            data['renrenUrl']=item['renren_url']
+            data['renrenUrl'] = item['renren_url']
         if 'renren_uid' in item:
-            data['renrenUid']=item['renren_uid']
+            data['renrenUid'] = item['renren_uid']
         if 'douban_url' in item:
-            data['doubanUrl']=item['douban_url']
+            data['doubanUrl'] = item['douban_url']
         if 'douban_uid' in item:
-            data['doubanUid']=item['douban_uid']
+            data['doubanUid'] = item['douban_uid']
         if 'traveled' in item:
             data['traveled'] = item['traveled']
 

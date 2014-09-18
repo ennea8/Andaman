@@ -13,6 +13,7 @@ from twisted.internet import reactor
 
 
 
+
 # from spiders.weather_spider import WeatherSpider
 
 __author__ = 'zephyre'
@@ -72,7 +73,7 @@ def parse_args(args):
     # port = int(param_dict['debug-port'][0])
     # else:
     # port = getattr(glob, 'DEBUG')['DEBUG_PORT']
-    #     import pydevd
+    # import pydevd
     #
     #     pydevd.settrace('localhost', port=port, stdoutToServer=True, stderrToServer=True)
 
@@ -112,6 +113,7 @@ def setup_spider(spider_name, param={}):
 
         crawler.crawl(spider)
         crawler.start()
+        setattr(spider, 'param', param)
         return spider
     else:
         return None
