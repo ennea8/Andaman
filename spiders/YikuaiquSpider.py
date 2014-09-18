@@ -31,12 +31,11 @@ class YikuaiquSpotSpider(CrawlSpider):
     def parse_detail(self, response):
         sel = Selector(response)
         spot_info = copy.deepcopy(response.meta['spot_info'])
-        county = sel.xpath(
-            '//div[contains(@class,"detail-wrap")]/div[@class="detail-title"]/div[@class="clearfix"]/h1/span/text()').extract()[
-            2].rstrip(']')
+        county ="".join(sel.xpath(
+            '//div[contains(@class,"detail-wrap")]/div[@class="detail-title"]/div[@class="clearfix"]/h1/span/text()').extract()).rstrip(']')
         province_city = sel.xpath(
             '//div[contains(@class,"detail-wrap")]/div[@class="detail-title"]/div[@class="clearfix"]/h1/span/a/text()').extract()
-        spot_info["spot_locality"] = {"province_city": province_city, "county": county.replace(u'\u2022', '').lstrip()}
+        spot_info["spot_locality"] = {"province_city": province_city, "county": county.replace(u'\u2022', '').lstrip('[').strip()}
         spot_info["spot_address"] = \
         sel.xpath('//div[contains(@class,"detail-wrap")]/div[@class="detail-title"]/p/span/text()').extract()[0]
         ticket_list = []
