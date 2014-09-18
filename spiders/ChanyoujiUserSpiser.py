@@ -43,12 +43,13 @@ class ChanyoujiUserSpider(CrawlSpider):
             item['user_name'] = user_name[0]
         else:
             item['user_name'] = None
-        num_youji = sel.xpath('//div[contains(@class, "header-inner")]/div[1]/text()').extract()[0]
-        num = re.compile('\d{1,}')
-        m1 = num.search(num_youji)
-        if m1:
-            item['num_notes'] = int(m1.group())
-        # item['num_youji']=re.search('[0-9]*',num_youji[0]).group()
+        ret = sel.xpath('//div[contains(@class, "header-inner")]/div[1]/text()').extract()
+        if ret:
+            num_youji = ret[0]
+            num = re.compile('\d{1,}')
+            m1 = num.search(num_youji)
+            if m1:
+                item['num_notes'] = int(m1.group())
 
         ret = sel.xpath(
             '//div[contains(@class, "sns-site")]/ul[@class="sns-ico"]/li[contains(@class,"weibo")]/a/@href').extract()
