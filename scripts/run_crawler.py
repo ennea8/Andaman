@@ -12,18 +12,19 @@ from twisted.internet import reactor
 # from spiders.weather_spider import WeatherSpider
 from spiders.notes.baidu_notes import BaiduNoteSpider
 from spiders.MafengwoSpider import MafengwoYoujiSpider
+from spiders.ChanyoujiYoujiSpider import ChanyoujiYoujiSpider
 
 __author__ = 'zephyre'
 
 
-def setup_spider(start, count):
+def setup_spider():
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
 
     settings = crawler.settings
 
-    settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 200,'pipelines.MafengwoYoujiPipline':100}})
-
+    # settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 200,'pipelines.ChanyoujiYoujiPipline':100}})
+    settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiYoujiPipline':100}})
     settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
@@ -57,7 +58,7 @@ def setup_spider(start, count):
 
     # spider = QunarPoiSpider(2)
     # spider = QunarImageSpider()
-    spider = MafengwoYoujiSpider()
+    spider = ChanyoujiYoujiSpider()
 
     crawler.crawl(spider)
     crawler.start()
@@ -65,12 +66,12 @@ def setup_spider(start, count):
 
 
 def main():
-    if len(sys.argv) == 3:
-        start = int(sys.argv[1])
-        count = int(sys.argv[2])
-    else:
-        start, count = 0, 0
-    setup_spider(start, count)
+    #if len(sys.argv) == 3:
+    #    start = int(sys.argv[1])
+    #    count = int(sys.argv[2])
+    #else:
+    #    start, count = 0, 0
+    setup_spider()
     scrapy.log.start(loglevel=scrapy.log.INFO)
     reactor.run()  # the script will block here until the spider_closed signal was sent
 
