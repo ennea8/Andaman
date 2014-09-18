@@ -105,8 +105,7 @@ class ChanyoujiUserPipeline(object):
 
         uid = item['user_id']
         data = {'userId': uid,
-                'userName': item['user_name'],
-                'numNotes': item['num_notes']}
+                'userName': item['user_name']}
 
         if 'weibo_url' in item:
             data['weiboUrl'] = item['weibo_url']
@@ -122,11 +121,15 @@ class ChanyoujiUserPipeline(object):
             data['doubanUid'] = item['douban_uid']
         if 'traveled' in item:
             data['traveled'] = item['traveled']
+        if 'num_notes' in item:
+            data['numNotes'] = item['num_notes']
 
         ret = col.find_one({'userId': uid})
-        if ret:
-            data['_id'] = ret['_id']
-        col.save(data)
+        if not ret:
+            ret = {}
+        for k in data:
+            ret[k] = data[k]
+        col.save(ret)
 
         return item
 
