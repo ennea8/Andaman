@@ -206,3 +206,9 @@ class BreadTripItem(scrapy.Item):
 
 class BaiduTripItem(scrapy.Item):
     scene_info = scrapy.Field()
+
+class YikuaiquItem(scrapy.Item):
+    spot_info = scrapy.Field()
+
+class YikuaiquSpotItem(scrapy.Item):
+    spot_info = scrapy.Field()
