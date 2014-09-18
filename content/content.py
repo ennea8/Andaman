@@ -3,6 +3,7 @@ import pymongo
 import re
 import lxml.html as html
 import time
+import json
 
 def connect_db():
     client=pymongo.MongoClient('dev.lvxingpai.cn',27019)
@@ -12,18 +13,18 @@ def connect_db():
     return list_cot,db
 
 def zhengze(part,db):
-    new_part={}
+    #new_part={}
     content_m=part['contents']
     #part_u=part.decode('gb2312')
     if not content_m:
         return
     content=content_m[0].replace('<p','<img><p')
+    #content=content.replace('%','i')
     content=content.replace('<div','<img><div')
     zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
     content=zz.sub('',content)
     content_list=re.split('[<>]',content)
 
-    dic={}
     list_data=[]
 
     for i in range(len(content_list)):
@@ -32,14 +33,15 @@ def zhengze(part,db):
             part_c=re.compile(r'http[\s\S][^"]*.jpg')
             part1=part_c.search(content_list[i].strip())
             if part1:
-                dic={'data':part1.group(),'type':'image'}
+                list_data.append(part1.group())
         elif (content_list[i].strip()=='')|(content_list[i].strip()=='img'):
             continue
         else:
-            dic={'data':content_list[i].strip(),'type':'text'}
-        list_data.append(dic)
-        dic={}
+            list_data.append(content_list[i].strip())
+
+
     #print part
+    test_part={"authorId":part["authorId"]}
     new_part={'authorId':part['authorId'],'from':None,
               'to':None,'timeCost':None,
               'authorName':part['authorName'],'viewCnt':part['viewCnt'],'commentCnt':part['replyCnt'],
@@ -75,14 +77,18 @@ def zhengze(part,db):
     except:
         new_part['timeCost']=None
 
-    db.New_BaiduNote.save(new_part)
+    #test_part=json.loads(test_part)
+    db.New_BaiduNote.insert(new_part)
     return
 
 
 def main():
     part,db=connect_db()
-    for m in part:
-        zhengze(m,db)
+    i=0
+    for m in range(3537,17747):
+        zhengze(part[m],db)
+        i=i+1
+        print i
 
 if __name__ == "__main__":
 
