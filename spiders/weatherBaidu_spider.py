@@ -10,6 +10,7 @@ import pymongo
 from scrapy import Request
 from scrapy.contrib.spiders import CrawlSpider
 import conf
+from scrapy import log
 
 
 class WeatherBaiduSpider(CrawlSpider):
@@ -20,7 +21,7 @@ class WeatherBaiduSpider(CrawlSpider):
 
     def start_requests(self):
         col = pymongo.MongoClient().geo.Locality
-        all_obj = list(col.find({"level": {"$in": [2, 3]}}, {"zhName": 1}))
+        all_obj = list(col.find({"level": {"$in": [2, 3]}}, {"zhName": 1, 'coords': 1}))
         ak_list = conf.global_conf['baidu-key'].values() if 'baidu-key' in conf.global_conf else []
 
         for county_code in all_obj:
@@ -29,13 +30,26 @@ class WeatherBaiduSpider(CrawlSpider):
             idx = random.randint(0, len(ak_list) - 1)
             ak = ak_list[idx]
 
+            s = None
+            if 'coords' in county_code:
+                coords = county_code['coords']
+                if 'blat' in coords and 'blng' in coords:
+                    s = '%f,%f' % (coords['blng'], coords['blat'])
+                elif 'lat' in coords and 'lng' in coords:
+                    s = '%f,%f' % (coords['lng'], coords['lat'])
+            if not s:
+                s = county_code['zhName']
             yield Request(url='http://api.map.baidu.com/telematics/v3/weather?location=%s&output='
-                              'json&ak=%s' % (county_code['zhName'], ak),
-                          callback=self.parse, meta={'WeatherData': m})
+                              'json&ak=%s' % (s, ak), callback=self.parse, meta={'WeatherData': m})
 
     def parse(self, response):
-        data = json.loads(response.body, encoding='utf-8')
-        if data['error'] != 0:
+        try:
+            data = json.loads(response.body, encoding='utf-8')
+            if data['status'] != 'success':
+                self.log('ERROR PARSING: %s, RESULT=%s' % (response.url, response.body), level=log.WARNING)
+                return
+        except ValueError:
+            self.log('ERROR PARSING: %s, RESULT=%s' % (response.url, response.body), level=log.WARNING)
             return
 
         allInf = response.meta['WeatherData']
