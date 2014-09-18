@@ -19,9 +19,8 @@ class BaiduTripSpider(CrawlSpider):
         city_list = list(locality_col.find({"level": 2}, {"pinyin": 1}))
         for row in city_list:
             m = {}
-            scene_all_lists = []
             city_pinyin = row['pinyin'][0]
-            m = {'scene_name': city_pinyin, "scene_all_lists": scene_all_lists, "page": 1}
+            m = {'scene_name': city_pinyin, "page": 1}
             url = 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&surl=%s&cid=0&pn=1' % city_pinyin
             yield Request(url=url, callback=self.parse_city, meta={'cityInfo': m})
 
@@ -30,9 +29,15 @@ class BaiduTripSpider(CrawlSpider):
         data = json.loads(response.body, encoding='utf-8')["data"]
         scene_list = data["scene_list"]
         if scene_list:
+            for scene in scene_list:
+                mm = {}
+                mm["page"] = 1
+                mm["scene_name"] = scene["surl"]
+                url = 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&surl=%s&cid=0&pn=%d' % (
+                    scene["surl"], mm["page"])
+                yield Request(url=url, callback=self.parse_city, meta={'cityInfo': mm})
+                # if scene_list:
             m = copy.deepcopy(prov)
-            for scene_abstact in scene_list:
-                m["scene_all_lists"].append({"surl": scene_abstact["surl"], "sid": scene_abstact["sid"]})
             m["page"] += 1
             url = 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&surl=%s&cid=0&pn=%d' % (
                 m["scene_name"], m["page"])
@@ -44,9 +49,10 @@ class BaiduTripSpider(CrawlSpider):
                           "ambiguity_sname": data["ambiguity_sname"], "scene_layer": data["scene_layer"],
                           "ext": data["ext"], "content": data["content"], "scene_path": data["scene_path"],
                           "nav": data["nav"], "rating": data["rating"], "rating_count": data["rating_count"],
-                          "scene_total": data["scene_total"], "scene_all_lists": m["scene_all_lists"]}
+                          "scene_total": data["scene_total"]}
             scene_url = 'http://lvyou.baidu.com/%s/fengjing' % (m["scene_name"])
             yield Request(url=scene_url, callback=self.parse_scene, meta={"scene_meta": scene_meta})
+
 
     def parse_scene(self, response):
         tmp_info = copy.deepcopy(response.meta["scene_meta"])
@@ -69,7 +75,6 @@ class BaiduTripSpider(CrawlSpider):
     def parse_scene_map(self, response):
         item = BaiduTripItem()
         scene_info = copy.deepcopy(response.meta["tmp_info"])
-        scene_all_lists = scene_info["scene_all_lists"]
         sel = Selector(response)
         items = sel.xpath(
             '//div[@class="mod-scene-view-map"]/div[@class="public-group-slider"]/ul/li/a/span/img/@src').extract()
@@ -85,27 +90,16 @@ class BaiduTripSpider(CrawlSpider):
             scene_info["scene_map"] = None
         item["scene_info"] = scene_info
         yield item
-        for scene in scene_all_lists:
-            mm = {}
-            mm["page"] = 1
-            mm["scene_name"] = scene["surl"]
-            mm["scene_all_lists"] = []
-            url = 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&surl=%s&cid=0&pn=%d' % (
-                scene["surl"], mm["page"])
-            yield Request(url=url, callback=self.parse_city, meta={'cityInfo': mm})
 
 
 class BaiduTripPipeline(object):
     def process_item(self, item, spider):
         if not isinstance(item, BaiduTripItem):
             return item
-
-        # scene_img_list = item["scene_img"]
         scene = item["scene_info"]
         scene["ext"]["more_desc"].strip()
         scene["ext"]["abs_desc"].strip()
         scene["ext"]["sketch_desc"].strip()
-        # scene_entry = ({"Scene": scene, "SceneImg": scene_img_list})
         scene_entry = ({"Scene": scene})
         col = pymongo.MongoClient('localhost', 27017).geo.BaiduTrip
         entry_exist = col.find_one({'Scene.sid': scene["sid"]})
