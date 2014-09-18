@@ -67,14 +67,10 @@ class WeatherBaiduSpider(CrawlSpider):
 
 
 class WeatherPipeline(object):
-    def __init__(self):
-        ret = conf.global_conf['weather']
-        # self.host = ret['host']
-        # self.port = int(ret['port'])
-
     def process_item(self, item, spider):
         if not isinstance(item, WeatherItem):
             return item
+
         weather_entry = {'loc': item['loc']}
         for k in item['data']:
             weather_entry[k] = item['data'][k]

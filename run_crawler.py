@@ -1,4 +1,6 @@
 # coding=utf-8
+from Queue import Queue
+import re
 import sys
 
 import scrapy
@@ -7,12 +9,77 @@ from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
+
+
+
+
 # from spiders.weather_spider import WeatherSpider
 
 __author__ = 'zephyre'
 
 
-def setup_spider(spider_name):
+def parse_args(args):
+    """
+    解析命令行的参数
+    @param args:
+    @return:
+    """
+    if len(args) == 1:
+        return {'cmd': None, 'param': None}
+
+    cmd = args[1]
+    # 如果以-开头，说明不是cmd，而是参数列表
+    if re.search('^\-', cmd):
+        cmd = None
+        param_idx = 1
+    else:
+        param_idx = 2
+
+    # 解析命令行参数
+    param_dict = {}
+    q = Queue()
+    for tmp in args[param_idx:]:
+        q.put(tmp)
+    param_name = None
+    param_value = None
+    while not q.empty():
+        term = q.get()
+        if re.search(r'^--(?=[^\-])', term):
+            tmp = re.sub('^-+', '', term)
+            if param_name:
+                param_dict[param_name] = param_value
+            param_name = tmp
+            param_value = None
+        elif re.search(r'^-(?=[^\-])', term):
+            tmp = re.sub('^-+', '', term)
+            for tmp in list(tmp):
+                if param_name:
+                    param_dict[param_name] = param_value
+                    param_value = None
+                param_name = tmp
+        else:
+            if param_name:
+                if param_value:
+                    param_value.append(term)
+                else:
+                    param_value = [term]
+    if param_name:
+        param_dict[param_name] = param_value
+
+    # # debug和debug-port是通用参数，表示将启用远程调试模块。
+    # if 'debug' in param_dict:
+    # if 'debug-port' in param_dict:
+    # port = int(param_dict['debug-port'][0])
+    # else:
+    # port = getattr(glob, 'DEBUG')['DEBUG_PORT']
+    #     import pydevd
+    #
+    #     pydevd.settrace('localhost', port=port, stdoutToServer=True, stderrToServer=True)
+
+    return {'cmd': cmd, 'param': param_dict}
+
+
+def setup_spider(spider_name, param={}):
     import conf
 
     crawler = Crawler(Settings())
@@ -23,7 +90,8 @@ def setup_spider(spider_name):
     settings.setdict({'ITEM_PIPELINES': {tmp: 100 for tmp in conf.global_conf[
         'pipelines']}})
 
-    settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
+    if 'proxy' in param:
+        settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
@@ -106,8 +174,13 @@ def reg_spiders(spider_dir=None):
 
 
 def main():
-    spider_name = sys.argv[1]
-    s = setup_spider(spider_name)
+    ret = parse_args(sys.argv)
+    if not ret:
+        return
+
+    spider_name = ret['cmd']
+    param = ret['param']
+    s = setup_spider(spider_name, param)
     if s:
         scrapy.log.start(loglevel=scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent
