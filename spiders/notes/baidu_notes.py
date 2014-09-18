@@ -19,8 +19,8 @@ class BaiduNoteItem(scrapy.Item):
 
 
 class BaiduNoteSpider(CrawlSpider):
+    name = 'baidu_note'
     def __init__(self, *a, **kw):
-        self.name = 'baidu_poi_image'
         super(BaiduNoteSpider, self).__init__(*a, **kw)
 
     def start_requests(self):

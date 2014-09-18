@@ -9,15 +9,6 @@ import scrapy
 from scrapy.item import Item, Field
 
 
-class WeatherItem(scrapy.Item):
-    # define the fields for your item here like:
-    id = scrapy.Field()
-    province = scrapy.Field()
-    city = scrapy.Field()
-    county = scrapy.Field()
-    data = scrapy.Field()
-
-
 class SightItem(Item):
     web_name = Field()
     sight_url = Field()
@@ -173,17 +164,24 @@ class TravelNotesItem(scrapy.Item):
 
     sub_note = scrapy.Field()
 
-class ChanyoujiItem(scrapy.Item):
+
+class ChanyoujiUser(scrapy.Item):
     user_id = scrapy.Field()
     user_name = scrapy.Field()
-    num_youji = scrapy.Field()
+    num_notes = scrapy.Field()
     weibo_url = scrapy.Field()
     weibo_uid = scrapy.Field()
-    triped = scrapy.Field()
+    douban_url = scrapy.Field()
+    douban_uid = scrapy.Field()
+    renren_url = scrapy.Field()
+    renren_uid = scrapy.Field()
+    traveled = scrapy.Field()
+
 
 class ChanyoujiYoujiItem(scrapy.Item):
     trips_id = scrapy.Field()
     data = scrapy.Field()
+
 
 class MafengwoYoujiItem(scrapy.Item):
     place = scrapy.Field()  #景观地点
@@ -196,3 +194,25 @@ class MafengwoYoujiItem(scrapy.Item):
     contents = scrapy.Field()#内容
     reply = scrapy.Field()  #回复
 
+
+class WeatherItem(scrapy.Item):
+    data = scrapy.Field()
+    loc = scrapy.Field()
+
+class BreadTripItem(scrapy.Item):
+    city_name = scrapy.Field()
+    city_id = scrapy.Field()
+    trip_info = scrapy.Field()
+    blog = scrapy.Field()
+    trip_days = scrapy.Field()
+    user_url = scrapy.Field()
+    user_img = scrapy.Field()
+
+class BaiduTripItem(scrapy.Item):
+    scene_info = scrapy.Field()
+
+class YikuaiquItem(scrapy.Item):
+    spot_info = scrapy.Field()
+
+class YikuaiquSpotItem(scrapy.Item):
+    spot_info = scrapy.Field()

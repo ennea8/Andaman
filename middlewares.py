@@ -28,7 +28,11 @@ class ProxySwitchMiddleware(object):
     def __init__(self):
         # 加载代理列表
         proxy_list = {}
+
         with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
+
+        with open('./data/proxy_list.txt', 'r') as f:
+
             for line in f:
                 proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
         self.proxy_list = proxy_list
@@ -64,7 +68,7 @@ class ProxySwitchMiddleware(object):
                     d = self.proxy_list[proxy]
                     d['fail'] += 1
                     # 代理是否存活？
-                    if float(d['fail']) / float['req'] > 0.7:
+                    if float(d['fail']) / float(d['req']) > 0.7:
                         d['enabled'] = False
 
             return request
