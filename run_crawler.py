@@ -59,7 +59,7 @@ def reg_spiders(spider_dir=None):
     import conf
 
     if not spider_dir:
-        root_dir = os.path.normpath(os.path.join(os.path.split(__file__)[0], '..'))
+        root_dir = os.path.normpath(os.path.split(__file__)[0])
         spider_dir = os.path.normpath(os.path.join(root_dir, 'spiders'))
 
     conf.global_conf['spiders'] = {}
