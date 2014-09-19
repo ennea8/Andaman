@@ -2,7 +2,6 @@
 import re
 
 __author__ = 'zwh'
-import copy
 
 from scrapy import Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
@@ -70,7 +69,7 @@ class YikuaiquSpotSpider(CrawlSpider):
 
     def parse_detail(self, response):
         sel = Selector(response)
-        spot_info = copy.deepcopy(response.meta['spot_info'])
+        spot_info = response.meta['spot_info']
         locality = sel.xpath(
             '//div[contains(@class,"detail-wrap")]/div[@class="detail-title"]/div[@class="clearfix"]/h1/span/a/text()').extract()
         county = "".join(sel.xpath(
@@ -106,7 +105,7 @@ class YikuaiquSpotSpider(CrawlSpider):
                 ticket["ticket_info"] = None
             ticket_list.append(ticket)
         spot_info["ticket_list"] = ticket_list
-        imgpage_url = copy.deepcopy(spot_info["spot_detail_url"]).replace('detail', 'photo')
+        imgpage_url = spot_info["spot_detail_url"].replace('detail', 'photo')
         spot_info["spot_photopage_url"] = imgpage_url
         yield Request(url=imgpage_url, callback=self.parse_photo, meta={"spot_info": spot_info})
 
