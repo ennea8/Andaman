@@ -184,20 +184,21 @@ class ChanyoujiYoujiItem(scrapy.Item):
 
 
 class MafengwoYoujiItem(scrapy.Item):
-    place = scrapy.Field()  #景观地点
-    author = scrapy.Field() #游记作者
-    title = scrapy.Field()  #游记标题
-    public_time = scrapy.Field()#游记发表时间
-    cost = scrapy.Field()   #人均费用
-    way = scrapy.Field()    #旅行方法
-    days = scrapy.Field()   #旅行用的时间
-    contents = scrapy.Field()#内容
-    reply = scrapy.Field()  #回复
+    place = scrapy.Field()  # 景观地点
+    author = scrapy.Field()  # 游记作者
+    title = scrapy.Field()  # 游记标题
+    public_time = scrapy.Field()  # 游记发表时间
+    cost = scrapy.Field()  # 人均费用
+    way = scrapy.Field()  # 旅行方法
+    days = scrapy.Field()  # 旅行用的时间
+    contents = scrapy.Field()  # 内容
+    reply = scrapy.Field()  # 回复
 
 
 class WeatherItem(scrapy.Item):
     data = scrapy.Field()
     loc = scrapy.Field()
+
 
 class BreadTripItem(scrapy.Item):
     city_name = scrapy.Field()
@@ -208,11 +209,20 @@ class BreadTripItem(scrapy.Item):
     user_url = scrapy.Field()
     user_img = scrapy.Field()
 
+
 class BaiduTripItem(scrapy.Item):
     scene_info = scrapy.Field()
 
-class YikuaiquItem(scrapy.Item):
-    spot_info = scrapy.Field()
 
 class YikuaiquSpotItem(scrapy.Item):
-    spot_info = scrapy.Field()
+    spot_id = scrapy.Field()
+    name = scrapy.Field()
+    locality = scrapy.Field()
+    address = scrapy.Field()
+    details = scrapy.Field()
+    price = scrapy.Field()
+    price_details = scrapy.Field()
+    cover = scrapy.Field()
+    image_list = scrapy.Field()
+    test = scrapy.Field()
+    url = scrapy.Field()
