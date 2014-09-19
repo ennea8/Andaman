@@ -117,13 +117,20 @@ class YikuaiquSpotSpider(CrawlSpider):
 
         item = YikuaiquSpotItem()
         item['spot_id'] = spot_info['spot_id']
-        item['name'] = spot_info['spot_name']
-        item['locality'] = spot_info['spot_locality']
-        item['address'] = spot_info['spot_address']
-        item['price'] = spot_info['price']
-        item['price_details'] = spot_info['ticket_list']
-        item['cover'] = spot_info['spot_cover']
-        item['image_list'] = spot_info['img_list']
+        if 'spot_name' in spot_info:
+            item['name'] = spot_info['spot_name']
+        if 'spot_locality' in spot_info:
+            item['locality'] = spot_info['spot_locality']
+        if 'spot_address' in spot_info:
+            item['address'] = spot_info['spot_address']
+        if 'price' in spot_info:
+            item['price'] = spot_info['price']
+        if 'ticket_list' in spot_info:
+            item['price_details'] = spot_info['ticket_list']
+        if 'spot_cover' in spot_info:
+            item['cover'] = spot_info['spot_cover']
+        if 'img_list' in spot_info:
+            item['image_list'] = spot_info['img_list']
         item['url'] = spot_info['spot_detail_url']
         yield item
 
