@@ -24,13 +24,13 @@ def setup_spider():
     settings = crawler.settings
 
     # settings.setdict({'ITEM_PIPELINES': {'spiders.notes.baidu_notes.BaiduNotePipeline': 200,'pipelines.ChanyoujiYoujiPipline':100}})
-    settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiYoujiPipline':100}})
+    # settings.setdict({'ITEM_PIPELINES': {'pipelines.ChanyoujiYoujiPipline':800}})
     settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
 
-    #crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiUserPipeline': 300})
+    crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiYoujiPipline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 100})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.YiqiquPipeline': 200})
 
