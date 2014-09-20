@@ -40,6 +40,8 @@ class ChanyoujiYoujiSpider(CrawlSpider):
 
                 except:
                     item['data']=None
+            else:
+                item['data']=None
 
 
         items.append(item)
