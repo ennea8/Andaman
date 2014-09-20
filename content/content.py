@@ -14,77 +14,40 @@ def connect_db():
     collection=db.BaiduNote
 
     list=collection.find()
-    x=list[1820]['contents']
+    #x=list[1820]['contents']
     #print x[0]
-    return x
+    return list,db
 
-def zhengze(part):
-    #part_u=part.decode('gb2312')
-    content=part[0].replace('<p','<img><p')
-    content=content.replace('<div','<img><div')
-    print content
-    zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
-    content=zz.sub('',content)
-    print content
-    #content=content.replace('<','\n<')
-    #content=content.replace('>','>\n')
-    #content=content.replace('\n\n','\n')
-    content_list=re.split('[<>]',content)
-    #print content_list
-    dic={}
-    list=[]
-
-    list_cot=collection.find()
-    return list_cot,db
+content_v=[]
 
 def zhengze(part,db):
     #new_part={}
+    content_list=[]
     content_m=part['contents']
     #part_u=part.decode('gb2312')
     if not content_m:
         return
-    content=content_m[0].replace('<p','<img><p')
-    #content=content.replace('%','i')
-    content=content.replace('<div','<img><div')
-    zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
-    content=zz.sub('',content)
-    content_list=re.split('[<>]',content)
+    for i in range(len(content_m)):
+        content=content_m[i].replace('<p','<img><p')
+        #content=content.replace('%','i')
+        content=content.replace('<div','<img><div')
+        zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
+        content=zz.sub('',content)
+        content_v=re.split('[<>]',content)
+        content_list.extend(content_v)
 
     list_data=[]
 
 
     for i in range(len(content_list)):
-        content_m=content_list[i].count('img ')
-        if content_m>0:
-
-            part=re.compile('http[\s\S][^"]*.jpg')
-            part1=part.search(content_list[i])
-            dic={'data':part1.group(),'type':'image'}
-        elif (content_list[i]=='')|(content_list[i]=='img'):
-            continue
+        part_c=re.compile(r'http[\s\S][^"]*.jpg')
+        part1=part_c.search(content_list[i].strip())
+        if part1:
+            list_data.append(part1.group())
+        elif (content_list[i].strip()=='')|(content_list[i].strip()=='img'):
+            pass
         else:
-            dic={'data':content_list[i],'type':'text'}
-        list.append(dic)
-        dic={}
-
-    print content
-
-    print list
-
-
-    part=connect_db()
-    if part:
-        zhengze(part)
-    print
-
-    part_c=re.compile(r'http[\s\S][^"]*.jpg')
-    part1=part_c.search(content_list[i].strip())
-    if part1:
-        list_data.append(part1.group())
-    elif (content_list[i].strip()=='')|(content_list[i].strip()=='img'):
-        continue
-    else:
-        list_data.append(content_list[i].strip())
+            list_data.append(content_list[i].strip())
 
 
     #print part
@@ -98,14 +61,14 @@ def zhengze(part,db):
     except:
         new_part['cost']=None
     try:
-        new_part['from']=part['summary']['departure']
+        new_part['_from']=part['summary']['departure']
     except:
-        new_part['from']=None
+        new_part['_from']=None
     try:
         new_part['to']=part['summary']['destinations']
-        if new_part['to']:
-            if (new_part['to'][0]==''):
-                new_part['to']=part['summary']['places']
+        if new_part['_to']:
+            if (new_part['_to'][0]==''):
+                new_part['_to']=part['summary']['places']
     except:
         new_part['to']=None
 
@@ -132,7 +95,7 @@ def zhengze(part,db):
 def main():
     part,db=connect_db()
     i=0
-    for m in range(3537,17747):
+    for m in range(1,17747):
         zhengze(part[m],db)
         i=i+1
         print i
