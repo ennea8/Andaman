@@ -11,19 +11,21 @@ def connect_db():
     collection=db.BaiduNote
     list_cot=collection.find()
     return list_cot,db
-
+content_list=[]
 def zhengze(part,db):
     #new_part={}
     content_m=part['contents']
     #part_u=part.decode('gb2312')
     if not content_m:
         return
-    content=content_m[0].replace('<p','<img><p')
-    #content=content.replace('%','i')
-    content=content.replace('<div','<img><div')
-    zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
-    content=zz.sub('',content)
-    content_list=re.split('[<>]',content)
+    for i in range(len(content_m)):
+        content=content_m[i].replace('<p','<img><p')
+        #content=content.replace('%','i')
+        content=content.replace('<div','<img><div')
+        zz=re.compile(ur"<(?!img)[\s\S][^>]*>")#|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
+        content=zz.sub('',content)
+        content_v=re.split('[<>]',content)
+        content_list.extend(content_v)
 
     list_data=[]
 
