@@ -2,7 +2,7 @@
 import sys
 
 import scrapy
-from spiders.MafengwoSpider import MafengwoYoujiSpider
+#from spiders.MafengwoSpider import MafengwoYoujiSpider
 
 from scrapy import signals
 from scrapy.crawler import Crawler
@@ -10,8 +10,8 @@ from scrapy.settings import Settings
 from twisted.internet import reactor
 
 # from spiders.weather_spider import WeatherSpider
-from spiders.notes.baidu_notes import BaiduNoteSpider
-from spiders.MafengwoSpider import MafengwoYoujiSpider
+#from spiders.notes.baidu_notes import BaiduNoteSpider
+#from spiders.MafengwoSpider import MafengwoYoujiSpider
 from spiders.ChanyoujiYoujiSpider import ChanyoujiYoujiSpider
 
 __author__ = 'zephyre'
