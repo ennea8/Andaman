@@ -29,7 +29,7 @@ class ProxySwitchMiddleware(object):
         # 加载代理列表
         proxy_list = {}
 
-        with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
+        with open('./data/proxy_list.txt', 'r') as f:
             for line in f:
                 proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
         self.proxy_list = proxy_list

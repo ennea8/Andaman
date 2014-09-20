@@ -188,6 +188,7 @@ class QiniuyunPipeline(object):
         qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
         qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
 
+
         # 配置上传策略。
         # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
         policy = qiniu.rs.PutPolicy('lvxingpai-img-store')
@@ -204,6 +205,7 @@ class QiniuyunPipeline(object):
         # 将相应的数据存入mongo中
         client = pymongo.MongoClient('zephyre.me', 27017)
         db = client.imagestore
+
 
         # 检查是否已经入mongo库
         if db.Hotel.find_one({'url_hash': str(item['hash_value'])}) is None:
@@ -232,7 +234,6 @@ class QiniuyunPipeline(object):
                            'url_hash': item['hash_value'], 'ret_hash': ret['hash'], 'size': file_size})
             # 增加索引
             db.Hotel.create_index('url_hash')
-
 
             # 删除上传成功的文件
             os.remove(localfile)
@@ -284,6 +285,8 @@ class QunarPoiPipeline(object):
         if not self.db:
             self.connect()
 
+
+
         data = item['data']
         ret = self.db.Poi.find_one({'id': data['id']}, {'id': 1})
         if not ret:
@@ -303,6 +306,7 @@ class BaiduPoiPipeline(object):
         if not isinstance(item, BaiduPoiItem):
             return item
 
+
         if not self.db:
             self.db = pymongo.MongoClient().BaiduPoiRaw
 
@@ -321,12 +325,12 @@ class BaiduPoiPipeline(object):
 
 class ChanyoujiYoujiPipline(object):
     def __init__(self):
-        self.db = pymongo.MongoClient('dev.lvxingpai.cn',27019).ChanyoujiYoujidb
+        self.db = None
 
-    '''
     def connect(self):
-        self.db = pymongo.MongoClient('dev.lvxingapi.cn',27019).ChanyoujiYoujidb
-    '''
+        self.db = pymongo.MongoClient().ChanyoujiYoujidb
+
+
     def process_item(self, item, spider):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item

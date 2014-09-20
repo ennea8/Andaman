@@ -37,18 +37,14 @@ class ChanyoujiYoujiSpider(CrawlSpider):
                 try:
                     data = json.loads(data)
                     item['data']=data
-
-                except:
+                except :
                     item['data']=None
+
             else:
                 item['data']=None
 
-
         items.append(item)
         return items
-
-
-
 
 
 
