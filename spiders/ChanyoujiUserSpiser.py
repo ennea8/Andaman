@@ -130,7 +130,7 @@ class ChanyoujiUserSpider(CrawlSpider):
             response.body)
         if not match:
             item['traveled'] = []
-            yield item
+            return item
 
         vs_map = {}
         data = filter(lambda val: 'entry' in val and 'attraction_id' in val['entry'], json.loads(match.groups()[0]))
@@ -156,9 +156,9 @@ class ChanyoujiUserSpider(CrawlSpider):
 
         item['traveled'] = traveled
         if next_url:
-            yield Request(url=next_url, callback=self.parse_note, meta={'item': item})
+            return Request(url=next_url, callback=self.parse_note, meta={'item': item})
         else:
-            yield item
+            return item
 
 
 class ChanyoujiUserPipeline(object):
