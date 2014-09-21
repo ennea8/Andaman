@@ -56,6 +56,11 @@ class ChanyoujiUserSpider(CrawlSpider):
                 item['num_notes'] = int(m1.group())
 
         ret = sel.xpath(
+            '//div[contains(@class,"header-inner")]/a/img[contains(@class,"avatar") and @src]/@src').extract()
+        if ret:
+            item['avatar'] = ret[0]
+
+        ret = sel.xpath(
             '//div[contains(@class, "sns-site")]/ul[@class="sns-ico"]/li[contains(@class,"weibo")]/a/@href').extract()
         if ret:
             weibo_url = ret[0]
@@ -172,6 +177,8 @@ class ChanyoujiUserPipeline(object):
         data = {'userId': uid,
                 'userName': item['user_name']}
 
+        if 'avatar' in item:
+            data['avatar'] = item['avatar']
         if 'weibo_url' in item:
             data['weiboUrl'] = item['weibo_url']
         if 'weibo_uid' in item:

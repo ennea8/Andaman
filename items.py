@@ -176,6 +176,7 @@ class ChanyoujiUser(scrapy.Item):
     renren_url = scrapy.Field()
     renren_uid = scrapy.Field()
     traveled = scrapy.Field()
+    avatar = scrapy.Field()
 
 
 class ChanyoujiYoujiItem(scrapy.Item):
