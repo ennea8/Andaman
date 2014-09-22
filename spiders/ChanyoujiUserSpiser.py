@@ -60,6 +60,14 @@ class ChanyoujiUserSpider(CrawlSpider):
         if ret:
             item['avatar'] = ret[0]
 
+        ret = sel.xpath('//div[contains(@class, "sns-site")]/p/text()').extract()
+        if ret:
+            ret = ret[0]
+            if u'喜欢她的游记' in ret:
+                item['gender'] = 'f'
+            elif u'喜欢他的游记' in ret:
+                item['gender'] = 'm'
+
         ret = sel.xpath(
             '//div[contains(@class, "sns-site")]/ul[@class="sns-ico"]/li[contains(@class,"weibo")]/a/@href').extract()
         if ret:
@@ -179,6 +187,8 @@ class ChanyoujiUserPipeline(object):
 
         if 'avatar' in item:
             data['avatar'] = item['avatar']
+        if 'gender' in item:
+            data['gender'] = item['gender']
         if 'weibo_url' in item:
             data['weiboUrl'] = item['weibo_url']
         if 'weibo_uid' in item:
