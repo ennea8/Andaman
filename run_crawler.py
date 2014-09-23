@@ -183,7 +183,7 @@ def main():
             # unicode.format(u'monitor_{0}_{1}.log',
             # '_'.join(param['brand']),
             # datetime.datetime.now().strftime(
-            #                                                 '%Y%m%d'))))
+            # '%Y%m%d'))))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent
