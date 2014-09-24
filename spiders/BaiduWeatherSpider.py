@@ -58,11 +58,6 @@ class WeatherBaiduSpider(CrawlSpider):
         item['loc'] = {'id': allInf['county_id'],
                        'zhName': allInf['county_name']}
 
-        # item['superAdm_id'] = allInf["superAdm_id"]
-        # item['superAdm_name'] = allInf['superAdm_name']
-        # item['county'] = allInf['county_name']
-        # item['id'] = allInf['county_id']
-
         return item
 
 
@@ -75,7 +70,6 @@ class WeatherPipeline(object):
         for k in item['data']:
             weather_entry[k] = item['data'][k]
 
-        # col = pymongo.MongoClient(host=self.host, port=self.port).misc.Weather
         col = pymongo.MongoClient().misc.Weather
         ret = col.find_one({'loc.id': item['loc']['id']}, {'_id': 1})
         if ret:
