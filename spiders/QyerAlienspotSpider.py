@@ -24,8 +24,11 @@ class QyerAlienSpotSpider(CrawlSpider):
         if 'param' in dir(self):
             self.param = getattr(self, 'param')
 
+        if 'country' in self.param:
+            self.param['country'] = [tmp.lower() for tmp in self.param['country']]
+
         continent_list = ["asia", "europe", "africa", "north-america", "south-america",
-                          "oceania"] if 'region' not in self.param else [self.param['region'][0].lower()]
+                          "oceania"] if 'region' not in self.param else [tmp.lower() for tmp in self.param['region']]
 
         for continent in continent_list:
             url = 'http://place.qyer.com/%s' % continent
@@ -40,14 +43,13 @@ class QyerAlienSpotSpider(CrawlSpider):
             ret = node.xpath('./span[@class="en"]/text()').extract()
             country_engname = ret[0].lower() if ret else None
 
-            if 'country' in self.param and country_engname != self.param['country'][0].lower():
+            if 'country' in self.param and country_engname not in self.param['country']:
                 return None
 
             sights_url = urlparse.urljoin(country_url, './sight')
             m = {"country_name": country_name, "country_url": country_url, "country_popular": hot,
                  "country_engname": country_engname, "sights_url": sights_url}
             return Request(url=sights_url, callback=self.parse_countrysights, meta={"country": m})
-
 
         for req in map(lambda node: func(node, False),
                        sel.xpath('//div[@id="allcitylist"]/div[contains(@class,"line")]/ul/li/a[@href]')):
@@ -57,7 +59,6 @@ class QyerAlienSpotSpider(CrawlSpider):
                        sel.xpath(
                                '//div[@id="allcitylist"]/div[contains(@class,"line")]/ul/li/p[@class="hot"]/a[@href]')):
             yield req
-
 
     def parse_countrysights(self, response):
         sel = Selector(response)
