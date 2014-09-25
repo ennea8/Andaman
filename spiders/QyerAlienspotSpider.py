@@ -89,7 +89,7 @@ class QyerAlienSpotSpider(CrawlSpider):
                 m["poi_score"] = None
             tmp = sight.xpath('./div/p[@class="been"]/text()').extract()
             if tmp:
-                tmp=tmp[0]
+                tmp = tmp[0]
                 match = re.search('^\s*\d+', tmp)
                 if match:
                     m["poi_been"] = int(match.group())
@@ -149,6 +149,18 @@ class QyerAlienSpotSpider(CrawlSpider):
     def parse_poi(self, response):
         sel = Selector(response)
         poi_info = response.meta["poi_info"]
+
+        poi_info['lat'] = None
+        poi_info['lng'] = None
+        tmp = sel.xpath(
+            '//div[contains(@class,"pla_main")]/div[contains(@class,"pla_textedit")]/a[@href and @onclick]/@onclick').extract()
+        if tmp:
+            tmp = tmp[0]
+            match = re.search(r'^\s*createWindow\(\d+\s*,\s*\d+\s*,\s*([\d\.]+)\s*,\s*([\d\.]+)\s*', tmp)
+            if match:
+                poi_info['lat'] = float(match.groups()[0])
+                poi_info['lng'] = float(match.groups()[1])
+
         tmp = sel.xpath('//div[@class="pla_topbars"]/div/div/div[@class="pla_topbar_names"]/p/a/text()').extract()
         if tmp:
             poi_info["poi_englishName"] = tmp[0]
@@ -193,6 +205,8 @@ class QyerAlienSpotSpider(CrawlSpider):
         item["poi_summary"] = poi_info["poi_summary"]
         item["poi_detail"] = poi_info["poi_detail"]
         item["poi_been"] = poi_info['poi_been']
+        item['poi_lat'] = poi_info['lat']
+        item['poi_lng'] = poi_info['lng']
         poi_photo = sel.xpath('//div/ul[@class="pla_photolist clearfix"]/li/p[@class="pic"]/a/img/@src').extract()
         if poi_photo:
             item["poi_photo"] = []
