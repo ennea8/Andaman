@@ -1,4 +1,6 @@
 # coding: utf-8
+import urlparse
+
 __author__ = 'zwh'
 import copy
 import re
@@ -31,46 +33,31 @@ class QyerAlienSpotSpider(CrawlSpider):
 
     def parse_homepage(self, response):
         sel = Selector(response)
-        lines = sel.xpath('//div[@id="allcitylist"]/div[contains(@class,"line")]/ul')
-        for line in lines:
-            items = line.xpath('./li')
-            for item in items:
-                country_tmp = item.xpath('./a/@href').extract()
-                if country_tmp:
-                    country_url = country_tmp[0]
-                country = item.xpath('./a/text()').extract()
 
-                hot = False
-                if country:
-                    country_name = country[0]
-                    hot = False
+        def func(node, hot):
+            country_url = node.xpath('./@href').extract()[0]
+            country_name = node.xpath('./text()').extract()[0]
+            ret = node.xpath('./span[@class="en"]/text()').extract()
+            country_engname = ret[0].lower() if ret else None
 
-                eng_name = item.xpath('./a/span/text()').extract()
-                country_engname = eng_name[0].lower() if eng_name else None
+            if 'country' in self.param and country_engname != self.param['country'][0].lower():
+                return None
 
-                country_tmp = item.xpath('./p[@class="hot"]/a/@href').extract()
-                if country_tmp:
-                    country_url = country_tmp[0]
-                country = item.xpath('./p[@class="hot"]/a/text()').extract()
-                if country:
-                    country_name = country[0]
-                    hot = True
-                eng_name = item.xpath('./p[@class="hot"]/a/span/text()').extract()
-                if eng_name:
-                    country_engname = eng_name[0]
+            sights_url = urlparse.urljoin(country_url, './sight')
+            m = {"country_name": country_name, "country_url": country_url, "country_popular": hot,
+                 "country_engname": country_engname, "sights_url": sights_url}
+            return Request(url=sights_url, callback=self.parse_countrysights, meta={"country": m})
 
-                # if 'country' in self.param:
-                # country_param = self.param['country'][0].lower()
-                # if not country_engname or country_engname != country_param:
-                # continue
 
-                if not country_name:
-                    continue
+        for req in map(lambda node: func(node, False),
+                       sel.xpath('//div[@id="allcitylist"]/div[contains(@class,"line")]/ul/li/a[@href]')):
+            yield req
 
-                sights_url = country_url + 'sight'
-                m = {"country_name": country_name, "country_url": country_url, "country_popular": hot,
-                     "country_engname": country_engname, "sights_url": sights_url}
-                yield Request(url=sights_url, callback=self.parse_countrysights, meta={"country": m})
+        for req in map(lambda node: func(node, True),
+                       sel.xpath(
+                               '//div[@id="allcitylist"]/div[contains(@class,"line")]/ul/li/p[@class="hot"]/a[@href]')):
+            yield req
+
 
     def parse_countrysights(self, response):
         sel = Selector(response)
