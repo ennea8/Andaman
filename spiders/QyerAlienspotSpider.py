@@ -87,6 +87,14 @@ class QyerAlienSpotSpider(CrawlSpider):
                     m["poi_score"] = float(match.group())
             else:
                 m["poi_score"] = None
+            tmp = sight.xpath('./div/p[@class="been"]/text()').extract()
+            if tmp:
+                tmp=tmp[0]
+                match = re.search('^\s*\d+', tmp)
+                if match:
+                    m["poi_been"] = int(match.group())
+            else:
+                m["poi_been"] = None
             yield Request(url=m["poi_url"], callback=self.parse_poi, meta={"poi_info": m})
         tmp = sel.xpath(
             '//div[@id="place_memu_fix"]/div/div[@class="pla_topbtns"]/a[@class="ui_button yelp"]/@onclick').extract()
@@ -184,6 +192,7 @@ class QyerAlienSpotSpider(CrawlSpider):
         item["poi_englishName"] = poi_info["poi_englishName"]
         item["poi_summary"] = poi_info["poi_summary"]
         item["poi_detail"] = poi_info["poi_detail"]
+        item["poi_been"] = poi_info['poi_been']
         poi_photo = sel.xpath('//div/ul[@class="pla_photolist clearfix"]/li/p[@class="pic"]/a/img/@src').extract()
         if poi_photo:
             item["poi_photo"] = []

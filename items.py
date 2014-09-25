@@ -241,3 +241,4 @@ class QyerAlienpoiItem(scrapy.Item):
     poi_summary = scrapy.Field()
     poi_detail = scrapy.Field()
     poi_photo = scrapy.Field()
+    poi_been = scrapy.Field()
