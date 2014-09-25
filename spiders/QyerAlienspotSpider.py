@@ -63,57 +63,27 @@ class QyerAlienSpotSpider(CrawlSpider):
     def parse_countrysights(self, response):
         sel = Selector(response)
         country = response.meta["country"]
-        sights = sel.xpath('//div[@id="allpoiContent"]/div[@id="poilistdiv"]/ul[contains(@class,"plaPoiListB")]/li')
-        for sight in sights:
-            country_info = copy.deepcopy(country)
-            m = {"country_info": country_info}
-            tmp = sight.xpath('./p/a/@href').extract()
-            if tmp:
-                m["poi_url"] = tmp[0]
-                m["poi_id"] = re.search(r'/([0-9]+)/', m["poi_url"]).groups()[0]
-            tmp = sight.xpath('./p/a/img/@src').extract()
-            if tmp:
-                m["poi_cover"] = tmp[0]
-            else:
-                m["poi_cover"] = None
-            tmp = sight.xpath('./h3/a/text()').extract()
-            if tmp:
-                m["poi_name"] = tmp[0]
-            tmp = sight.xpath('./div/p[@class="score"]/text()').extract()
-            if tmp:
-                tmp = tmp[0]
-                match = re.search('^\s*\d+(\.\d+)?', tmp)
-                if match:
-                    m["poi_score"] = float(match.group())
-            else:
-                m["poi_score"] = None
-            tmp = sight.xpath('./div/p[@class="been"]/text()').extract()
-            if tmp:
-                tmp = tmp[0]
-                match = re.search('^\s*\d+', tmp)
-                if match:
-                    m["poi_been"] = int(match.group())
-            else:
-                m["poi_been"] = None
-            yield Request(url=m["poi_url"], callback=self.parse_poi, meta={"poi_info": m})
+
         tmp = sel.xpath(
-            '//div[@id="place_memu_fix"]/div/div[@class="pla_topbtns"]/a[@class="ui_button yelp"]/@onclick').extract()
-        if tmp:
-            # cid = re.search(r'[0-9]+',tmp[0]).group()
-            country_id = int(re.search(r'[0-9]+', tmp[0]).group())
+            '//div[@id="place_memu_fix"]/div/div[@class="pla_topbtns"]/a[@class="ui_button yelp"]/@onclick').extract()[
+            0]
+        country_id = int(re.search(r'[0-9]+', tmp).group())
+
         tmp = sel.xpath('//div/ul[@id="tab"]/li/a[@data-id="allpoiContent"]/text()').extract()
         if tmp:
             num = int(re.search(r'[0-9]+', tmp[0]).group())
-            pagenum = int(num / 16)
-            if pagenum > 1:
-                for page in range(pagenum):
-                    country_info = copy.deepcopy(country)
-                    body = 'action=ajaxpoi&page=%d&pagesize=16&id=%d&typename=country&cateid=32&orderby=0&tagid=0' % (
-                        page + 2, country_id)
+            pagenum = int(num / 16) + 1
+
+            for page in range(pagenum):
+                country_info = copy.deepcopy(country)
+                for tp in ('city', 'country'):
+                    body = 'action=ajaxpoi&page=%d&pagesize=16&id=%d&typename=%s&cateid=32&orderby=0&tagid=0' % (
+                        page + 1, country_id, tp)
                     yield Request(url="http://place.qyer.com/ajax.php", method='POST', body=body,
                                   headers={'Content-Type': 'application/x-www-form-urlencoded',
                                            'X-Requested-With': 'XMLHttpRequest'},
-                                  callback=self.parse_list, meta={"country": country_info}, dont_filter=True)
+                                  callback=self.parse_list,
+                                  meta={"country": country_info}, dont_filter=True)
 
     def parse_list(self, response):
         country = response.meta["country"]
@@ -138,11 +108,25 @@ class QyerAlienSpotSpider(CrawlSpider):
             tmp = sight.xpath('./h3/a/text()').extract()
             if tmp:
                 m["poi_name"] = tmp[0]
-            tmp = sight.xpath('./div/p[@class="score"]/text()').extract()
-            if tmp:
-                m["poi_score"] = tmp[0]
             else:
-                m["poi_score"] = None
+                m['poi_name'] = None
+
+            tmp = sight.xpath('./div/p[@class="score"]/text()').extract()
+            m["poi_score"] = None
+            if tmp:
+                tmp = tmp[0]
+                match = re.search('^\s*\d+(\.\d+)?', tmp)
+                if match:
+                    m["poi_score"] = float(match.group())
+
+            m["poi_been"] = 0
+            tmp = sight.xpath('./div/p[@class="been"]/text()').extract()
+            if tmp:
+                tmp = tmp[0]
+                match = re.search('^\s*\d+', tmp)
+                if match:
+                    m["poi_been"] = int(match.group())
+
             if m["poi_url"]:
                 yield Request(url=m["poi_url"], callback=self.parse_poi, meta={"poi_info": m})
 
