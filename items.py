@@ -123,10 +123,6 @@ class JsonItem(scrapy.Item):
     data = scrapy.Field()
 
 
-class BaiduPoiItem(JsonItem):
-    pass
-
-
 class QunarPoiItem(JsonItem):
     pass
 
@@ -197,7 +193,7 @@ class MafengwoYoujiItem(scrapy.Item):
     reply = scrapy.Field()  # 回复
 
 
-class WeatherItem(scrapy.Item):
+class BaiduWeatherItem(scrapy.Item):
     data = scrapy.Field()
     loc = scrapy.Field()
 
@@ -212,8 +208,13 @@ class BreadTripItem(scrapy.Item):
     user_img = scrapy.Field()
 
 
-class BaiduTripItem(scrapy.Item):
+class BaiduPoiItem(scrapy.Item):
     scene_info = scrapy.Field()
+
+
+class BaiduNoteItem(scrapy.Item):
+    # define the fields for your item here like:
+    note = scrapy.Field()
 
 
 class YikuaiquSpotItem(scrapy.Item):
