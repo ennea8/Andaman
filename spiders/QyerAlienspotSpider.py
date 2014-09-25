@@ -146,20 +146,15 @@ class QyerAlienSpotSpider(CrawlSpider):
                 poi_info['lng'] = float(match.groups()[1])
 
         tmp = sel.xpath('//div[@class="pla_topbars"]/div/div/div[@class="pla_topbar_names"]/p/a/text()').extract()
-        if tmp:
-            poi_info["poi_englishName"] = tmp[0]
+        poi_info["poi_englishName"] = tmp[0] if tmp else None
         tmp = sel.xpath('//div[@class="pla_main"]/div[@id="summary_fixbox"]/div[@id="summary_box"]/p/text()').extract()
-        if tmp:
-            poi_info["poi_summary"] = tmp[0]
+        poi_info["poi_summary"] = tmp[0] if tmp else None
         detail_list = sel.xpath(
             '//div[contains(@class,"pla_wrap")]/div[@class="pla_main"]/div/ul[@class="pla_textdetail_list"]/li')
         detail = []
         for tem in detail_list:
             tmp = tem.xpath('./span/text()').extract()
-            if tmp:
-                tit = tmp[0]
-            else:
-                tit = None
+            tit = tmp[0] if tmp else None
             tmp = tem.xpath('./div/p/text()').extract()
             if tmp:
                 content = tmp[0]
