@@ -2,6 +2,9 @@ __author__ = 'lxf'
 
 # coding=utf-8
 
+
+
+
 import pymongo
 import re
 from scrapy import Request, Selector,Item,Field
