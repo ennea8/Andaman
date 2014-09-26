@@ -119,7 +119,7 @@ class ChanyoujiUserSpider(CrawlSpider):
                         marker[mid] = {'lat': lat, 'lng': lng, 'title': title, 'url': href, 'data_id': mid}
             except (ValueError, KeyError):
                 pass
-
+        #用户旅行线路匹配
         traveled_list = []
         for data_id in sel.xpath(
                 '//ul[@id="attraction_markers_list"]//a[contains(@class,"node") and @data-id]/@data-id').extract():

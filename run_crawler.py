@@ -168,7 +168,7 @@ def main():
         return
 
     msg = 'SPIDER STARTED: %s' % ' '.join(sys.argv)
-
+    #spider_name='chanyouji_user'
     spider_name = ret['cmd']
     param = ret['param']
     s = setup_spider(spider_name, param)
