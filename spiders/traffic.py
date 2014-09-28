@@ -16,7 +16,8 @@ class BusStatoinItem(Item):
     station_id = Field()
     # 城市名称
     city = Field()
-    city_id = Field()
+    # 省名称
+    prov = Field()
     # 车站名称
     name = Field()
     # 车站详情url
@@ -45,12 +46,30 @@ class BusStation(CrawlSpider):
     def parse_key(self, response):
         self.baidu_key = json.loads(response.body)
 
-        for loc in pymongo.Connection().geo.Locality.find({'level': {'$gte': 2}}, {'shortName': 1, 'zhName': 1}):
-            yield Request(url=u'http://qiche.o.cn/qcz/%s' % loc['shortName'],
-                          callback=self.parse_city, meta={'data': {'city': loc['zhName'], 'city_id': loc['_id']}})
+        yield Request(url='http://qiche.o.cn/allcz', callback=self.parse_prov)
+
+        # for loc in pymongo.Connection().geo.Locality.find({'level': {'$gte': 2}},
+        # {'shortName': 1, 'zhName': 1, 'level': 1, 'super': 1}):
+        #     yield Request(url=u'http://qiche.o.cn/qcz/%s' % loc['shortName'],
+        #                   callback=self.parse_city, meta={'data': {'city': loc['zhName'], 'city_id': loc['_id']}})
+
+    def parse_prov(self, response):
+        for node in Selector(response).xpath('//div[@class="bd"]/dl[contains(@class,"c_dl_mod11")]/dd/em/a'):
+            prov_name = node.xpath('./text()').extract()[0]
+            if prov_name == u'直辖市':
+                prov_name = None
+            url = node.xpath('./@href').extract()[0]
+            yield Request(url=url, meta={'prov': prov_name}, callback=self.parse_city_list)
+
+    def parse_city_list(self, response):
+        prov_name = response.meta['prov']
+        for node in Selector(response).xpath('//div[@class="bd"]/dl[contains(@class,"c_dl_mod12")]/dd/em/a'):
+            city_name = node.xpath('./text()').extract()[0]
+            url = node.xpath('./@href').extract()[0]
+            yield Request(url=url, meta={'prov': prov_name, 'city': city_name}, callback=self.parse_city)
 
     def parse_city(self, response):
-        for node in Selector(response).xpath('//ul[contains(@class,"c_list_mod5")]/li/h3/a[@href]'):
+        for node in Selector(response).xpath('//div[@class="bd"]/ul[contains(@class,"c_list_mod5")]/li/h3/a[@href]'):
             url = node.xpath('./@href').extract()[0]
             match = re.search(r'/(\d+)/?', url)
             if not match:
@@ -74,10 +93,9 @@ class BusStation(CrawlSpider):
                     tel = gr[1].strip()
 
             item = BusStatoinItem()
-            data = response.meta['data']
             item['station_id'] = station_id
-            item['city'] = data['city']
-            item['city_id'] = data['city_id']
+            item['city'] = response.meta['city']
+            item['prov'] = response.meta['prov']
             item['name'] = name
             item['url'] = url
             item['addr'] = addr
@@ -111,7 +129,7 @@ class BusStationPipeline(object):
 
         entry['stationId'] = sid
         entry['city'] = item['city']
-        entry['cityId'] = item['city_id']
+        entry['prov'] = item['prov']
         entry['name'] = item['name']
         entry['url'] = item['url']
         entry['addr'] = item['addr']
@@ -125,19 +143,19 @@ class BusStationPipeline(object):
         return item
 
 
-# class BusStatoinItem(Item):
-#     # 车站id
-#     station_id = Field()
-#     # 城市名称
-#     city = Field()
-#     city_id = Field()
-#     # 车站名称
-#     name = Field()
-#     # 车站详情url
-#     url = Field()
-#     # 车站地址
-#     addr = Field()
-#     # 车站电话
-#     tel = Field()
-#     # 是否经过人工验证
-#     verified = Field()
+        # class BusStatoinItem(Item):
+        # # 车站id
+        # station_id = Field()
+        # # 城市名称
+        # city = Field()
+        #     city_id = Field()
+        #     # 车站名称
+        #     name = Field()
+        #     # 车站详情url
+        #     url = Field()
+        #     # 车站地址
+        #     addr = Field()
+        #     # 车站电话
+        #     tel = Field()
+        #     # 是否经过人工验证
+        #     verified = Field()
