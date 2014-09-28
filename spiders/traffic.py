@@ -50,14 +50,16 @@ class BusStation(CrawlSpider):
 
         # for loc in pymongo.Connection().geo.Locality.find({'level': {'$gte': 2}},
         # {'shortName': 1, 'zhName': 1, 'level': 1, 'super': 1}):
-        #     yield Request(url=u'http://qiche.o.cn/qcz/%s' % loc['shortName'],
-        #                   callback=self.parse_city, meta={'data': {'city': loc['zhName'], 'city_id': loc['_id']}})
+        # yield Request(url=u'http://qiche.o.cn/qcz/%s' % loc['shortName'],
+        # callback=self.parse_city, meta={'data': {'city': loc['zhName'], 'city_id': loc['_id']}})
 
     def parse_prov(self, response):
         for node in Selector(response).xpath('//div[@class="bd"]/dl[contains(@class,"c_dl_mod11")]/dd/em/a'):
             prov_name = node.xpath('./text()').extract()[0]
             if prov_name == u'直辖市':
                 prov_name = None
+            else:
+                continue
             url = node.xpath('./@href').extract()[0]
             yield Request(url=url, meta={'prov': prov_name}, callback=self.parse_city_list)
 
@@ -65,11 +67,12 @@ class BusStation(CrawlSpider):
         prov_name = response.meta['prov']
         for node in Selector(response).xpath('//div[@class="bd"]/dl[contains(@class,"c_dl_mod12")]/dd/em/a'):
             city_name = node.xpath('./text()').extract()[0]
-            url = node.xpath('./@href').extract()[0]
-            yield Request(url=url, meta={'prov': prov_name, 'city': city_name}, callback=self.parse_city)
+            url = node.xpath('./@href').extract()[0] + '_1'
+            yield Request(url=url, meta={'page': 1, 'prov': prov_name, 'city': city_name}, callback=self.parse_city)
 
     def parse_city(self, response):
-        for node in Selector(response).xpath('//div[@class="bd"]/ul[contains(@class,"c_list_mod5")]/li/h3/a[@href]'):
+        sel = Selector(response)
+        for node in sel.xpath('//div[@class="bd"]/ul[contains(@class,"c_list_mod5")]/li/h3/a[@href]'):
             url = node.xpath('./@href').extract()[0]
             match = re.search(r'/(\d+)/?', url)
             if not match:
@@ -107,13 +110,39 @@ class BusStation(CrawlSpider):
                 key, item['name'], item['city']),
                           callback=self.parse_addr, meta={'item': item, 'key': key})
 
+        # 处理分页
+        ret = sel.xpath('//div[contains(@class,"pagination")]/span/text()').extract()
+        if ret:
+            match = re.search(r'\d+/(\d+)', ret[0])
+            if match:
+                tot_page = int(match.groups()[0])
+                cur_page = response.meta['page']
+                if cur_page < tot_page:
+                    cur_page += 1
+                    url = re.sub(r'\d+$', str(cur_page), response.url)
+                    yield Request(url=url,
+                                  meta={'page': cur_page, 'prov': response.meta['prov'], 'city': response.meta['city']},
+                                  callback=self.parse_city)
+
+
     def parse_addr(self, response):
-        loc = json.loads(response.body)['result']['location']
-        lat, lng = loc['lat'], loc['lng']
         item = response.meta['item']
-        item['blat'] = lat
-        item['blng'] = lng
-        yield item
+        try:
+            loc = json.loads(response.body)['result']['location']
+            lat, lng = loc['lat'], loc['lng']
+
+            item['blat'] = lat
+            item['blng'] = lng
+            yield item
+
+        except KeyError:
+            if 'stop_flag' in response.meta:
+                return
+
+            key = self.baidu_key.values()[random.randint(0, len(self.baidu_key) - 1)]
+            yield Request('http://api.map.baidu.com/geocoder/v2/?ak=%s&output=json&address=%s&city=%s' % (
+                key, item['addr'], item['city']),
+                          callback=self.parse_addr, meta={'item': item, 'key': key, 'stop_flag': True})
 
 
 class BusStationPipeline(object):
@@ -148,11 +177,11 @@ class BusStationPipeline(object):
         # station_id = Field()
         # # 城市名称
         # city = Field()
-        #     city_id = Field()
-        #     # 车站名称
-        #     name = Field()
-        #     # 车站详情url
-        #     url = Field()
+        # city_id = Field()
+        # # 车站名称
+        # name = Field()
+        # # 车站详情url
+        # url = Field()
         #     # 车站地址
         #     addr = Field()
         #     # 车站电话
