@@ -118,7 +118,7 @@ class BaiduNoteSpider(CrawlSpider):
             # note = response.meta['note']
             #
             # if 'comments' not in note:
-            #         note['comments'] = []
+            # note['comments'] = []
             #     comments = note['comments']
             #     author = note['authorName']
             #
@@ -494,6 +494,8 @@ class BaiduWeatherSpider(CrawlSpider):
 
 
 class BaiduWeatherPipeline(object):
+    spiders = [BaiduWeatherSpider.name]
+
     def process_item(self, item, spider):
         if not isinstance(item, BaiduWeatherItem):
             return item

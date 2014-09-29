@@ -83,21 +83,22 @@ def setup_spider(spider_name, param={}):
 
     settings = crawler.settings
 
-    # DRY_RUN: 只抓取，不调用Pipeline
-    if 'dry' not in param:
-        settings.set('ITEM_PIPELINES', {tmp: 100 for tmp in conf.global_conf['pipelines']})
-
     if 'proxy' in param:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', 'debug' in param)
     settings.set('AUTOTHROTTLE_ENABLED', 'fast' not in param)
 
-    crawler.configure()
-
     if spider_name in conf.global_conf['spiders']:
         spider = conf.global_conf['spiders'][spider_name]()
 
+        # DRY_RUN: 只抓取，不调用Pipeline
+        if 'dry' not in param:
+            # 查找对应的pipeline
+            settings.set('ITEM_PIPELINES', {tmp[0]: 100 for tmp in
+                                            filter(lambda p: spider_name in p[1], conf.global_conf['pipelines'])})
+
+        crawler.configure()
         crawler.crawl(spider)
         crawler.start()
         setattr(spider, 'param', param)
@@ -154,7 +155,8 @@ def reg_spiders(spider_dir=None):
                             if name:
                                 conf.global_conf['spiders'][name] = c
                         elif hasattr(c, 'process_item'):
-                            conf.global_conf['pipelines'].append(package_path + '.' + c.__module__ + '.' + c.__name__)
+                            conf.global_conf['pipelines'].append(
+                                [package_path + '.' + c.__module__ + '.' + c.__name__, getattr(c, 'spiders', [])])
 
                     except TypeError:
                         pass
