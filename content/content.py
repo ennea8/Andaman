@@ -7,10 +7,12 @@ import json
 
 def connect_db():
     client=pymongo.MongoClient('dev.lvxingpai.cn',27019)
+    client_l=pymongo.MongoClient()
     db=client.raw_notes
+    db_l=client_l.BaiduNote
     collection=db.BaiduNote
     list_cot=collection.find()
-    return list_cot,db
+    return list_cot,db_l
 content_list=[]
 def zhengze(part,db):
     #new_part={}
@@ -80,15 +82,15 @@ def zhengze(part,db):
         new_part['timeCost']=None
 
     #test_part=json.loads(test_part)
-    db.New_BaiduNote.insert(new_part)
+    db.youji.insert(new_part)
     return
 
 
 def main():
     part,db=connect_db()
     i=0
-    for m in range(3537,17747):
-        zhengze(part[m],db)
+    for part_m in part:
+        zhengze(part_m,db)
         i=i+1
         print i
 
