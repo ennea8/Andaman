@@ -162,27 +162,14 @@ class BusStationPipeline(object):
         entry['addr'] = item['addr']
         entry['tel'] = item['tel']
         entry['verified'] = item['verified']
-        entry['blat'] = item['blat']
-        entry['blng'] = item['blng']
+        if 'blat' in item and 'blng' in item:
+            entry['blat'] = item['blat']
+            entry['blng'] = item['blng']
+        else:
+            entry['blat'] = None
+            entry['blng'] = None
 
         col.save(entry)
 
         return item
 
-
-        # class BusStatoinItem(Item):
-        # # 车站id
-        # station_id = Field()
-        # # 城市名称
-        # city = Field()
-        # city_id = Field()
-        # # 车站名称
-        # name = Field()
-        # # 车站详情url
-        # url = Field()
-        # # 车站地址
-        #     addr = Field()
-        #     # 车站电话
-        #     tel = Field()
-        #     # 是否经过人工验证
-        #     verified = Field()
