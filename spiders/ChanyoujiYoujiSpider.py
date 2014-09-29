@@ -14,8 +14,9 @@ class ChanyoujiYoujiSpider(CrawlSpider):
 
     def start_requests(self):
         template_url = "http://chanyouji.com/trips/%d"
-        for trips_id in range(1,400000):
+        for trips_id in range(23240,400000):
             url = template_url % trips_id
+
             m={'trips_id':trips_id,'url':url}
             yield Request(url=url,callback=self.parse,meta={"data":m})
 

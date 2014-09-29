@@ -325,10 +325,10 @@ class BaiduPoiPipeline(object):
 
 class ChanyoujiYoujiPipline(object):
     def __init__(self):
-        self.db = None
+        #self.db = None
 
-    def connect(self):
-        self.db = pymongo.MongoClient().ChanyoujiYoujidb
+    #def connect(self):
+        self.db = pymongo.MongoClient('dev.lvxingpai.cn',27019).ChanyoujiYoujidb
 
 
     def process_item(self, item, spider):
