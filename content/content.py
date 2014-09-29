@@ -1,9 +1,8 @@
 __author__ = 'wdx'
-import pymongo
 import re
 import lxml.html as html
 
-
+import pymongo
 import time
 import json
 
@@ -36,7 +35,7 @@ def zhengze(part,db):
         content_v=re.split('[<>]',content)
         content_list.extend(content_v)
 
-    list_data=[]
+    list_data = []
 
 
     for i in range(len(content_list)):
@@ -51,15 +50,15 @@ def zhengze(part,db):
 
 
     #print part
-    test_part={"authorId":part["authorId"]}
-    new_part={'authorId':part['authorId'],'from':None,
-              'to':None,'timeCost':None,
-              'authorName':part['authorName'],'viewCnt':part['viewCnt'],'commentCnt':part['replyCnt'],
-              'title':part['title'],'contents':list_data,'url':part['url'],'cost':None,'startTime':None}
+    test_part = {"authorId": part["authorId"]}
+    new_part = {'authorId': part['authorId'], 'from': None,
+                'to': None, 'timeCost': None,
+                'authorName': part['authorName'], 'viewCnt': part['viewCnt'], 'commentCnt': part['replyCnt'],
+                'title': part['title'], 'contents': list_data, 'url': part['url'], 'cost': None, 'startTime': None}
     try:
-        new_part['cost']=part['cost']
+        new_part['cost'] = part['cost']
     except:
-        new_part['cost']=None
+        new_part['cost'] = None
     try:
         new_part['_from']=part['summary']['departure']
     except:
@@ -69,23 +68,24 @@ def zhengze(part,db):
         if new_part['_to']:
             if (new_part['_to'][0]==''):
                 new_part['_to']=part['summary']['places']
+
     except:
-        new_part['to']=None
+        new_part['to'] = None
 
     try:
-        new_part['startTime']=int(part['summary']['start_time'])
+        new_part['startTime'] = int(part['summary']['start_time'])
     except:
-        startTime=part['startTime']
-        part_s=re.compile(r'[^0-9]*')
-        startTime=part_s.sub('',startTime)
-        time_m=time.strptime(startTime,'%Y%m')
-        time_m=int(time.mktime(time_m))
-        new_part['startTime']=time_m
+        startTime = part['startTime']
+        part_s = re.compile(r'[^0-9]*')
+        startTime = part_s.sub('', startTime)
+        time_m = time.strptime(startTime, '%Y%m')
+        time_m = int(time.mktime(time_m))
+        new_part['startTime'] = time_m
 
     try:
-        new_part['timeCost']=part['timeCost']
+        new_part['timeCost'] = part['timeCost']
     except:
-        new_part['timeCost']=None
+        new_part['timeCost'] = None
 
     #test_part=json.loads(test_part)
     db.New_BaiduNote.insert(new_part)
@@ -98,9 +98,10 @@ def main():
     for m in range(1,17747):
         zhengze(part[m],db)
         i=i+1
+
         print i
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     main()
 

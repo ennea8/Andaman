@@ -90,6 +90,7 @@ def setup_spider(spider_name, param={}):
 
     settings.setdict({'ITEM_PIPELINES': {tmp: 100 for tmp in conf.global_conf[
         'pipelines']}})
+    settings.set('LOG_LEVEL', 'INFO')
 
     if 'proxy' in param:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})

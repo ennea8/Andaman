@@ -1,4 +1,8 @@
+# coding=utf-8
+import json
+
 import pymongo
+
 
 __author__ = 'wdx'
 # coding=utf-8
@@ -43,12 +47,18 @@ class ChanyoujiUserSpider(CrawlSpider):
             item['user_name'] = user_name[0]
         else:
             item['user_name'] = None
-        num_youji = sel.xpath('//div[contains(@class, "header-inner")]/div[1]/text()').extract()[0]
-        num = re.compile('\d{1,}')
-        m1 = num.search(num_youji)
-        if m1:
-            item['num_notes'] = int(m1.group())
-        # item['num_youji']=re.search('[0-9]*',num_youji[0]).group()
+        ret = sel.xpath('//div[contains(@class, "header-inner")]/div[1]/text()').extract()
+        if ret:
+            num_youji = ret[0]
+            num = re.compile('\d{1,}')
+            m1 = num.search(num_youji)
+            if m1:
+                item['num_notes'] = int(m1.group())
+
+        ret = sel.xpath(
+            '//div[contains(@class,"header-inner")]/a/img[contains(@class,"avatar") and @src]/@src').extract()
+        if ret:
+            item['avatar'] = ret[0]
 
         ret = sel.xpath(
             '//div[contains(@class, "sns-site")]/ul[@class="sns-ico"]/li[contains(@class,"weibo")]/a/@href').extract()
@@ -82,20 +92,81 @@ class ChanyoujiUserSpider(CrawlSpider):
             if match:
                 item['renren_uid'] = int(match.groups()[0])
 
-        traveled = sel.xpath('//ul[@id="attraction_markers_list"]/li/a/span/text()').extract()
-        if traveled:
-            item['traveled'] = traveled
+        marker = {}
+        # 查找Gmaps.map.markers对象
+        match = re.search(r'Gmaps\.map\.markers\s*=\s*(?=\[)(.+?)(?<=\])', response.body)
+        if match:
+            try:
+                marker_data = json.loads(match.groups()[0])
+                for tmp in marker_data:
+                    lat = float(tmp['lat'])
+                    lng = float(tmp['lng'])
+                    mid = tmp['id']
+                    title = tmp['title'].strip()
+                    desc = tmp['description']
 
-        yield item
+                    match = re.search(r'href\s*="([^"]+)"', desc)
+                    href = 'http://chanyouji.com' + match.groups()[0] if match else None
+                    if href:
+                        marker[mid] = {'lat': lat, 'lng': lng, 'title': title, 'url': href, 'data_id': mid}
+            except (ValueError, KeyError):
+                pass
+
+        traveled_list = []
+        for data_id in sel.xpath(
+                '//ul[@id="attraction_markers_list"]//a[contains(@class,"node") and @data-id]/@data-id').extract():
+            data_id = int(data_id)
+            if data_id not in marker:
+                continue
+            traveled_list.append(marker[data_id])
+
+        item['traveled'] = traveled_list
+
+        if not item['traveled']:
+            yield item
+        else:
+            yield Request(url=item['traveled'][0]['url'], callback=self.parse_note, meta={'item': item})
+
+    def parse_note(self, response):
+        item = response.meta['item']
+
+        match = re.search(
+            r'_G_trip_collection\s*=\s*new\s*tripshow\.TripsCollection\((?=\[)(.+?),\s*\{\s*parse\s*:\s*(true|false)',
+            response.body)
+        if not match:
+            item['traveled'] = []
+            return item
+
+        vs_map = {}
+        data = filter(lambda val: 'entry' in val and 'attraction_id' in val['entry'], json.loads(match.groups()[0]))
+        for tmp in data:
+            tmp = tmp['entry']
+            vs_map[tmp['name_zh_cn']] = tmp
+
+        traveled = item['traveled']
+        candidate = filter(lambda val: 'data_id' in val, traveled)
+        traveled = filter(lambda val: 'data_id' not in val, traveled)
+
+        next_url = None
+        for tmp in candidate:
+            title = tmp['title']
+            if title in vs_map:
+                data = vs_map[title]
+                data['lat'] = tmp['lat']
+                data['lng'] = tmp['lng']
+                traveled.append(data)
+            else:
+                traveled.append(tmp)
+                next_url = tmp['url']
+
+        item['traveled'] = traveled
+        if next_url:
+            return Request(url=next_url, callback=self.parse_note, meta={'item': item})
+        else:
+            return item
 
 
 class ChanyoujiUserPipeline(object):
-    def __init__(self):
-        self.db = None
-
-    def connect(self):
-        self.db = pymongo.MongoClient().Chanyoujidb
-
     def process_item(self, item, spider):
         if not isinstance(item, ChanyoujiUser):
             return item
@@ -104,9 +175,10 @@ class ChanyoujiUserPipeline(object):
 
         uid = item['user_id']
         data = {'userId': uid,
-                'userName': item['user_name'],
-                'numNotes': item['num_notes']}
+                'userName': item['user_name']}
 
+        if 'avatar' in item:
+            data['avatar'] = item['avatar']
         if 'weibo_url' in item:
             data['weiboUrl'] = item['weibo_url']
         if 'weibo_uid' in item:
@@ -121,11 +193,15 @@ class ChanyoujiUserPipeline(object):
             data['doubanUid'] = item['douban_uid']
         if 'traveled' in item:
             data['traveled'] = item['traveled']
+        if 'num_notes' in item:
+            data['numNotes'] = item['num_notes']
 
         ret = col.find_one({'userId': uid})
-        if ret:
-            data['_id'] = ret['_id']
-        col.save(data)
+        if not ret:
+            ret = {}
+        for k in data:
+            ret[k] = data[k]
+        col.save(ret)
 
         return item
 
