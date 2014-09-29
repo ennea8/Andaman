@@ -212,11 +212,6 @@ class BaiduPoiItem(scrapy.Item):
     scene_info = scrapy.Field()
 
 
-class BaiduNoteItem(scrapy.Item):
-    # define the fields for your item here like:
-    note = scrapy.Field()
-
-
 class YikuaiquSpotItem(scrapy.Item):
     spot_id = scrapy.Field()
     name = scrapy.Field()

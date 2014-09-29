@@ -12,14 +12,19 @@ import time
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 import pymongo
-from scrapy import Request, Selector, log
+from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
 
-from items import BaiduNoteItem, BaiduPoiItem, BaiduWeatherItem
+from items import BaiduPoiItem, BaiduWeatherItem
 import qiniu_utils
 
 
 __author__ = 'zephyre'
+
+
+class BaiduNoteItem(Item):
+    # define the fields for your item here like:
+    note = Field()
 
 
 class BaiduNoteSpider(CrawlSpider):
@@ -167,8 +172,11 @@ class BaiduNoteSpider(CrawlSpider):
 
 
 class BaiduNotePipeline(object):
+
+    spiders = [BaiduNoteSpider.name]
+
     def process_item(self, item, spider):
-        if not isinstance(item, BaiduNoteItem):
+        if type(item).__name__ != BaiduNoteItem.__name__:
             return item
 
         col = pymongo.Connection().raw_data.BaiduNote
