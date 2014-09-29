@@ -74,7 +74,7 @@ class BaiduNoteSpider(CrawlSpider):
                 if ret:
                     ret = ret[0]
                     entry['lower_cost'] = int(ret['buildrange'][0])
-                    entry['upper_cost'] = int(ret['buildrange'][0])
+                    entry['upper_cost'] = int(ret['buildrange'][1])
 
                 yield Request(url=url, callback=self.parse,
                               meta={'target': target, 'pageIdx': 0, 'urlBase': url_base, 'note': entry,
