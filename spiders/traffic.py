@@ -58,8 +58,6 @@ class BusStation(CrawlSpider):
             prov_name = node.xpath('./text()').extract()[0]
             if prov_name == u'直辖市':
                 prov_name = None
-            else:
-                continue
             url = node.xpath('./@href').extract()[0]
             yield Request(url=url, meta={'prov': prov_name}, callback=self.parse_city_list)
 
