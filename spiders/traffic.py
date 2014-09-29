@@ -135,12 +135,12 @@ class BusStation(CrawlSpider):
 
         except KeyError:
             if 'stop_flag' in response.meta:
-                return
-
-            key = self.baidu_key.values()[random.randint(0, len(self.baidu_key) - 1)]
-            yield Request('http://api.map.baidu.com/geocoder/v2/?ak=%s&output=json&address=%s&city=%s' % (
-                key, item['addr'], item['city']),
-                          callback=self.parse_addr, meta={'item': item, 'key': key, 'stop_flag': True})
+                yield item
+            else:
+                key = self.baidu_key.values()[random.randint(0, len(self.baidu_key) - 1)]
+                yield Request('http://api.map.baidu.com/geocoder/v2/?ak=%s&output=json&address=%s&city=%s' % (
+                    key, item['addr'], item['city']),
+                              callback=self.parse_addr, meta={'item': item, 'key': key, 'stop_flag': True})
 
 
 class BusStationPipeline(object):
@@ -180,7 +180,7 @@ class BusStationPipeline(object):
         # name = Field()
         # # 车站详情url
         # url = Field()
-        #     # 车站地址
+        # # 车站地址
         #     addr = Field()
         #     # 车站电话
         #     tel = Field()
