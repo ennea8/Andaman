@@ -1,10 +1,15 @@
 # coding=utf-8
-import pymongo
 from math import radians, cos, sin, asin, sqrt
+
+import pymongo
+
+import conf
+
 
 __author__ = 'zephyre'
 
-def get_mongodb(db_name, col_name, host='localhost', port=27017):
+
+def get_mongodb(db_name, col_name, host=None, port=None):
     # def get_mongodb(db_name, col_name, host='localhost', port=28017):
     """
     建立MongoDB的连接。
@@ -15,9 +20,18 @@ def get_mongodb(db_name, col_name, host='localhost', port=27017):
     :param col_name:
     :return:
     """
-    mongo_conn = pymongo.Connection(host, port)
+    section = conf.global_conf.get('mongodb', {})
+    if not host:
+        host = section.get('host', None)
+    if not port:
+        port = section.get('port', None)
+    user = section.get('user', None)
+    passwd = section.get('passwd', None)
 
+    mongo_conn = pymongo.Connection(host, port)
     db = getattr(mongo_conn, db_name)
+    if user and passwd:
+        db.authenticate(name=user, password=passwd)
     col = getattr(db, col_name)
     return col
 
