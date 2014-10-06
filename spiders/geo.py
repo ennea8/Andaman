@@ -166,6 +166,19 @@ class QyerCountryProcPipeline(object):
         return item
 
 
+class TravelGisCityItem(Item):
+    # 城市名称
+    city = Field()
+    # 纬度
+    lat = Field()
+    # 经度
+    lng = Field()
+    # 国家名称
+    country = Field()
+    # 国家代码
+    code = Field()
+
+
 class TravelGisSpider(CrawlSpider):
     name = 'travel_gis'  # name of spider
 
@@ -173,8 +186,41 @@ class TravelGisSpider(CrawlSpider):
         super(TravelGisSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.travelgis.com/world/ppla.asp?pagenumber=1', callback=self.parse)
+        lower = 1
+        upper = 94
+        if 'param' in dir(self):
+            param = getattr(self, 'param')
+            if 'lower' in param:
+                lower = int(param['lower'][0])
+            if 'upper' in param:
+                upper = int(param['upper'][0])
+
+        for page in xrange(lower, upper):
+            yield Request(url='http://www.travelgis.com/world/ppla.asp?pagenumber=%d' % page, callback=self.parse)
 
     def parse(self, response):
-        # for node in Selector(response)
-        pass
+        for node in Selector(response).xpath('//table[@width and @cellpadding]/tr[@bgcolor]'):
+            node_list = node.xpath('./td/a[@href]')
+            if len(node_list) != 4:
+                continue
+            city = node_list[0].xpath('./text()').extract()[0]
+            match = re.findall(r'(lon|lat)=([\d\.]+)', node_list[0].xpath('./@href').extract()[0])
+            if match:
+                coords = dict(match)
+                lat = float(coords['lat'])
+                lng = float(coords['lon'])
+            else:
+                lat = None
+                lng = None
+            country = node_list[2].xpath('./text()').extract()[0]
+            match = re.search(r'/(\w{2})/', node_list[2].xpath('./@href').extract()[0])
+            code = match.groups()[0] if match else None
+
+            item = TravelGisCityItem()
+            item['country'] = country
+            item['city'] = city
+            item['lat'] = lat
+            item['lng'] = lng
+            item['code'] = code
+
+            yield item
