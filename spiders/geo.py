@@ -1,4 +1,5 @@
 # coding=utf-8
+import json
 import re
 
 import pymongo
@@ -168,9 +169,12 @@ class QyerCountryProcPipeline(object):
         return item
 
 
-class TravelGisCityItem(Item):
+class CityItem(Item):
+    # 城市ID
+    city_id = Field()
     # 城市名称
-    city = Field()
+    en_name = Field()
+    zh_name = Field()
     # 纬度
     lat = Field()
     # 经度
@@ -178,7 +182,82 @@ class TravelGisCityItem(Item):
     # 国家名称
     country = Field()
     # 国家代码
-    code = Field()
+    country_code = Field()
+    # 别名
+    alias = Field()
+    # 人口
+    population = Field()
+
+
+class GeoNamesSpider(CrawlSpider):
+    name = 'geonames'
+
+    def __init__(self, *a, **kw):
+        super(GeoNamesSpider, self).__init__(*a, **kw)
+
+    @staticmethod
+    def xfrange(start, stop, step):
+        while start < stop:
+            yield start
+            start += step
+
+    def start_requests(self):
+        south = -90
+        north = 90
+        west = -180
+        east = 180
+        delta = 5
+        max_row = 30
+
+        if 'param' in dir(self):
+            param = getattr(self, 'param')
+            if 'south' in param:
+                south = float(param['south'][0])
+            if 'north' in param:
+                north = float(param['north'][0])
+            if 'west' in param:
+                west = float(param['west'][0])
+            if 'east' in param:
+                east = float(param['east'][0])
+            if 'delta' in param:
+                delta = float(param['delta'][0])
+            if 'mr' in param:
+                max_row = int(param['mr'][0])
+
+        for lat in self.xfrange(south, north, delta):
+            for lng in self.xfrange(west, east, delta):
+                url = 'http://api.geonames.org/citiesJSON?north=%f&south=%f&east=%f&west=%f&lang=zh&username=zephyre&maxRows=%d' % (
+                    lat+delta, lat, lng+delta, lng, max_row
+                )
+                yield Request(url=url, callback=self.parse)
+
+    def parse(self, response):
+        data = json.loads(response.body)
+        if 'geonames' not in data:
+            return
+
+        for entry in data['geonames']:
+            country_code = entry['countrycode']
+            if country_code.lower() in ['cn', 'mo', 'hk', 'tw']:
+                continue
+
+            en_name = entry['toponymName']
+            zh_name = entry['name']
+            lat = entry['lat']
+            lng = entry['lng']
+            city_id = entry['geonameId']
+            population = entry['population']
+
+            item = CityItem()
+            item['en_name'] = en_name
+            item['zh_name'] = zh_name
+            item['lat'] = lat
+            item['lng'] = lng
+            item['country_code'] = country_code
+            item['population'] = population
+            item['city_id'] = city_id
+
+            yield item
 
 
 class TravelGisSpider(CrawlSpider):
@@ -219,7 +298,7 @@ class TravelGisSpider(CrawlSpider):
                 match = re.search(r'/(\w{2})/', node_list[2].xpath('./@href').extract()[0])
                 code = match.groups()[0].lower() if match else None
 
-                item = TravelGisCityItem()
+                item = CityItem()
                 item['country'] = country
                 item['city'] = city
                 item['lat'] = lat
@@ -239,7 +318,7 @@ class TravelGisPipeline(object):
     spiders = [TravelGisSpider.name]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != TravelGisCityItem.__name__:
+        if type(item).__name__ != CityItem.__name__:
             return item
 
         col = utils.get_mongodb('raw_data', 'TravelGisCity', 'localhost', 27027)
@@ -253,6 +332,36 @@ class TravelGisPipeline(object):
         ret['countryCode'] = item['code']
         ret['lat'] = item['lat']
         ret['lng'] = item['lng']
+
+        col.save(ret)
+
+        return item
+
+
+class GeoNamesPipeline(object):
+    """
+    从GeoNames获得的原始城市数据
+    """
+
+    spiders = [GeoNamesSpider.name]
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != CityItem.__name__:
+            return item
+
+        col = utils.get_mongodb('raw_data', 'GeoNamesCity', 'localhost', 27027)
+
+        ret = col.find_one({'_id': item['city_id']})
+        if not ret:
+            ret = {}
+
+        ret['enName'] = item['en_name']
+        ret['zhName'] = item['zh_name']
+        ret['countryCode'] = item['country_code']
+        ret['lat'] = item['lat']
+        ret['lng'] = item['lng']
+        ret['population']=item['population']
+        ret['_id'] = item['city_id']
 
         col.save(ret)
 
