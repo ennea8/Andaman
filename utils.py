@@ -11,7 +11,6 @@ __author__ = 'zephyre'
 
 
 def get_mongodb(db_name, col_name, host=None, port=None):
-    # def get_mongodb(db_name, col_name, host='localhost', port=28017):
     """
     建立MongoDB的连接。
 
