@@ -5,6 +5,8 @@ import pymongo
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
 
+import utils
+
 
 __author__ = 'zephyre'
 
@@ -200,27 +202,58 @@ class TravelGisSpider(CrawlSpider):
 
     def parse(self, response):
         for node in Selector(response).xpath('//table[@width and @cellpadding]/tr[@bgcolor]'):
-            node_list = node.xpath('./td/a[@href]')
-            if len(node_list) != 4:
+            try:
+                node_list = node.xpath('./td/a[@href]')
+                if len(node_list) != 4:
+                    continue
+                city = node_list[0].xpath('./text()').extract()[0]
+                match = re.findall(r'(lon|lat)=(-?[\d\.]+)', node_list[0].xpath('./@href').extract()[0])
+                if match:
+                    coords = dict(match)
+                    lat = float(coords['lat'])
+                    lng = float(coords['lon'])
+                else:
+                    lat = None
+                    lng = None
+                country = node_list[2].xpath('./text()').extract()[0]
+                match = re.search(r'/(\w{2})/', node_list[2].xpath('./@href').extract()[0])
+                code = match.groups()[0].lower() if match else None
+
+                item = TravelGisCityItem()
+                item['country'] = country
+                item['city'] = city
+                item['lat'] = lat
+                item['lng'] = lng
+                item['code'] = code
+
+                yield item
+            except IndexError:
                 continue
-            city = node_list[0].xpath('./text()').extract()[0]
-            match = re.findall(r'(lon|lat)=([\d\.]+)', node_list[0].xpath('./@href').extract()[0])
-            if match:
-                coords = dict(match)
-                lat = float(coords['lat'])
-                lng = float(coords['lon'])
-            else:
-                lat = None
-                lng = None
-            country = node_list[2].xpath('./text()').extract()[0]
-            match = re.search(r'/(\w{2})/', node_list[2].xpath('./@href').extract()[0])
-            code = match.groups()[0] if match else None
 
-            item = TravelGisCityItem()
-            item['country'] = country
-            item['city'] = city
-            item['lat'] = lat
-            item['lng'] = lng
-            item['code'] = code
 
-            yield item
+class TravelGisPipeline(object):
+    """
+    从TravelGis获得的原始城市数据
+    """
+
+    spiders = [TravelGisSpider.name]
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != TravelGisCityItem.__name__:
+            return item
+
+        col = utils.get_mongodb('raw_data', 'TravelGisCity', 'localhost', 27027)
+
+        ret = col.find_one({'name': item['city']})
+        if not ret:
+            ret = {}
+
+        ret['name'] = item['city']
+        ret['country'] = item['country']
+        ret['countryCode'] = item['code']
+        ret['lat'] = item['lat']
+        ret['lng'] = item['lng']
+
+        col.save(ret)
+
+        return item
