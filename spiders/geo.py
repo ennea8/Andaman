@@ -244,7 +244,7 @@ class TravelGisPipeline(object):
 
         col = utils.get_mongodb('raw_data', 'TravelGisCity', 'localhost', 27027)
 
-        ret = col.find_one({'name': item['city']})
+        ret = col.find_one({'name': item['city'], 'countryCode': item['code']})
         if not ret:
             ret = {}
 
