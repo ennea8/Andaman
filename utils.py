@@ -10,7 +10,7 @@ import conf
 __author__ = 'zephyre'
 
 
-def get_mongodb(db_name, col_name, host=None, port=None):
+def get_mongodb(db_name, col_name, profile=None, host='localhost', port=27017, user=None, passwd=None):
     """
     建立MongoDB的连接。
 
@@ -20,13 +20,12 @@ def get_mongodb(db_name, col_name, host=None, port=None):
     :param col_name:
     :return:
     """
-    section = conf.global_conf.get('mongodb', {})
-    if not host:
-        host = section.get('host', None)
-    if not port:
-        port = section.get('port', None)
-    user = section.get('user', None)
-    passwd = section.get('passwd', None)
+    if profile:
+        section = conf.global_conf.get(profile, None)
+        host = section.get('host', 'localhost')
+        port = int(section.get('port', '27017'))
+        user = section.get('user', None)
+        passwd = section.get('passwd', None)
 
     mongo_conn = pymongo.Connection(host, port)
     db = getattr(mongo_conn, db_name)

@@ -4,11 +4,14 @@ import re
 import sys
 import datetime
 
+from bson import ObjectId
 import scrapy
 from scrapy import signals
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
+
+import utils
 
 
 __author__ = 'zephyre'
