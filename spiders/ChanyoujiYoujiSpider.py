@@ -38,11 +38,14 @@ class ChanyoujiYoujiSpider(CrawlSpider):
                     data = json.loads(data)
                     item['data'] = data
 
-                except ValueError:
-                    return
+                except:
+                    item['data']=None
 
         items.append(item)
         return items
+
+
+
 
 
 
