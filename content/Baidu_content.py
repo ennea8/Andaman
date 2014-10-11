@@ -1,22 +1,25 @@
 # -*- coding: UTF-8 -*-
 __author__ = 'wdx'
 import re
+import time
 import lxml.html as html
 
 import pymongo
 import time
+import datetime
 import json
 
 
 def connect_db():
-    client=pymongo.MongoClient('localhost',27017)
+    client=pymongo.MongoClient('localhost',27027)
+    client1=pymongo.MongoClient('localhost',27017)
     db=client.raw_data
+    db.authenticate('crawler','the4&flattop')
     collection=db.BaiduNote
     list=collection.find()
 
-    db1=client.clean_data
-    #x=list[1820]['contents']
-    #print x[0]
+    db1=client1.plan
+
     return list,db1
 
 content_v=[]
@@ -53,43 +56,84 @@ def zhengze(part,db):
 
     #print part
     #test_part = {"authorId": part["authorId"]}
-    new_part = {'authorId': part['uid'], '_from': None,'_to': None,'places':None,'lowerCost':None,'timeCost': None,
-                 'praised':part['is_praised'],'good':part['is_good'],'guide':int(part['is_set_guide']),
-                'authorName': part['uname'], 'viewCnt': int(part['view_count']), 'commentCnt': part['common_posts_count'],
-                'title': part['title'], 'contents': list_data, 'url': part['url'], 'startTime': None,'month':None
+    new_part = {
+                'id':part['_id'],
+                'title': part['title'],
+                'authorName': part['uname'],
+                'authorAvatar':None,
+                'publishDate':None,
+                'favorCnt':part['recommend_count'],
+                'commentCnt': part['common_posts_count'],
+                'viewCnt': int(part['view_count']),
+                'costLower':None,
+                'costUpper':None,
+                'costNorm':None,                            #旅行开支
+                'days':None,
+                'fromLoc': None,
+                'toLoc': None,
+                'summary':None,
+                'contents': list_data,
+                'startDate':None,
+                'endDate':None,
+                'source':'baidu',
+                'sourceUrl': part['url'],
+                'elite':False
                 }
+    if 'avatar_small' in part:
+        if  part['avatar_small']:
+            avatar_small='himg.bdimg.com/sys/portrait/item/%s.jpg' % part['avatar_small']
+            new_part['authorAvatar']=avatar_small
 
 
+    if 'create_time' in part:
+        x = time.localtime(int(part['create_time']))
+        publishDate=time.strftime('%Y-%m-%d',x)
+        publishDate_v=re.split('[-]',publishDate)
+        new_part['publishDate']=datetime.datetime(int(publishDate_v[0]),int(publishDate_v[1]),int(publishDate_v[2]))
 
-    if 'departure' in part:                   #出发地
-        new_part['_from']=part['departure']
-
-    if 'destinations' in part:                #目的地
-        new_part['_to']=part['destinations']
-
-    if 'places' in part:                      #路线
-        new_part['places']=part['places']
 
     if 'lower_cost' in part:                 #最低价格
-        new_part['lowerCost'] = part['lower_cost']
-        if new_part['lowerCost'] == 0:
-            new_part['lowerCost']=None
+        new_part['costLower'] = part['lower_cost']
+        if new_part['costLower'] == 0:
+            new_part['costLower']=None
+
+    if 'upper_cost' in part:
+        new_part['costUpper'] = part['upper_cost']
+        if new_part['costUpper'] == 0:
+            new_part['costUpper']=None
 
     if 'days' in part:                        #花费时间
-        new_part['timeCost']=int(part['days'])
-        if new_part['timeCost']==0:
-            new_part['timeCost']=None
+        new_part['days']=int(part['days'])
+        if new_part['days']==0:
+            new_part['days']=None
 
-    if 'start_time' in part:      #出发时间
-        new_part['startTime'] = int(part['start_time'])
+    if 'departure' in part:                   #出发地
+        new_part['fromLoc']=part['departure']  #_from string
 
-    if 'month' in part:           #旅行月份
-        new_part['month']=int(part['month'])
+    if 'destinations' in part:                #目的地
+        new_part['toLoc']=part['destinations'] #_to string
+
+    if 'content' in part:
+        new_part['summary']=part['content']
+
+    if 'start_time' in part:
+        x = time.localtime(int(part['start_time']))
+        startDate=time.strftime('%Y-%m-%d',x)
+        startDate_v=re.split('[-]',startDate)
+        new_part['startDate']=datetime.datetime(int(startDate_v[0]),int(startDate_v[1]),int(startDate_v[2]))
+
+    elite = part['is_good'] + part['is_praised'] + int(part['is_set_guide'])
+    if elite>0:
+        new_part['elite']=True
+    else:
+        new_part['elite']=False
+
+
 
 
 
     #test_part=json.loads(test_part)
-    db.New_BaiduNote.insert(new_part)
+    db.travelNote.save(new_part)
     return
 
 
