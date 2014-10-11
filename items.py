@@ -123,10 +123,6 @@ class JsonItem(scrapy.Item):
     data = scrapy.Field()
 
 
-class BaiduPoiItem(JsonItem):
-    pass
-
-
 class QunarPoiItem(JsonItem):
     pass
 
@@ -168,6 +164,7 @@ class TravelNotesItem(scrapy.Item):
 class ChanyoujiUser(scrapy.Item):
     user_id = scrapy.Field()
     user_name = scrapy.Field()
+    gender = scrapy.Field()
     num_notes = scrapy.Field()
     weibo_url = scrapy.Field()
     weibo_uid = scrapy.Field()
@@ -196,7 +193,7 @@ class MafengwoYoujiItem(scrapy.Item):
     reply = scrapy.Field()  # 回复
 
 
-class WeatherItem(scrapy.Item):
+class BaiduWeatherItem(scrapy.Item):
     data = scrapy.Field()
     loc = scrapy.Field()
 
@@ -211,7 +208,7 @@ class BreadTripItem(scrapy.Item):
     user_img = scrapy.Field()
 
 
-class BaiduTripItem(scrapy.Item):
+class BaiduPoiItem(scrapy.Item):
     scene_info = scrapy.Field()
 
 
@@ -227,3 +224,19 @@ class YikuaiquSpotItem(scrapy.Item):
     image_list = scrapy.Field()
     test = scrapy.Field()
     url = scrapy.Field()
+
+
+class QyerAlienpoiItem(scrapy.Item):
+    country_info = scrapy.Field()
+    poi_url = scrapy.Field()
+    poi_id = scrapy.Field()
+    poi_cover = scrapy.Field()
+    poi_name = scrapy.Field()
+    poi_score = scrapy.Field()
+    poi_englishName = scrapy.Field()
+    poi_summary = scrapy.Field()
+    poi_detail = scrapy.Field()
+    poi_photo = scrapy.Field()
+    poi_been = scrapy.Field()
+    poi_lat = scrapy.Field()
+    poi_lng = scrapy.Field()
