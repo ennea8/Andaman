@@ -10,26 +10,6 @@ from scrapy import log
 __author__ = 'zephyre'
 
 
-class TestMiddleware(object):
-    def process_request(self, request, spider):
-        request.meta['test'] = 1
-        return None
-
-    def process_response(self, request, response, spider):
-        # response.meta['test2'] = 1
-        return response
-
-
-class TestMiddleware2(object):
-    def process_request(self, request, spider):
-        request.meta['testa'] = 1
-        return None
-
-    def process_response(self, request, response, spider):
-        # response.meta['testa2'] = 1
-        return response
-
-
 class ProxySwitchMiddleware(object):
     def __init__(self):
         data = None

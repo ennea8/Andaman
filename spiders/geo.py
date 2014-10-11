@@ -128,7 +128,7 @@ class QyerCountryProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        for entry in pymongo.Connection().raw_data.QyerCountry.find({}):
+        for entry in utils.get_mongodb('raw_data', 'QyerCountry', profile='mongodb-crawler'):
             item = QyerCountryItem()
             item['country_id'] = entry['countryId']
             item['country_zh'] = entry['zhName']
