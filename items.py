@@ -179,6 +179,7 @@ class ChanyoujiUser(scrapy.Item):
 class ChanyoujiYoujiItem(scrapy.Item):
     trips_id = scrapy.Field()
     data = scrapy.Field()
+    title = scrapy.Field()
 
 
 class MafengwoYoujiItem(scrapy.Item):

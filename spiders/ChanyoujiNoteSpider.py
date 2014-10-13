@@ -4,6 +4,7 @@ __author__ = 'wdx'
 
 import json
 import re
+import utils
 
 from scrapy import Request
 from scrapy.contrib.spiders import CrawlSpider
@@ -35,6 +36,11 @@ class ChanyoujiYoujiSpider(CrawlSpider):
         item = ChanyoujiYoujiItem()
         item['trips_id'] = response.meta['data']['trips_id']
 
+        match_title = re.search(r'_G_trip_name="[\s\S][^"]*',response.body)
+        if not match_title:
+            return
+        item['title'] = match_title.group()[14:]
+
         match = re.search(
             r'_G_trip_collection\s*=\s*new\s*tripshow\.TripsCollection\((?=\[)(.+?),\s*\{\s*parse\s*:\s*(true|false)',
             response.body)
@@ -53,8 +59,8 @@ class ChanyoujiYoujiPipline(object):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item
 
-        col = pymongo.Connection().raw_data.ChanyoujiNote
-        note = {'noteId': item['trips_id'], 'note': item['data']}
+        col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
+        note = {'noteId': item['trips_id'], 'note': item['data'],'title':item['title']}
         ret = col.find_one({'noteId': note['noteId']})
         if not ret:
             ret = {}
