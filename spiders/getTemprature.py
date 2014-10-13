@@ -1,4 +1,6 @@
 # encoding=utf-8
+import utils
+
 __author__ = 'lxf'
 
 import re
@@ -22,7 +24,8 @@ class citytempItem(Item):
 # ---------------------------连接mongo----------------------------------------------
 class DBMongo:
     countrylist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])  # bug,等待数据库的更新,国家代码列表
-    citylist = get_mongodb('geo', 'Country').find()  # bug,如何设计结构;城市列表,将州和城市做相同的处理,city format:[{'bejing':(100,200)},{..}]
+    citylist = get_mongodb('geo', 'Country').find()  # bug,如何设计结构;城市列表,将州和城市做相同的处理,
+    # city format:[{'bejing':(100,200),..},{..}]
 
 
 # ----------------------------------define spider------------------------------------
@@ -35,10 +38,17 @@ class tempratureSpider(CrawlSpider):
     # ---------------------------draw the url-----------------------------------------
     def start_requests(self):  # send request
         #bug how to use the name of city and country
+        for tmp1 in utils.get_mongodb('geo','Country').find({}, {'code':1}):
+            country_code = tmp1['code']
+            for city in utils.get_mongodb('geo','Locality').find({'country.id': country_code}, {'coord': 1, 'zhName': 1}):
+                pass
+
+
+
         for country in self.countrylist:
             for i in len(self.citylist):
                 url = 'http://search.yahoo.com/sugg/gossip/gossip-gl-location/?appid=weather' \
-                      '&output=xml&lc=en-US&command=%s%2C%s' % self.citylist[i].keys()[0] % country
+                      '&output=xml&lc=en-US&command=%s,%s' % self.citylist[i].keys()[0] % country
                 data = {'country': country, 'city': self.citylist[i]}
                 yield Request(url=url, callback=self.parse_url, meta={'data': data})
 

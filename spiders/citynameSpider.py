@@ -1,7 +1,6 @@
 # encoding=utf-8
 __author__ = 'lxf'
 
-
 import re
 from os import *
 import pymongo
@@ -18,8 +17,8 @@ class city_name_item(Item):
 
 # ---------------------------连接mongo-----------------------------------------------
 class DBMongo:
-    countrylist = ['America']
-    #countrylist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
+    # countrylist = ['America']
+    countrylist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
 
 
 # ----------------------------------define spider------------------------------------
@@ -57,24 +56,28 @@ class citynameSpider(CrawlSpider):
     # ------------------------draw the city url-------------------------------------
     def parse_city(self, response):
         item = response.meta['data']['item']
-        sel = Selector(self)
+        sel = Selector(response)
         city = sel.xpath('//div[@id="page1"]/ul/li/a/span/text()').extract()  # city list
         if city:
             item['city'] = city
         return item
 
-    # -----------------------pipeline--------------------------------------------------
+        # -----------------------pipeline--------------------------------------------------
+
 
 class city_name_itemPipeline(object):
+
+    #向pipline注册
+    spiders = [citynameSpider.name]
     def process_item(self, item, spider):
         data = {}
         if 'country' in item:
             data['country'] = item['country']
         if 'state' in item:
-            data['state'] = item['city']
+            data['state'] = item['state']
         if 'city' in item:
-            data['city'] = item['spot']
-        col = pymongo.MongoClient().raw_data.cityname
+            data['city'] = item['city']
+        col = get_mongodb('raw_data', 'cityname', profile='mongo-crawler')
         col.save(data)
         return item
 

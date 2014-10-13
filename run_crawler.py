@@ -181,8 +181,8 @@ def main():
         if 'verbose' in param:
             logfile = None
         else:
-            logfile = './logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
-
+            #logfile = './logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
+             logfile = '/home/lxf/crawler/travelpicrawler/logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
             # logfile = os.path.normpath(
             # os.path.join(storage['HOME_PATH'], storage['STORAGE_PATH'], u'products/log',
             # unicode.format(u'monitor_{0}_{1}.log',
