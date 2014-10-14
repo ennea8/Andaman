@@ -5,7 +5,6 @@ __author__ = 'lxf'
 
 import re
 # from os import *
-import pymongo
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
 from utils import get_mongodb
@@ -16,7 +15,7 @@ import math
 class citytempratureItem(Item):
     country_code = Field()  # 国家
     city = Field()  # 城市
-    moeid = Field()  # 地区的moeid which represent area
+    woeid = Field()  # 地区的moeid which represent area
     currrent_temprature = Field()  # 当前时刻的温度
     future_temprature = Field()  # 未来温度预测
 
@@ -35,7 +34,7 @@ class tempratureSpider(CrawlSpider):
                                                              {'coords': 1, 'zhName': 1}):
                 cityname = temp2['zhName']
                 coords = temp2['coords']
-                url = 'http://search.yahoo.com/sugg/gossip/gossip-gl-location/?appid=weather&output=xml&lc=en-US&command=%s,%s' % cityname % country_code
+                url = 'http://search.yahoo.com/sugg/gossip/gossip-gl-location/?appid=weather&output=xml&lc=en-US&command=%s,%s' % (cityname, country_code)
                 data = {'country_code': country_code, 'city': cityname, 'coords': coords}
                 yield Request(url=url, callback=self.parse_url, meta={'data': data})
 
@@ -45,7 +44,7 @@ class tempratureSpider(CrawlSpider):
         xml_city = sel.xpath('//m/s/@k').extract()  # parse xml to get the city
         xml_info = sel.xpath('//m//s/@d').extract()  # parse xml to get the lat and lng
         data1 = response.meta['data']
-        cityname = data1['city']
+        cityname = data1['city'].lower()  # 转换小写
         coords = data1['coords']
         city_lat = coords['lat']
         city_lng = coords['lng']
@@ -53,13 +52,13 @@ class tempratureSpider(CrawlSpider):
         i = 0
         # get the woeid
         if xml_city:
-            for i in len(xml_city):
-                if cityname == xml_city[i]:
+            for i in range(0, len(xml_city)):
+                if cityname == xml_city[i].lower():
                     location = dict(
                         [(tmp[0], float(tmp[1])) for tmp in re.findall(r'(lat|lon)=([-?\d\.]+)', xml_info[i])])
                     lat = location['lat']
                     lon = location['lon']
-                    distance = math.sqrt((lat - city_lat) ** 2 + (long - city_lng) ** 2)
+                    distance = math.sqrt((lat - city_lat) ** 2 + (lon - city_lng) ** 2)
                     if distance < min:
                         min = distance
                     else:
@@ -67,8 +66,10 @@ class tempratureSpider(CrawlSpider):
                 else:
                     continue
             woeid = re.search(r'\d{1,}', xml_info[i]).group()
-            url = 'http://weather.yahooapis.com/forecastrss?w=%d&u=c' % woeid
-            data = {'data1': data1, 'moeid': woeid}
+            #url = 'http://weather.yahooapis.com/forecastrss?w=%d&u=c' % woeid
+            url = 'http://weather.yahooapis.com/forecastrss?w=44418&u=c'
+            #data = {'data1': data1, 'woeid': woeid}
+            data={'data':'123','woeid':'44418'}
             yield Request(url=url, callback=self.parse, meta={'data': data})
         else:
             return
