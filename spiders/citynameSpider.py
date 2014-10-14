@@ -17,9 +17,9 @@ class city_name_item(Item):
 
 # ---------------------------连接mongo-----------------------------------------------
 class DBMongo:
-    # countrylist = ['America']
-    countrylist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
 
+     #countrylist = ['America']
+     countrylist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
 
 # ----------------------------------define spider------------------------------------
 class citynameSpider(CrawlSpider):
@@ -30,11 +30,9 @@ class citynameSpider(CrawlSpider):
     # ---------------------------draw the url-----------------------------------------
     def start_requests(self):  # send request
         first_url = 'https://weather.yahoo.com/'
-        item = city_name_item()
         for countryname in self.country_list:
             temp_url = first_url + countryname
-            item['country'] = countryname
-            data = {'item': item, 'url': temp_url}
+            data = {'url': temp_url, 'countryname': countryname}
             yield Request(url=temp_url, callback=self.parse_state_url, meta={'data': data})
 
     # ------------------------draw the state url-------------------------------------
@@ -42,22 +40,25 @@ class citynameSpider(CrawlSpider):
         sel = Selector(response)
         state_list = sel.xpath('//div[@id="page1"]/ul/li/a/span/text()').extract()  # state list
         url_state_list = sel.xpath('//div[@id="page1"]/ul/li/a/@href').extract()  # url for state_list
-        item = response.meta['data']['item']
         country_url = response.meta['data']['url']
-        data = {'item': item}
+        countryname = response.meta['data']['countryname']                      #the country to be used next
         if state_list:
-            item['state'] = state_list
-            for tmp_url in url_state_list:
-                url = country_url + tmp_url
+            #item['state'] = state_list
+            for i in len(state_list):
+                url = country_url + url_state_list[i]
+                data = {'countryname': countryname, 'state': state_list[i]}
                 yield Request(url=url, callback=self.parse_city, meta={'data': data})
         else:
             return
 
     # ------------------------draw the city url-------------------------------------
     def parse_city(self, response):
-        item = response.meta['data']['item']
         sel = Selector(response)
         city = sel.xpath('//div[@id="page1"]/ul/li/a/span/text()').extract()  # city list
+        data = response.meta['data']
+        item = city_name_item()
+        item['country'] = data['countryname']
+        item['state'] = data['state']
         if city:
             item['city'] = city
         return item
@@ -66,9 +67,9 @@ class citynameSpider(CrawlSpider):
 
 
 class city_name_itemPipeline(object):
-
-    #向pipline注册
+    # 向pipline注册
     spiders = [citynameSpider.name]
+
     def process_item(self, item, spider):
         data = {}
         if 'country' in item:
@@ -77,7 +78,7 @@ class city_name_itemPipeline(object):
             data['state'] = item['state']
         if 'city' in item:
             data['city'] = item['city']
-        col = get_mongodb('raw_data', 'cityname', profile='mongo-crawler')
+        col = get_mongodb('raw_data', 'CityName', profile='mongo-crawler')
         col.save(data)
         return item
 
