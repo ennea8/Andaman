@@ -6,7 +6,7 @@ import json
 import re
 import utils
 
-from scrapy import Request
+from scrapy import Request , Selector
 from scrapy.contrib.spiders import CrawlSpider
 
 from items import ChanyoujiYoujiItem
@@ -33,6 +33,7 @@ class ChanyoujiYoujiSpider(CrawlSpider):
             yield Request(url=url, callback=self.parse, meta={"data": m})
 
     def parse(self, response):
+        sel = Selector(response)
         item = ChanyoujiYoujiItem()
         item['trips_id'] = response.meta['data']['trips_id']
 
@@ -40,6 +41,22 @@ class ChanyoujiYoujiSpider(CrawlSpider):
         if not match_title:
             return
         item['title'] = match_title.group()[14:]
+
+        authorName = sel.xpath('//div[@class="trip-info"]//a/text()').extract()
+        if authorName:
+            item['authorName'] = authorName[0]
+
+        favorCnt = sel.xpath('//div[@class="counter"]/span[@class="favorites-num"]/span/text()').extract()
+        if favorCnt:
+            item['favorCnt'] = favorCnt[0]
+
+        commentCnt = sel.xpath('//div[@class="counter"]/span[@class="comments-num"]/span/text()').extract()
+        if commentCnt:
+            item['commentCnt'] = commentCnt[0]
+
+        viewCnt = sel.xpath('//div[@class="counter"]/span[@class="viewer-num"]/span/text()').extract()
+        if viewCnt:
+            item['viewCnt'] = viewCnt[0]
 
         match = re.search(
             r'_G_trip_collection\s*=\s*new\s*tripshow\.TripsCollection\((?=\[)(.+?),\s*\{\s*parse\s*:\s*(true|false)',
@@ -55,12 +72,21 @@ class ChanyoujiYoujiSpider(CrawlSpider):
 
 
 class ChanyoujiYoujiPipline(object):
+
+    spiders = [ChanyoujiYoujiSpider.name]
+
     def process_item(self, item, spider):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item
 
         col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
-        note = {'noteId': item['trips_id'], 'note': item['data'],'title':item['title']}
+        note = {'noteId': item['trips_id'] ,
+                'title':item['title'] ,
+                'authorName':item['authorName'],
+                'favorCnt':item['favorCnt'],
+                'commentCnt':item['commentCnt'],
+                'viewCnt':item['viewCnt'],
+                'note': item['data']}
         ret = col.find_one({'noteId': note['noteId']})
         if not ret:
             ret = {}
