@@ -30,8 +30,9 @@ class tempratureSpider(CrawlSpider):
 
         for tmp1 in get_mongodb('geo', 'Country').find({}, {'code': 1}):
             country_code = tmp1['code']
-            #country_code='cn'
-            for temp2 in get_mongodb('geo', 'Locality').find({'countryId': country_code.upper()},{'coords': 1, 'zhName': 1}):
+            # country_code='cn'
+            for temp2 in get_mongodb('geo', 'Locality').find({'countryId': country_code.upper()},
+                                                             {'coords': 1, 'zhName': 1}):
                 cityname = temp2['zhName']
                 coords = temp2['coords']
                 url = 'http://search.yahoo.com/sugg/gossip/gossip-gl-location/?appid=weather&output=xml&lc=en-US&command=%s,%s' % cityname % country_code
@@ -50,7 +51,7 @@ class tempratureSpider(CrawlSpider):
         city_lng = coords['lng']
         min = 1000000000
         i = 0
-        #get the woeid
+        # get the woeid
         if xml_city:
             for i in len(xml_city):
                 if cityname == xml_city[i]:
