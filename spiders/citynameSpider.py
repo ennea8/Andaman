@@ -44,10 +44,10 @@ class citynameSpider(CrawlSpider):
         countryname = response.meta['data']['countryname']                      #the country to be used next
         if state_list:
             #item['state'] = state_list
-            for i in len(state_list):
-                url = country_url + url_state_list[i]
+            for i in range(0,len(state_list)):
+                state_url = country_url + url_state_list[i]
                 data = {'countryname': countryname, 'state': state_list[i]}
-                yield Request(url=url, callback=self.parse_city, meta={'data': data})
+                yield Request(url=state_url, callback=self.parse_city, meta={'data': data})
         else:
             return
 
