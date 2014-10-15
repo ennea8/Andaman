@@ -1,54 +1,45 @@
 # encoding=utf-8
+import json
+
 __author__ = 'lxf'
 
 import re
-from os import *
-import pymongo
-from scrapy import Request, Selector, Item, Field
+
+from scrapy import Request, Selector, Item, Field, log
 from scrapy.contrib.spiders import CrawlSpider
+
 from utils import get_mongodb
 
+
 # -----------------------------------define field------------------------
-class city_item(Item):
+class YahooCityItem(Item):
     country = Field()  # 国家信息
     state = Field()  # 州/省份
     city = Field()  # 城市
-    level = Field()  #
-    misc = Field()
-    abroad = Field()
-    alias = Field()
     coords = Field()
-    zhName = Field()
-    pinyin = Field()
-    images = Field()
-    shortName = Field()
-    imageList = Field()
-    enName = Field()
     woeid = Field()
 
 
-# ---------------------------连接mongo-----------------------------------------------
-class DBMongo:
-    countrycodelist = ['usa']
-    # countrycodelist = set([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
-
-
 # ----------------------------------define spider------------------------------------
-class citynameSpider(CrawlSpider):
+class YahooCitySpider(CrawlSpider):
     name = 'citynamespider'  # define the spider name
-
-    country_code_list = DBMongo.countrycodelist  # 获取国家代码
 
     # ---------------------------draw the url-----------------------------------------
     def start_requests(self):  # send request
+        country_list = []
+        if 'param' in dir(self):
+            param = getattr(self, 'param', [])
+            if 'country' in param:
+                country_list = param['country']
+
+        if not country_list:
+            country_list = list([tmp['code'] for tmp in get_mongodb('geo', 'Country').find({}, {'code': 1})])
+
         first_url = 'https://weather.yahoo.com/'
-        for countrycode in self.country_code_list:
-            if countrycode is not r'CN' and r'cn':
-                abroad = 'true'
-            else:
-                abroad = 'false'
-            temp_url = first_url + countrycode
-            data = {'countrycode': countrycode, 'abroad': abroad}
+        for country_code in country_list:
+            abroad = (country_code.lower() == 'cn')
+            temp_url = first_url + country_code
+            data = {'countrycode': country_code, 'abroad': abroad}
             yield Request(url=temp_url, callback=self.parse_state_url, meta={'data': data})
 
     # ------------------------draw the state url-------------------------------------
@@ -56,11 +47,14 @@ class citynameSpider(CrawlSpider):
         sel = Selector(response)
         tempcountryname = sel.xpath(
             '//div[@id="MediaWeatherRegion"]/div[@class="hd"]/div[@class="yom-bread"]/text()').extract()
-        match = re.search(r'\w{1,}\s*\w{1,}', tempcountryname[0])
+        match = re.search(r'[\w\s]+$', tempcountryname[0])
         if match:
-            countryname = match.group()
+            countryname = match.group().strip()
         else:
-            countryname = None
+            self.log('afklsjdflkasjdfklajfd', log.WARNING)
+            return
+
+
         state_list = sel.xpath('//div[@id="page1"]/ul/li/a/span/text()').extract()  # state list
         url_state_list = sel.xpath('//div[@id="page1"]/ul/li/a/@href').extract()  # url for state_list
         data_1 = response.meta['data']
@@ -93,21 +87,30 @@ class citynameSpider(CrawlSpider):
         city_url = response.meta['data']['city_url']
         match = re.search(r'\d{1,}', city_url)
         if match:
-            woeid = match.group()
+            woeid = int(match.group())
         else:
             woeid = None
-        location = re.findall(r'("lat"|"lon"):(")([\d\.]+)(")', response.body)  # bug
-        coords = location
+
+        match = re.search(r'Y\.Media\.Location\.SearchAssist\((.+?)\)', response.body)
+        if match:
+            loc_data = json.loads(match.groups()[0])
+            coords = {'lat': float(loc_data['lat']), 'lng': float(loc_data['lon'])}
+        else:
+            coords = None
+
+        # location = re.findall(r'("lat"|"lon"):(")([\d\.]+)(")', response.body)  # bug
+        # coords = location
         data_3 = response.meta['data']
         country = {'countrycode': data_3['data_2']['data_1']['countrycode'],
                    'countryname': data_3['data_2']['countryname']}
-        item = city_item()
+        item = YahooCityItem()
         item['country'] = country
         item['state'] = data_3['data_2']['state']
         item['city'] = data_3['cityname']
         item['abroad'] = data_3['data_2']['data_1']['abroad']
         item['alias'] = []
-        item['coords'] = []
+        if coords:
+            item['coords'] = coords
         item['woeid'] = woeid
         item['zhName'] = []
         item['images'] = []
@@ -122,9 +125,9 @@ class citynameSpider(CrawlSpider):
         # -----------------------pipeline--------------------------------------------------
 
 
-class city_name_itemPipeline(object):
+class YahooCityPipeline(object):
     # 向pipline注册
-    spiders = [citynameSpider.name]
+    spiders = [YahooCitySpider.name]
 
     def process_item(self, item, spider):
         data = {}
