@@ -14,8 +14,9 @@ import math
 # ----------------------------define field------------------------------------
 class citytempratureItem(Item):
     country_code = Field()  # 国家
-    city = Field()  # 城市
-    woeid = Field()  # 地区的moeid which represent area
+    city = Field()         # 城市
+    woeid = Field()     # 地区的woeid which represent area
+    current_time=Field()
     currrent_temprature = Field()  # 当前时刻的温度
     future_temprature = Field()  # 未来温度预测
 
@@ -30,8 +31,7 @@ class tempratureSpider(CrawlSpider):
         for tmp1 in get_mongodb('geo', 'Country').find({}, {'code': 1}):
             country_code = tmp1['code']
             # country_code='cn'
-            for temp2 in get_mongodb('geo', 'Locality').find({'countryId': country_code.upper()},
-                                                             {'coords': 1, 'zhName': 1}):
+            for temp2 in get_mongodb('geo', 'Locality').find({'country.countrycode': country_code.upper()},{'coords': 1, 'zhName': 1}):
                 cityname = temp2['zhName']
                 coords = temp2['coords']
                 url = 'http://search.yahoo.com/sugg/gossip/gossip-gl-location/?appid=weather&output=xml&lc=en-US&command=%s,%s' % (cityname, country_code)
@@ -78,8 +78,8 @@ class tempratureSpider(CrawlSpider):
     # ------------------------draw the third url-------------------------------------
     def parse(self, response):
         sel = Selector(response)
-        xml_current_temprature = sel.xpath('//item/yweather:condition/@*').extract()  # maybe a bug
-        xml_future_temprature = sel.xpath('//item/yweather:forecast/@*').extract()
+        xml_current_temprature = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
+        xml_future_temprature = sel.xpath('//item/*[name()="yweather:forecast"]/@*').extract()
         data = response.meta['data']
         item = citytempratureItem()
         item['country_code'] = data['data1']['country_code']
@@ -102,8 +102,8 @@ class city_name_itemPipeline(object):
             data['country_code'] = item['country_code']
         if 'city' in item:
             data['city'] = item['city']
-        if 'moeid' in item:
-            data['moeid'] = item['moeid']
+        if 'woeid' in item:
+            data['woeid'] = item['woeid']
         if 'current_temprature' in item:
             data['current_temprature'] = item['current_temprature']
         if 'future_temprature' in item:
