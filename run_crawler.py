@@ -4,14 +4,11 @@ import re
 import sys
 import datetime
 
-from bson import ObjectId
 import scrapy
 from scrapy import signals
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
-
-import utils
 
 
 __author__ = 'zephyre'
@@ -181,14 +178,7 @@ def main():
         if 'verbose' in param:
             logfile = None
         else:
-            #logfile = './logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
-             logfile = '/home/lxf/crawler/travelpicrawler/logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
-            # logfile = os.path.normpath(
-            # os.path.join(storage['HOME_PATH'], storage['STORAGE_PATH'], u'products/log',
-            # unicode.format(u'monitor_{0}_{1}.log',
-            # '_'.join(param['brand']),
-            # datetime.datetime.now().strftime(
-            # '%Y%m%d'))))
+            logfile = './logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent
