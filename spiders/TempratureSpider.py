@@ -22,11 +22,11 @@ class CityTempratureItem(Item):
 # ----------------------------------define spider------------------------------------
 class CityTempratureSpider(CrawlSpider):
     name = 'citytempraturespider'  # define the spider name
-    col = get_mongodb('raw_data', 'CityInfo', profile='mongo-crawler')  # get the collection of cityinfo
 
     # ---------------------------draw the info-----------------------------------------
 
     def start_requests(self):  # send request
+        col = get_mongodb('raw_data', 'CityInfo', profile='mongodb-crawler')  # get the collection of cityinfo
         for temp in self.col.find({}, {'city': 1, 'woeid': 1}):
             city = temp['city']
             woeid = temp['woeid']
