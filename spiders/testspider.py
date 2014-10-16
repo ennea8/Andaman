@@ -16,9 +16,7 @@ class tempratureSpider(CrawlSpider):
 
     def parse(self, response):
         sel = Selector(response)
-        #xml_current_temprature = sel.xpath('//item/yweather:condition/@*').extract()  # maybe a bug
-        #xml_future_temprature = sel.xpath('//itemyweather:forecast/@*').extract()
-        location_info = re.search(r'[\d\.\d{3,}]+', response.body).group()
-        #re.findall(r'(lat|lon)\s*,\s*parseFloat[^\d]+([\d\.]+)', response.body)
-        a=location_info
+        xml_current_temprature = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
+        xml_future_temprature = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()
+        a=xml_current_temprature
         return

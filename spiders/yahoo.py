@@ -18,7 +18,7 @@ class YahooCityItem(Item):
     city = Field()  # 城市
     coords = Field()
     woeid = Field()
-
+    abroad=Field()
 
 # ----------------------------------define spider------------------------------------
 class YahooCitySpider(CrawlSpider):
@@ -51,7 +51,7 @@ class YahooCitySpider(CrawlSpider):
         if match:
             countryname = match.group().strip()
         else:
-            self.log('afklsjdflkasjdfklajfd', log.WARNING)
+            self.log('没有国家名', log.WARNING)
             return
 
 
@@ -97,9 +97,6 @@ class YahooCitySpider(CrawlSpider):
             coords = {'lat': float(loc_data['lat']), 'lng': float(loc_data['lon'])}
         else:
             coords = None
-
-        # location = re.findall(r'("lat"|"lon"):(")([\d\.]+)(")', response.body)  # bug
-        # coords = location
         data_3 = response.meta['data']
         country = {'countrycode': data_3['data_2']['data_1']['countrycode'],
                    'countryname': data_3['data_2']['countryname']}
@@ -108,19 +105,9 @@ class YahooCitySpider(CrawlSpider):
         item['state'] = data_3['data_2']['state']
         item['city'] = data_3['cityname']
         item['abroad'] = data_3['data_2']['data_1']['abroad']
-        item['alias'] = []
         if coords:
             item['coords'] = coords
         item['woeid'] = woeid
-        item['zhName'] = []
-        item['images'] = []
-        item['shortName'] = []
-        item['imageList'] = []
-        item['misc'] = []
-        item['enName'] = data_3['cityname']
-        item['pinyin'] = []
-        item['level'] = []
-
         return item
         # -----------------------pipeline--------------------------------------------------
 
@@ -139,28 +126,10 @@ class YahooCityPipeline(object):
             data['city'] = item['city']
         if 'abroad' in item:
             data['abroad'] = item['abroad']
-        if 'alias' in item:
-            data['alias'] = item['alias']
         if 'coords' in item:
             data['coords'] = item['coords']
         if 'woeid' in item:
             data['woeid'] = item['woeid']
-        if 'zhName' in item:
-            data['zhName'] = item['zhName']
-        if 'images' in item:
-            data['images'] = item['images']
-        if 'imageList' in item:
-            data['imageList'] = item['imageList']
-        if 'misc' in item:
-            data['misc'] = item['misc']
-        if 'enName' in item:
-            data['enName'] = item['enName']
-        if 'pinyin' in item:
-            data['pinyin'] = item['pinyin']
-        if 'level' in item:
-            data['level'] = item['level']
-        if 'shortName' in item:
-            data['shortName'] = item['shortName']
         col = get_mongodb('raw_data', 'CityInfo', profile='mongo-crawler')
         col.save(data)
         return item
