@@ -9,14 +9,14 @@ class citytempratureItem(Item):
     temprature=Field()
 
 class tempratureSpider(CrawlSpider):
-    name = 'tempraturespider1'  # define the spider name
+    name = 'spider1'  # define the spider name
     def start_requests(self):  # send request
-        url = 'https://weather.yahoo.com/united-states/new-york/accord-2351708/'
+        url = 'http://weather.yahooapis.com/forecastrss?w=2368507&u=c'
         yield Request(url=url, callback=self.parse)
 
     def parse(self, response):
         sel = Selector(response)
         xml_current_temprature = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
-        xml_future_temprature = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()
+        xml_future_temprature = sel.xpath('//item/*[name()="yweather:forecast"]/@*').extract()
         a=xml_current_temprature
         return

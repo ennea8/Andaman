@@ -37,8 +37,8 @@ class YahooCitySpider(CrawlSpider):
 
         first_url = 'https://weather.yahoo.com/'
         for country_code in country_list:
-            abroad = (country_code.lower() == 'cn')
-            temp_url = first_url + country_code
+            abroad = not (country_code.lower() == 'cn')
+            temp_url = first_url + country_code[u'al', u'ie', u'ee', u'ad', u'az', u'by', u'bg', u'is', u'ba', u'pl', u'dk', u'fo', u'fi', u'gl', u'ge', u'me', u'hr', u'xk', u'lv', u'li', u'lt', u'ro', u'lu', u'mt', u'mk', u'md', u'mc', u'no', u'pt', u'se', u'rs', u'af', u'ae', u'om', u'pk', u'ps', u'bh', u'bt', u'kp', u'tl', u'kz', u'kg', u'qa', u'kw', u'la', u'lb', u'mv', u'mn', u'bd', u'mm', u'sa', u'lk', u'tj', u'tm', u'bn', u'uz', u'sy', u'ye', u'iq', u'ir', u'in', u'io', u'il', u'jo', u'cy', u'sm', u'sk', u'si', u'ua', u'hu', u'am', u'gi', u'ao', u'sh', u'so', u'bj', u'sd', u'bw', u'bf', u'bi', u'gq', u'cv', u'tg', u'er', u'gm', u'cg', u'cd', u'ga', u'dj', u'gn', u'gw', u'cm', u'km', u'ci', u'ls', u'lr', u'ly', u're', u'rw', u'mw', u'ml', u'mr', u'yt', u'mz', u'ss', u'ne', u'sl', u'sn', u'st', u'sz', u'ug', u'eh', u'td', u'cf', u'ai', u'ag', u'bb', u'bm', u'bz', u'aw', u'bq', u'do', u'dm', u'mf', u'gd', u'gp', u'ht', u'sx', u'hn', u'ky', u'cw', u'mq', u'ms', u'ni', u'sv', u'bl', u'kn', u'lc', u'pm', u'vc', u'tc', u'tt', u'vg', u'py', u'ec', u'gf', u'fk', u'co', u'gy', u'sr', u've', u'uy', u'cl', u'pg', u'ki', u'ck', u'mh', u'as', u'fm', u'nr', u'nu', u'pn', u'ws', u'sb', u'to', u'tk', u'tv', u'wf', u'vu', u'nc', u'ph', u'kr', u'kh', u'my', u'np', u'jp', u'th', u'sg', u'id', u'vn', u'cn', u'at', u'be', u'de', u'ru', u'fr', u'va', u'nl', u'cz', u'ch', u'tr', u'es', u'gr', u'it', u'uk', u'dz', u'eg', u'et', u'gh', u'zw', u'ke', u'mg', u'mu', u'ma', u'na', u'za', u'ng', u'sc', u'tz', u'tn', u'zm', u'bs', u'pa', u'pr', u'cr', u'cu', u'ca', u'us', u'vi', u'mx', u'gt', u'jm', u'ar', u'br', u'bo', u'pe', u'au', u'mp', u'pf', u'fj', u'gu', u'pw', u'nz']
             data = {'countrycode': country_code, 'abroad': abroad}
             yield Request(url=temp_url, callback=self.parse_state_url, meta={'data': data})
 
@@ -130,6 +130,6 @@ class YahooCityPipeline(object):
             data['coords'] = item['coords']
         if 'woeid' in item:
             data['woeid'] = item['woeid']
-        col = get_mongodb('raw_data', 'CityInfo', profile='mongo-crawler')
+        col = get_mongodb('raw_data', 'ChinaCityInfo', profile='mongo-crawler')
         col.save(data)
         return item
