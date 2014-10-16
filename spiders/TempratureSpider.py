@@ -30,8 +30,9 @@ class CityTempratureSpider(CrawlSpider):
         for temp in self.col.find({}, {'city': 1, 'woeid': 1}):
             city = temp['city']
             woeid = temp['woeid']
+            _id=temp['_id']
             url = 'http://weather.yahooapis.com/forecastrss?w=%d&u=c' % woeid
-            data = {'city': city, 'woeid': woeid}
+            data = {'_id':_id,'city': city, 'woeid': woeid}
             yield Request(url=url, callback=self.parse, meta={'data': data})
 
     # ------------------------draw temprature-------------------------------------
@@ -42,8 +43,7 @@ class CityTempratureSpider(CrawlSpider):
         current = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
         forecast = sel.xpath('//item/*[name()="yweather:forecast"]/@*').extract()
         data = response.meta['data']
-        item['loc'] = {'enname': data['city'],
-                      }
+        item['loc'] = {'enname': data['city'],'_id':data['_id']}
         item['source'] = {'woeid': data['woeid']}
 
         if current:
@@ -83,7 +83,7 @@ class CityTempratureSpider(CrawlSpider):
                 }
             ]
         else:
-            forecast = None
+            forecast_temp = None
         item['forecast'] = forecast_temp
         return item
 
