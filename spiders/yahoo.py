@@ -1,6 +1,9 @@
 # encoding=utf-8
 import json
 
+import utils
+
+
 __author__ = 'lxf'
 
 import re
@@ -22,6 +25,12 @@ class YahooCityItem(Item):
 
     # 1: provinces and states; 2: cities; 3: counties
     level = Field()
+
+    en_country = Field()
+    zh_country = Field()
+    alias = Field()
+    zh_name = Field()
+    en_name = Field()
 
 
 # ----------------------------------define spider------------------------------------
@@ -147,5 +156,166 @@ class YahooCityPipeline(object):
                 data[k] = item[k]
 
         col.save(data)
+
+        return item
+
+
+class YahooCityProcSpider(CrawlSpider):
+    """
+    处理Yahoo的城市数据
+    """
+
+    name = 'yahoo_city_proc'
+
+    country_map = {}
+    missed_countries = set([])
+
+    def __init__(self, *a, **kw):
+        super(YahooCityProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        param = getattr(self, 'param', {})
+        countries = param['country'] if 'country' in param else []
+        level = int(param['level'][0]) if 'level' in param else None
+        yield Request(url='http://www.baidu.com', meta={'countries': countries, 'level': level}, callback=self.parse)
+
+    def parse(self, response):
+        col = utils.get_mongodb('raw_data', 'YahooCityInfo', profile='mongodb-crawler')
+        countries = response.meta['countries']
+        level = response.meta['level']
+        query = {'$or': [{'country': tmp} for tmp in countries]} if countries else {}
+        if level:
+            query['level'] = level
+
+        for entry in list(col.find(query, {'_id': 1})):
+            city = col.find_one({'_id': entry['_id']})
+
+            item = YahooCityItem()
+            for k in ['country', 'state', 'city', 'coords', 'woeid', 'abroad', 'level']:
+                if k in city:
+                    item[k] = city[k]
+
+            country_code = city['country']
+            if country_code not in self.country_map:
+                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                country_info = col_country.find_one({'code': country_code})
+                if not country_info:
+                    self.log('Unable to find country: %s' % country_code, log.WARNING)
+                    continue
+                self.country_map[country_code] = country_info
+
+            country_info = self.country_map[country_code]
+
+            item['country'] = country_info
+            item['en_country'] = country_info['enName']
+            item['zh_country'] = country_info['zhName']
+            if 'city' in city:
+                item['en_name'] = city['city']
+                item['zh_name'] = city['city']
+            else:
+                item['en_name'] = city['state']
+                item['zh_name'] = city['state']
+
+            item['alias'] = list({item['en_name'].lower()})
+
+            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
+                item['en_name'], item['en_country']), callback=self.parse_geocode,
+                          meta={'item': item, 'lang': 'zh'}, headers={'Accept-Language': 'zh-CN'}, dont_filter=True)
+
+    def parse_geocode(self, response):
+        item = response.meta['item']
+        lang = response.meta['lang']
+        try:
+            data = json.loads(response.body)['results'][0]
+            addr = data['address_components'][0]
+            short_name = addr['short_name']
+            long_name = addr['long_name']
+            s = set(item['alias'])
+            s.add(short_name.lower())
+            s.add(long_name.lower())
+            k = 'zh_name' if lang == 'zh' else 'en_name'
+            s.add(item[k].lower())
+            item[k] = long_name
+            item['alias'] = list(s)
+
+            if 'coords' not in item or not item['coords']:
+                item['coords'] = data['geometry']['location']
+
+        except (KeyError, IndexError):
+            self.log('ERROR GEOCODEING: %s' % response.url, log.WARNING)
+
+        if lang == 'zh':
+            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
+                item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'en'},
+                          headers={'Accept-Language': 'en-US'}, dont_filter=True)
+        else:
+            yield item
+
+
+class YahooCityProcPipeline(object):
+    """
+    处理Yahoo的城市数据
+    """
+
+    spiders = [YahooCityProcSpider.name]
+
+    country_map = {}
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != YahooCityItem.__name__:
+            return item
+
+        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        data = {}
+
+        level = item['level']
+
+        data['zhName'] = item['zh_name']
+        data['enName'] = item['en_name']
+        abroad = item['abroad']
+        data['abroad'] = abroad
+        data['shortName'] = item['en_name' if abroad else 'zh_name']
+        data['alias'] = list(set(item['alias']))
+        data['pinyin'] = []
+
+        country_info = item['country']
+        data['country'] = {'id': country_info['_id'], 'zhName': country_info['zhName'],
+                           'enName': country_info['enName']}
+
+        data['level'] = level
+        data['images'] = []
+        if 'coords' in item:
+            data['coords'] = item['coords']
+
+        data['source'] = {'name': 'yahoo'}
+        if 'woeid' in item:
+            data['source']['id'] = item['woeid']
+
+        if level > 1:
+            # cities
+            prov = col_loc.find_one({'country.id': country_info['_id'], 'alias': item['state'].lower(), level: 1})
+            if prov:
+                data['superAdm'] = {'id': prov['_id'], 'zhName': prov['zhName'], 'enName': prov['enName']}
+            else:
+                spider.log('Cannot find province: %s, %s' % (item['state'], item['en_country']))
+
+        if 'woeid' in item:
+            entry = col_loc.find_one({'source.name': 'yahoo', 'source.id': item['woeid']})
+        else:
+            entry = col_loc.find_one({'country.id': country_info['_id'], 'alias': data['enName'].lower()})
+
+        if not entry:
+            entry = {}
+
+        key_set = set(data.keys()) - {'alias'}
+        for k in key_set:
+            entry[k] = data[k]
+
+        if 'alias' not in entry:
+            entry['alias'] = []
+
+        entry['alias'] = list(set(entry['alias']).union(data['alias']))
+
+        col_loc.save(entry)
 
         return item
