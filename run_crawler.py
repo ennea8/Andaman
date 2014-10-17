@@ -1,11 +1,13 @@
 # coding=utf-8
 from Queue import Queue
+import os
 import re
 import sys
 import datetime
 
 import scrapy
 from scrapy import signals
+from scrapy.contrib.spiders import CrawlSpider
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
@@ -111,9 +113,7 @@ def reg_spiders(spider_dir=None):
     """
     将spiders路径下的爬虫类进行注册
     """
-    import os
     import imp
-    from scrapy.contrib.spiders import CrawlSpider
     import conf
 
     if not spider_dir:
@@ -185,5 +185,10 @@ def main():
 
 
 if __name__ == "__main__":
+    old_dir = os.getcwd()
+    os.chdir(os.path.normpath(os.path.split(__file__)[0]))
+
     reg_spiders()
     main()
+
+    os.chdir(old_dir)
