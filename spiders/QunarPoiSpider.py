@@ -28,9 +28,6 @@ class QunarPoiImagePipeline(object):
         col = pymongo.Connection().Poi.ViewSpot
         vs = col.find_one({'_id': item['vs_id']})
 
-
-
-
         if not self.db:
             self.connect()
 

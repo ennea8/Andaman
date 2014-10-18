@@ -2,9 +2,10 @@
 import json
 import random
 import urllib2
-import time
 
 from scrapy import log
+
+import time
 
 
 __author__ = 'zephyre'
@@ -29,8 +30,16 @@ class ProxySwitchMiddleware(object):
 
         # 加载代理列表
         proxy_list = {}
+
+
+
+        #with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
+        #    for line in f:
+        #        proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
+
         for line in data:
             proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
+
         self.proxy_list = proxy_list
 
     def pick_proxy(self):
@@ -56,7 +65,7 @@ class ProxySwitchMiddleware(object):
         # proxy = request.meta['proxy']
         # if proxy in self.proxy_list:
         # d = self.proxy_list[proxy]
-        #             d['fail'] += 1
+        # d['fail'] += 1
         #             # 代理是否存活？
         #             if float(d['fail']) / float(d['req']) > 0.7:
         #                 d['enabled'] = False

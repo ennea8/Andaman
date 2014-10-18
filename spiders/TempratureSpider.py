@@ -8,6 +8,7 @@ from scrapy.contrib.spiders import CrawlSpider
 from utils import get_mongodb
 # import datetime, time
 
+
 # ----------------------------define field------------------------------------
 class CityTempratureItem(Item):
     loc = Field()  # location

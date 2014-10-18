@@ -7,7 +7,6 @@ import copy
 import hashlib
 import urllib2
 import socket
-import time
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
@@ -15,7 +14,12 @@ import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
 
-from items import BaiduPoiItem, BaiduWeatherItem
+import time
+import conf
+import utils
+import datetime
+import pysolr
+from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem
 import qiniu_utils
 
 
@@ -124,8 +128,8 @@ class BaiduNoteSpider(CrawlSpider):
             #
             # if 'comments' not in note:
             # note['comments'] = []
-            #     comments = note['comments']
-            #     author = note['authorName']
+            # comments = note['comments']
+            # author = note['authorName']
             #
             #     sel = Selector(response)
             #
@@ -172,7 +176,6 @@ class BaiduNoteSpider(CrawlSpider):
 
 
 class BaiduNotePipeline(object):
-
     spiders = [BaiduNoteSpider.name]
 
     def process_item(self, item, spider):
@@ -518,4 +521,180 @@ class BaiduWeatherPipeline(object):
             weather_entry['_id'] = ret['_id']
 
         col.save(weather_entry)
+        return item
+
+
+class BaiduNoteProcSpider(CrawlSpider):
+    """
+    对百度游记数据进行清洗
+    """
+    name = 'baidu_note_proc'  # name of spider
+
+    def __init__(self, *a, **kw):
+        super(BaiduNoteProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse)
+
+    def parse(self, response):
+        item = BaiduNoteProcItem()
+        col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
+        part = col.find()
+        for entry in part:
+            content_list = []
+            content_m = entry['contents']
+            # part_u=part.decode('gb2312')
+            if not content_m:
+                continue
+            for i in range(len(content_m)):
+                content = content_m[i].replace('<p', '<img><p')
+                # content=content.replace('%','i')
+                content = content.replace('<div', '<img><div')
+                zz = re.compile(
+                    ur"<(?!img)[\s\S][^>]*>")  #|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
+                content = zz.sub('', content)
+                content_v = re.split('[<>]', content)
+                content_list.extend(content_v)
+
+            list_data = []
+
+            for i in range(len(content_list)):
+                part_c = re.compile(r'http[\s\S][^"]*.jpg')
+                part1 = part_c.search(content_list[i].strip())
+                if part1:
+                    list_data.append(part1.group())
+                elif (content_list[i].strip() == '') | (content_list[i].strip() == 'img'):
+                    pass
+                else:
+                    list_data.append(content_list[i].strip())
+
+            items = []
+
+            item['id'] = entry['_id']
+            item['title'] = entry['title']
+            item['authorName'] = entry['uname']
+            item['favorCnt'] = entry['recommend_count']
+            item['commentCnt'] = entry['common_posts_count']
+            item['viewCnt'] = int(entry['view_count'])
+            item['costNorm'] = None
+            item['contents'] = list_data
+            item['source'] = 'baidu'
+            item['sourceUrl'] = entry['url']
+            item['endDate'] = None
+
+            '''
+            item = {
+                'id': entry['_id'],
+                'title': entry['title'],
+                'authorName': entry['uname'],
+                'authorAvatar': None,
+                'publishDate': None,
+                'favorCnt': entry['recommend_count'],
+                'commentCnt': entry['common_posts_count'],
+                'viewCnt': int(entry['view_count']),
+                'costLower': None,
+                'costUpper': None,
+                'costNorm': None,  #旅行开支
+                'days': None,
+                'fromLoc': None,
+                'toLoc': None,
+                'summary': None,
+                'contents': list_data,
+                'startDate': None,
+                'endDate': None,
+                'source': 'baidu',
+                'sourceUrl': entry['url'],
+                'elite': False
+            }
+            '''
+            if 'avatar_small' in entry:
+                if entry['avatar_small']:
+                    avatar_small = 'himg.bdimg.com/sys/portrait/item/%s.jpg' % entry['avatar_small']
+                    item['authorAvatar'] = avatar_small
+
+            if 'create_time' in entry:
+                x = time.localtime(int(entry['create_time']))
+                publishDate = time.strftime('%Y-%m-%d', x)
+                publishDate_v = re.split('[-]', publishDate)
+                item['publishDate'] = datetime.datetime(int(publishDate_v[0]), int(publishDate_v[1]),
+                                                        int(publishDate_v[2]))
+
+            if 'lower_cost' in entry:  # 最低价格
+                item['costLower'] = entry['lower_cost']
+                if item['costLower'] == 0:
+                    item['costLower'] = None
+
+            if 'upper_cost' in entry:
+                item['costUpper'] = entry['upper_cost']
+                if item['costUpper'] == 0:
+                    item['costUpper'] = None
+
+            if 'days' in entry:  # 花费时间
+                item['days'] = int(entry['days'])
+                if item['days'] == 0:
+                    item['days'] = None
+
+            if 'departure' in entry:  # 出发地
+                item['fromLoc'] = entry['departure']  #_from string
+
+            if 'destinations' in entry:  # 目的地
+                item['toLoc'] = entry['destinations']  #_to string
+
+            if 'content' in entry:
+                item['summary'] = entry['content']
+
+            if 'start_time' in entry:
+                x = time.localtime(int(entry['start_time']))
+                startDate = time.strftime('%Y-%m-%d', x)
+                startDate_v = re.split('[-]', startDate)
+                item['startDate'] = datetime.datetime(int(startDate_v[0]), int(startDate_v[1]), int(startDate_v[2]))
+
+            elite = entry['is_good'] + entry['is_praised'] + int(entry['is_set_guide'])
+            if elite > 0:
+                item['elite'] = True
+            else:
+                item['elite'] = False
+
+            items.append(item)
+            yield item
+
+
+class BaiduNoteProcPipeline(object):
+    """
+    上传到solr
+    """
+
+    spiders = [BaiduNoteProcSpider.name]
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != BaiduNoteProcItem.__name__:
+            return item
+
+        solr_conf = getattr(conf.global_conf, 'solr', {})
+        solr_s = pysolr.Solr('http://%s:%d/solr' % (solr_conf['host'], solr_conf['port']))
+        doc = [{'id': str(item['id']),
+                'title': item['title'],
+                'authorName': item['authorName'],
+                'authorAvatar': item['authorAvatar'],
+                'publishDate': item['publishDate'],
+                'favorCnt': item['favorCnt'],
+                'commentCnt': item['commentCnt'],
+                'viewCnt': item['viewCnt'],
+                'costLower': item['costLower'],
+                'costUpper': item['costUpper'],
+                'costNorm': item['costNorm'],
+                'days': item['days'],
+                'fromLoc': item['fromLoc'],
+                'toLoc': item['toLoc'],
+                'summary': item['summary'],
+                'contents': item['contents'],
+                'startDate': item['startDate'],
+                'endDate': item['endDate'],
+                'source': item['source'],
+                'sourceUrl': item['sourceUrl'],
+                'elite': item['elite']
+               }]
+
+        solr_s.add(doc)
+
         return item
