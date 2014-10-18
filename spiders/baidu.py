@@ -668,7 +668,7 @@ class BaiduNoteProcPipeline(object):
         if type(item).__name__ != BaiduNoteProcItem.__name__:
             return item
 
-        solr_s = pysolr.Solr('http://localhost:8983/solr')
+        solr_s = pysolr.Solr('http://api.lvxingpai.cn:8983/solr')
         doc=[{'id':str(item['id']),
         'title': item['title'],
         'authorName': item['authorName'],
