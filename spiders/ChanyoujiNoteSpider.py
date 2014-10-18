@@ -101,7 +101,7 @@ class ChanyoujiYoujiPipline(object):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item
 
-        col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
+        col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         note = {'noteId': item['trips_id'],
                 'title': item['title'],
                 'authorName': item['authorName'],
@@ -133,7 +133,7 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
 
     def parse(self, response):
         item = ChanyoujiNoteProcItem()
-        col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
+        col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         part = col.find()
         date_num = []
         day_num = []
