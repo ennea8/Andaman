@@ -183,6 +183,13 @@ def main():
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent
+    else:
+        if 'verbose' in param:
+            logfile = None
+        else:
+            logfile = './logs/error.log'
+        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
+        scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
 
 if __name__ == "__main__":
