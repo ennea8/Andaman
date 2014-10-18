@@ -1,14 +1,15 @@
 # encoding=utf-8
-import utils
 
 __author__ = 'lxf'
 
-import re
 # from os import *
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
+
 from utils import get_mongodb
-import math
+
+
+
 
 
 # ----------------------------define field------------------------------------
@@ -27,12 +28,12 @@ class CityTempratureSpider(CrawlSpider):
 
     def start_requests(self):  # send request
         col = get_mongodb('raw_data', 'CityInfo', profile='mongodb-crawler')  # get the collection of cityinfo
-        for temp in self.col.find({}, {'city': 1, 'woeid': 1}):
+        for temp in col.find({}, {'city': 1, 'woeid': 1}):
             city = temp['city']
             woeid = temp['woeid']
-            _id=temp['_id']
+            city_id = temp['_id']
             url = 'http://weather.yahooapis.com/forecastrss?w=%d&u=c' % woeid
-            data = {'_id':_id,'city': city, 'woeid': woeid}
+            data = {'city_id': city_id, 'city': city, 'woeid': woeid}
             yield Request(url=url, callback=self.parse, meta={'data': data})
 
     # ------------------------draw temprature-------------------------------------
@@ -43,8 +44,8 @@ class CityTempratureSpider(CrawlSpider):
         current = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
         forecast = sel.xpath('//item/*[name()="yweather:forecast"]/@*').extract()
         data = response.meta['data']
-        item['loc'] = {'enname': data['city'],'_id':data['_id']}
-        item['source'] = {'woeid': data['woeid']}
+        item['loc'] = {'enname': data['city'], 'city_id': data['city_id']}
+        item['source'] = {'name': 'yahoo', 'id': data['woeid']}
 
         if current:
             current_temp = {
@@ -85,7 +86,7 @@ class CityTempratureSpider(CrawlSpider):
         else:
             forecast_temp = None
         item['forecast'] = forecast_temp
-        return item
+        yield item
 
 
         # -----------------------pipeline--------------------------------------------------
