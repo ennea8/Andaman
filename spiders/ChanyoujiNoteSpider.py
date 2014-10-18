@@ -1,14 +1,12 @@
 # -*- coding: UTF-8 -*-
-import pymongo
+import conf
 
 __author__ = 'wdx'
 
 import json
 import re
 import utils
-import time
 import pysolr
-import datetime
 
 from scrapy import Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
@@ -198,7 +196,8 @@ class ChanyoujiNoteProcPipeline(object):
         if type(item).__name__ != ChanyoujiNoteProcItem.__name__:
             return item
 
-        solr_s = pysolr.Solr('http://localhost:8983/solr')
+        solr_conf = getattr(conf.global_conf, 'solr', {})
+        solr_s = pysolr.Solr('http://%s:%d/solr' % (solr_conf['host'], solr_conf['port']))
         doc = [{'id': str(item['id']),
                 'title': item['title'],
                 'authorName': item['authorName'],
