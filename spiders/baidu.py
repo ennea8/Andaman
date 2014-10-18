@@ -670,8 +670,8 @@ class BaiduNoteProcPipeline(object):
         if type(item).__name__ != BaiduNoteProcItem.__name__:
             return item
 
-        solr_conf = getattr(conf.global_conf, 'solr', {})
-        solr_s = pysolr.Solr('http://%s:%d/solr' % (solr_conf['host'], solr_conf['port']))
+        solr_conf = conf.global_conf['solr']
+        solr_s = pysolr.Solr('http://%s:%s/solr' % (solr_conf['host'], solr_conf['port']))
         doc = [{'id': str(item['id']),
                 'title': item['title'],
                 'authorName': item['authorName'],
