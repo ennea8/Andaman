@@ -187,6 +187,7 @@ class ChanyoujiYoujiItem(scrapy.Item):
     viewCnt = scrapy.Field()
     authorAvatar = scrapy.Field()
 
+
 class ChanyoujiNoteProcItem(scrapy.Item):
     id = scrapy.Field()
     title = scrapy.Field()
@@ -270,6 +271,7 @@ class QyerAlienpoiItem(scrapy.Item):
     poi_been = scrapy.Field()
     poi_lat = scrapy.Field()
     poi_lng = scrapy.Field()
+
 
 class BaiduNoteProcItem(scrapy.Item):
     id = scrapy.Field()

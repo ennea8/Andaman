@@ -1,8 +1,6 @@
 # coding=utf-8
-import sys
 
 import scrapy
-from spiders.MafengwoSpider import MafengwoYoujiSpider
 
 from scrapy import signals
 from scrapy.crawler import Crawler
@@ -10,8 +8,6 @@ from scrapy.settings import Settings
 from twisted.internet import reactor
 
 # from spiders.weather_spider import WeatherSpider
-from spiders.notes.baidu_notes import BaiduNoteSpider
-from spiders.MafengwoSpider import MafengwoYoujiSpider
 from spiders.ChanyoujiYoujiSpider import ChanyoujiYoujiSpider
 
 __author__ = 'zephyre'
@@ -66,7 +62,7 @@ def setup_spider():
 
 
 def main():
-    #if len(sys.argv) == 3:
+    # if len(sys.argv) == 3:
     #    start = int(sys.argv[1])
     #    count = int(sys.argv[2])
     #else:

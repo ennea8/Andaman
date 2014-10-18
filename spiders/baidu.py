@@ -7,10 +7,6 @@ import copy
 import hashlib
 import urllib2
 import socket
-import time
-import utils
-import datetime
-import pysolr
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
@@ -18,9 +14,13 @@ import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
 
+import time
+import conf
+import utils
+import datetime
+import pysolr
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem
 import qiniu_utils
-
 
 
 __author__ = 'zephyre'
@@ -128,8 +128,8 @@ class BaiduNoteSpider(CrawlSpider):
             #
             # if 'comments' not in note:
             # note['comments'] = []
-            #     comments = note['comments']
-            #     author = note['authorName']
+            # comments = note['comments']
+            # author = note['authorName']
             #
             #     sel = Selector(response)
             #
@@ -176,7 +176,6 @@ class BaiduNoteSpider(CrawlSpider):
 
 
 class BaiduNotePipeline(object):
-
     spiders = [BaiduNoteSpider.name]
 
     def process_item(self, item, spider):
@@ -524,6 +523,7 @@ class BaiduWeatherPipeline(object):
         col.save(weather_entry)
         return item
 
+
 class BaiduNoteProcSpider(CrawlSpider):
     """
     对百度游记数据进行清洗
@@ -537,20 +537,21 @@ class BaiduNoteProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        item=BaiduNoteProcItem()
+        item = BaiduNoteProcItem()
         col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
         part = col.find()
         for entry in part:
             content_list = []
             content_m = entry['contents']
-            #part_u=part.decode('gb2312')
+            # part_u=part.decode('gb2312')
             if not content_m:
                 continue
             for i in range(len(content_m)):
                 content = content_m[i].replace('<p', '<img><p')
-                #content=content.replace('%','i')
+                # content=content.replace('%','i')
                 content = content.replace('<div', '<img><div')
-                zz = re.compile(ur"<(?!img)[\s\S][^>]*>")  #|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
+                zz = re.compile(
+                    ur"<(?!img)[\s\S][^>]*>")  #|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
                 content = zz.sub('', content)
                 content_v = re.split('[<>]', content)
                 content_list.extend(content_v)
@@ -567,7 +568,7 @@ class BaiduNoteProcSpider(CrawlSpider):
                 else:
                     list_data.append(content_list[i].strip())
 
-            items=[]
+            items = []
 
             item['id'] = entry['_id']
             item['title'] = entry['title']
@@ -615,9 +616,10 @@ class BaiduNoteProcSpider(CrawlSpider):
                 x = time.localtime(int(entry['create_time']))
                 publishDate = time.strftime('%Y-%m-%d', x)
                 publishDate_v = re.split('[-]', publishDate)
-                item['publishDate'] = datetime.datetime(int(publishDate_v[0]), int(publishDate_v[1]), int(publishDate_v[2]))
+                item['publishDate'] = datetime.datetime(int(publishDate_v[0]), int(publishDate_v[1]),
+                                                        int(publishDate_v[2]))
 
-            if 'lower_cost' in entry:  #最低价格
+            if 'lower_cost' in entry:  # 最低价格
                 item['costLower'] = entry['lower_cost']
                 if item['costLower'] == 0:
                     item['costLower'] = None
@@ -627,15 +629,15 @@ class BaiduNoteProcSpider(CrawlSpider):
                 if item['costUpper'] == 0:
                     item['costUpper'] = None
 
-            if 'days' in entry:  #花费时间
+            if 'days' in entry:  # 花费时间
                 item['days'] = int(entry['days'])
                 if item['days'] == 0:
                     item['days'] = None
 
-            if 'departure' in entry:  #出发地
+            if 'departure' in entry:  # 出发地
                 item['fromLoc'] = entry['departure']  #_from string
 
-            if 'destinations' in entry:  #目的地
+            if 'destinations' in entry:  # 目的地
                 item['toLoc'] = entry['destinations']  #_to string
 
             if 'content' in entry:
@@ -668,29 +670,30 @@ class BaiduNoteProcPipeline(object):
         if type(item).__name__ != BaiduNoteProcItem.__name__:
             return item
 
-        solr_s = pysolr.Solr('http://api.lvxingpai.cn:8983/solr')
-        doc=[{'id':str(item['id']),
-        'title': item['title'],
-        'authorName': item['authorName'],
-        'authorAvatar':item['authorAvatar'],
-        'publishDate':item['publishDate'],
-        'favorCnt':item['favorCnt'],
-        'commentCnt': item['commentCnt'],
-        'viewCnt': item['viewCnt'],
-        'costLower':item['costLower'],
-        'costUpper':item['costUpper'],
-        'costNorm':item['costNorm'],
-        'days':item['days'],
-        'fromLoc': item['fromLoc'],
-        'toLoc': item['toLoc'],
-        'summary':item['summary'],
-        'contents': item['contents'],
-        'startDate':item['startDate'],
-        'endDate':item['endDate'],
-        'source':item['source'],
-        'sourceUrl': item['sourceUrl'],
-        'elite':item['elite']
-         }]
+        solr_conf = getattr(conf.global_conf, 'solr', {})
+        solr_s = pysolr.Solr('http://%s:%d/solr' % (solr_conf['host'], solr_conf['port']))
+        doc = [{'id': str(item['id']),
+                'title': item['title'],
+                'authorName': item['authorName'],
+                'authorAvatar': item['authorAvatar'],
+                'publishDate': item['publishDate'],
+                'favorCnt': item['favorCnt'],
+                'commentCnt': item['commentCnt'],
+                'viewCnt': item['viewCnt'],
+                'costLower': item['costLower'],
+                'costUpper': item['costUpper'],
+                'costNorm': item['costNorm'],
+                'days': item['days'],
+                'fromLoc': item['fromLoc'],
+                'toLoc': item['toLoc'],
+                'summary': item['summary'],
+                'contents': item['contents'],
+                'startDate': item['startDate'],
+                'endDate': item['endDate'],
+                'source': item['source'],
+                'sourceUrl': item['sourceUrl'],
+                'elite': item['elite']
+               }]
 
         solr_s.add(doc)
 
