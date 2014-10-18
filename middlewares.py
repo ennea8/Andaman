@@ -29,15 +29,12 @@ class ProxySwitchMiddleware(object):
 
         # 加载代理列表
         proxy_list = {}
-<<<<<<< HEAD
+
 
         with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
             for line in f:
                 proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
-=======
-        for line in data:
-            proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
->>>>>>> 847ff49111c50287f01cbd0613e4dc988d1df681
+
         self.proxy_list = proxy_list
 
     def pick_proxy(self):
