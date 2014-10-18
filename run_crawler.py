@@ -2,6 +2,10 @@
 from Queue import Queue
 import os
 import re
+import sys
+import imp
+
+import datetime
 
 import scrapy
 from scrapy import signals
@@ -10,8 +14,7 @@ from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
-import sys
-import datetime
+import conf
 
 
 __author__ = 'zephyre'
@@ -114,9 +117,6 @@ def reg_spiders(spider_dir=None):
     """
     将spiders路径下的爬虫类进行注册
     """
-    import imp
-    import conf
-
     if not spider_dir:
         root_dir = os.path.normpath(os.path.split(__file__)[0])
         spider_dir = os.path.normpath(os.path.join(root_dir, 'spiders'))
@@ -125,7 +125,6 @@ def reg_spiders(spider_dir=None):
     conf.global_conf['pipelines'] = []
 
     for cur, d_list, f_list in os.walk(spider_dir):
-
         # 获得包路径
         package_path = []
         tmp = cur
@@ -162,7 +161,8 @@ def reg_spiders(spider_dir=None):
                     except TypeError:
                         pass
             except ImportError:
-                pass
+                print 'Import error: %s' % fname
+                raise
 
 
 def main():
@@ -183,6 +183,13 @@ def main():
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent
+    else:
+        if 'verbose' in param:
+            logfile = None
+        else:
+            logfile = './logs/error.log'
+        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
+        scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
 
 if __name__ == "__main__":

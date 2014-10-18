@@ -5,12 +5,8 @@ __author__ = 'lxf'
 # from os import *
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
-
 from utils import get_mongodb
-
-
-
-
+# import datetime, time
 
 
 # ----------------------------define field------------------------------------
@@ -24,6 +20,16 @@ class CityTempratureItem(Item):
 # ----------------------------------define spider------------------------------------
 class CityTempratureSpider(CrawlSpider):
     name = 'citytempraturespider'  # define the spider name
+
+    # def time_format1(temp_time):
+    # format_time = datetime.datetime.strptime(temp_time, '%a, %d %d %Y %H:%M %p %Z')
+    #     gettime = format_time.strftime('%Y %m %d %a %H %M')
+    #     return gettime
+    #
+    # def time_format2(temp_time):
+    #     format_time = datetime.datetime.strptime(temp_time, '%a %d %m %Y')
+    #     gettime = format_time.strftime('%Y %m %d %a')
+    #     return gettime
 
     # ---------------------------draw the info-----------------------------------------
 
@@ -50,9 +56,10 @@ class CityTempratureSpider(CrawlSpider):
 
         if current:
             current_temp = {
-                'time': current[3],
-                'temprature': current[2],
-                'desc': current[0]
+                #'time': self.time_format1(current[3]),
+                'temprature': float(current[2]),
+                'desc': current[0],
+                'desc_code': float(current[1])
             }
         else:
             current_temp = None
@@ -60,28 +67,32 @@ class CityTempratureSpider(CrawlSpider):
         if forecast:
             forecast_temp = [
                 {
-                    'time': forecast[6] + ' ' + forecast[7],
-                    'lowertemprature': forecast[8],
-                    'uppertemprature': forecast[9],
-                    'desc': forecast[10]
+                    #'time': self.time_format2(forecast[6] + ' ' + forecast[7]),
+                    'lowertemprature': float(forecast[8]),
+                    'uppertemprature': float(forecast[9]),
+                    'desc': forecast[10],
+                    'desc_code': int(forecast[5])
                 },
                 {
-                    'time': forecast[12] + ' ' + forecast[13],
-                    'lowertemprature': forecast[14],
-                    'uppertemprature': forecast[15],
-                    'desc': forecast[16]
+                    #'time': self.time_format2(forecast[12] + ' ' + forecast[13]),
+                    'lowertemprature': float(forecast[14]),
+                    'uppertemprature': float(forecast[15]),
+                    'desc': forecast[16],
+                    'desc_code': int(forecast[11])
                 },
                 {
-                    'time': forecast[18] + ' ' + forecast[19],
-                    'lowertemprature': forecast[20],
-                    'uppertemprature': forecast[21],
-                    'desc': forecast[22]
+                    #'time': self.time_format2(forecast[18] + ' ' + forecast[19]),
+                    'lowertemprature': float(forecast[20]),
+                    'uppertemprature': float(forecast[21]),
+                    'desc': forecast[22],
+                    'desc_code': int(forecast[17])
                 },
                 {
-                    'time': forecast[24] + ' ' + forecast[25],
-                    'lowertemprature': forecast[26],
-                    'uppertemprature': forecast[27],
-                    'desc': forecast[28]
+                    #'time': self.time_format2(forecast[24] + ' ' + forecast[25]),
+                    'lowertemprature': float(forecast[26]),
+                    'uppertemprature': float(forecast[27]),
+                    'desc': forecast[28],
+                    'desc_code': int(forecast[23])
                 }
             ]
         else:
@@ -108,7 +119,7 @@ class CityTempraturePipeline(object):
             data['current'] = item['current']
         if 'source' in item:
             data['source'] = item['source']
-        col = get_mongodb('raw_data', 'CityTemprature', profile='mongo-crawler')
+        col = get_mongodb('yahooweather', 'CityTemprature', profile=None)
         col.save(data)
         return item
 
