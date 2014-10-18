@@ -545,7 +545,7 @@ class BaiduNoteProcSpider(CrawlSpider):
             content_m = entry['contents']
             #part_u=part.decode('gb2312')
             if not content_m:
-                return
+                continue
             for i in range(len(content_m)):
                 content = content_m[i].replace('<p', '<img><p')
                 #content=content.replace('%','i')

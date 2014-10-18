@@ -186,7 +186,7 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
             item['startDate'] = date_num[0]
             item['endDate'] = date_num[-1]
             item['elite'] = None
-            item['days'] = day_num[-1]
+            item['days'] = int(day_num[-1])
             item['summary'] = None
 
 
@@ -195,7 +195,7 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
             yield item
 
 
-class BaiduNoteProcPipeline(object):
+class ChanyoujiNoteProcPipeline(object):
     """
     对穷游的国家数据进行清洗
     """
