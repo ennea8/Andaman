@@ -6,7 +6,7 @@ __author__ = 'lxf'
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
 from utils import get_mongodb
-import datetime, time
+# import datetime, time
 
 # ----------------------------define field------------------------------------
 class CityTempratureItem(Item):
@@ -77,7 +77,7 @@ class CityTempratureSpider(CrawlSpider):
                     'lowertemprature': float(forecast[14]),
                     'uppertemprature': float(forecast[15]),
                     'desc': forecast[16],
-                    'desc_code':int(forecast[11])
+                    'desc_code': int(forecast[11])
                 },
                 {
                     #'time': self.time_format2(forecast[18] + ' ' + forecast[19]),
