@@ -659,7 +659,7 @@ class BaiduNoteProcSpider(CrawlSpider):
 
 class BaiduNoteProcPipeline(object):
     """
-    对穷游的国家数据进行清洗
+    上传到solr
     """
 
     spiders = [BaiduNoteProcSpider.name]
