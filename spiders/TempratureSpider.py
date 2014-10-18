@@ -103,7 +103,6 @@ class CityTempratureSpider(CrawlSpider):
 
         # -----------------------pipeline--------------------------------------------------
 
-
 class CityTempraturePipeline(object):
     spiders = [CityTempratureSpider.name]  # 注册spider
 
