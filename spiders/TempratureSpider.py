@@ -58,7 +58,7 @@ class CityTempratureSpider(CrawlSpider):
                 #'time': self.time_format1(current[3]),
                 'temprature': float(current[2]),
                 'desc': current[0],
-                'desc_code': current[1]
+                'desc_code': float(current[1])
             }
         else:
             current_temp = None
@@ -70,28 +70,28 @@ class CityTempratureSpider(CrawlSpider):
                     'lowertemprature': float(forecast[8]),
                     'uppertemprature': float(forecast[9]),
                     'desc': forecast[10],
-                    'desc_code': forecast[5]
+                    'desc_code': int(forecast[5])
                 },
                 {
                     #'time': self.time_format2(forecast[12] + ' ' + forecast[13]),
                     'lowertemprature': float(forecast[14]),
                     'uppertemprature': float(forecast[15]),
                     'desc': forecast[16],
-                    'desc_code': forecast[11]
+                    'desc_code':int(forecast[11])
                 },
                 {
                     #'time': self.time_format2(forecast[18] + ' ' + forecast[19]),
                     'lowertemprature': float(forecast[20]),
                     'uppertemprature': float(forecast[21]),
                     'desc': forecast[22],
-                    'desc_code': forecast[17]
+                    'desc_code': int(forecast[17])
                 },
                 {
                     #'time': self.time_format2(forecast[24] + ' ' + forecast[25]),
                     'lowertemprature': float(forecast[26]),
                     'uppertemprature': float(forecast[27]),
                     'desc': forecast[28],
-                    'desc_code': forecast[23]
+                    'desc_code': int(forecast[23])
                 }
             ]
         else:
@@ -118,7 +118,7 @@ class CityTempraturePipeline(object):
             data['current'] = item['current']
         if 'source' in item:
             data['source'] = item['source']
-        col = get_mongodb('raw_data', 'CityTemprature', profile='mongo-crawler')
+        col = get_mongodb('yahooweather', 'CityTemprature', profile=None)
         col.save(data)
         return item
 
