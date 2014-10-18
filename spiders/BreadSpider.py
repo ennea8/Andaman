@@ -3,11 +3,11 @@ import json
 import copy
 
 import pymongo
-
-import scrapy
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy import Request, Selector
+
 from items import BreadTripItem
+
 
 class BreadTripSpider(CrawlSpider):
     name = 'breadtrip_spider'

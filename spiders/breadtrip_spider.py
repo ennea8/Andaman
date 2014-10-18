@@ -2,12 +2,12 @@
 
 import json
 import random
-import sys
 
 from scrapy.contrib.spiders import CrawlSpider
-from bs4 import BeautifulSoup
 from scrapy import Request
 
+import sys
+from bs4 import BeautifulSoup
 from items import BreadtripItem
 
 

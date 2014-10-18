@@ -14,8 +14,8 @@ SPIDER_MODULES = ['TravelCrawler.spiders']
 NEWSPIDER_MODULE = 'TravelCrawler.spiders'
 
 # ITEM_PIPELINES = {'scrapy.contrib.pipeline.images.ImagesPipeline': 1}
-#ITEM_PIPELINES = {'pipelines.MofengwoPipeline': 800}
-#IMAGES_STORE = './images/data'
+ITEM_PIPELINES = {'pipelines.ChanyoujiYoujiPipline': 800}
+# IMAGES_STORE = './images/data'
 
 DOWNLOADER_MIDDLEWARES = {
     #'scrapy.contrib.downloadermiddleware.httpproxy.HttpProxyMiddleware': 110,

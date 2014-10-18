@@ -94,7 +94,7 @@ class ChangtuBusStation(CrawlSpider):
     def parse_addr(self, response):
         item = response.meta['item']
         try:
-            result=json.loads(response.body)['result']
+            result = json.loads(response.body)['result']
             loc = result['location']
             lat, lng = loc['lat'], loc['lng']
 
