@@ -1,13 +1,12 @@
 # -*- coding: UTF-8 -*-
 __author__ = 'wdx'
 import re
+
+import pymongo
+
 import time
 import time
 import datetime
-import json
-
-import lxml.html as html
-import pymongo
 
 
 def connect_db():
@@ -30,7 +29,7 @@ def zhengze(part, db):
     # new_part={}
     content_list = []
     content_m = part['contents']
-    #part_u=part.decode('gb2312')
+    # part_u=part.decode('gb2312')
     if not content_m:
         return
     for i in range(len(content_m)):

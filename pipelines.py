@@ -8,15 +8,15 @@ import os
 import random
 import re
 from os.path import getsize
-import sys
-import time
 
 from qiniu import io
 import qiniu
 from qiniu.rs import rs
 import pymongo
 
-from items import QunarPoiItem, BaiduPoiItem, ChanyoujiUser, ChanyoujiYoujiItem, MafengwoYoujiItem
+import sys
+import time
+from items import QunarPoiItem, BaiduPoiItem, ChanyoujiYoujiItem, MafengwoYoujiItem
 
 
 reload(sys)
@@ -321,12 +321,13 @@ class BaiduPoiPipeline(object):
 
 class ChanyoujiYoujiPipline(object):
     def __init__(self):
-        self.db = pymongo.MongoClient('dev.lvxingpai.cn',27019).ChanyoujiYoujidb
+        self.db = pymongo.MongoClient('dev.lvxingpai.cn', 27019).ChanyoujiYoujidb
 
     '''
     def connect(self):
         self.db = pymongo.MongoClient('dev.lvxingapi.cn',27019).ChanyoujiYoujidb
     '''
+
     def process_item(self, item, spider):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item

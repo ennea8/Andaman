@@ -26,4 +26,5 @@ def load_config():
                 section[opt] = cf.get(s, opt)
             global_conf[s] = section
 
+
 load_config()

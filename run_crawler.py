@@ -2,8 +2,6 @@
 from Queue import Queue
 import os
 import re
-import sys
-import datetime
 
 import scrapy
 from scrapy import signals
@@ -11,6 +9,9 @@ from scrapy.contrib.spiders import CrawlSpider
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
+
+import sys
+import datetime
 
 
 __author__ = 'zephyre'

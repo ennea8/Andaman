@@ -39,7 +39,7 @@ class ChanyoujiYoujiSpider(CrawlSpider):
                     item['data'] = data
 
                 except:
-                    item['data']=None
+                    item['data'] = None
 
         items.append(item)
         return items

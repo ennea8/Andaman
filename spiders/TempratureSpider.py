@@ -12,6 +12,7 @@ from utils import get_mongodb
 
 
 
+
 # ----------------------------define field------------------------------------
 class CityTempratureItem(Item):
     loc = Field()  # location

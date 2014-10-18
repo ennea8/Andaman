@@ -5,6 +5,7 @@ import os
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 from scrapy.contrib.spiders import CrawlSpider
+
 import utils
 
 
@@ -35,10 +36,10 @@ class MafengwoTargetSpider(CrawlSpider):
         passwd = self.get_config('cms-mysqldb', 'passwd')
         my_conn = MySQLdb.connect(host=host, port=port, user=user, passwd=passwd, db='lvplan', cursorclass=DictCursor,
                                   charset='utf8')
-        cursor=my_conn.cursor()
+        cursor = my_conn.cursor()
         cursor.execute('SELECT * FROM lvplan.mfw_target_url')
 
-        col=utils.get_mongodb('')
+        col = utils.get_mongodb('')
 
         for row in cursor:
             pass

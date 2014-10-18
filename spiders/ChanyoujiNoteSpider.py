@@ -10,10 +10,10 @@ import time
 import pysolr
 import datetime
 
-from scrapy import Request , Selector
+from scrapy import Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
 
-from items import ChanyoujiYoujiItem,ChanyoujiNoteProcItem
+from items import ChanyoujiYoujiItem, ChanyoujiNoteProcItem
 
 
 class ChanyoujiYoujiSpider(CrawlSpider):
@@ -41,7 +41,7 @@ class ChanyoujiYoujiSpider(CrawlSpider):
         item = ChanyoujiYoujiItem()
         item['trips_id'] = response.meta['data']['trips_id']
 
-        match_title = re.search(r'_G_trip_name="[\s\S][^"]*',response.body)
+        match_title = re.search(r'_G_trip_name="[\s\S][^"]*', response.body)
         if not match_title:
             return
         item['title'] = match_title.group()[14:]
@@ -72,7 +72,6 @@ class ChanyoujiYoujiSpider(CrawlSpider):
         except ValueError:
             return
 
-
         authorId_m = sel.xpath('//div[@class="trip-info"]/a/@href').extract()
 
         item['authorAvatar'] = None
@@ -80,8 +79,8 @@ class ChanyoujiYoujiSpider(CrawlSpider):
             authorId = authorId_m[0]
             item['authorId'] = authorId[7:]
             author_url = "http://chanyouji.com/users/%d" % int(item['authorId'])
-            yield Request(url=author_url, callback=self.parse_next, meta={"data":item})
-        else :
+            yield Request(url=author_url, callback=self.parse_next, meta={"data": item})
+        else:
             yield item
 
 
@@ -97,11 +96,7 @@ class ChanyoujiYoujiSpider(CrawlSpider):
         yield item
 
 
-
-
-
 class ChanyoujiYoujiPipline(object):
-
     spiders = [ChanyoujiYoujiSpider.name]
 
     def process_item(self, item, spider):
@@ -109,15 +104,15 @@ class ChanyoujiYoujiPipline(object):
             return item
 
         col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
-        note = {'noteId': item['trips_id'] ,
-                'title':item['title'] ,
-                'authorName':item['authorName'],
-                'favorCnt':item['favorCnt'],
-                'commentCnt':item['commentCnt'],
-                'viewCnt':item['viewCnt'],
+        note = {'noteId': item['trips_id'],
+                'title': item['title'],
+                'authorName': item['authorName'],
+                'favorCnt': item['favorCnt'],
+                'commentCnt': item['commentCnt'],
+                'viewCnt': item['viewCnt'],
                 'note': item['data'],
-                'authorAvatar':item['authorAvatar'],
-                'authorId':item['authorId']
+                'authorAvatar': item['authorAvatar'],
+                'authorId': item['authorId']
         }
         ret = col.find_one({'noteId': note['noteId']})
         if not ret:
@@ -129,9 +124,7 @@ class ChanyoujiYoujiPipline(object):
         return item
 
 
-
 class ChanyoujiNoteProcSpider(CrawlSpider):
-
     name = 'chanyouji_note_proc'  # name of spider
 
     def __init__(self, *a, **kw):
@@ -141,12 +134,12 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
         yield Request(url='http://www.chanyouji.com', callback=self.parse)
 
     def parse(self, response):
-        item=ChanyoujiNoteProcItem()
+        item = ChanyoujiNoteProcItem()
         col = utils.get_mongodb('raw_data', 'ChanyoujiNote', profile='mongodb-crawler')
         part = col.find()
-        date_num=[]
-        day_num=[]
-        note=[]
+        date_num = []
+        day_num = []
+        note = []
         for entry in part:
             content_m = part['note']
             note_len = len(content_m)
@@ -169,7 +162,6 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
                     if 'src' in content_m[i]['photo']:
                         item['contents'].append(content_m[i]['photo']['src'])
 
-
             item['id'] = entry['_id']
             item['title'] = entry['title']
             item['authorName'] = entry['authorName']
@@ -191,7 +183,7 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
 
 
 
-            #items.append(item)
+            # items.append(item)
             yield item
 
 
@@ -207,28 +199,28 @@ class ChanyoujiNoteProcPipeline(object):
             return item
 
         solr_s = pysolr.Solr('http://localhost:8983/solr')
-        doc=[{'id':str(item['id']),
-        'title': item['title'],
-        'authorName': item['authorName'],
-        'authorAvatar':item['authorAvatar'],
-        'publishDate':item['publishDate'],
-        'favorCnt':item['favorCnt'],
-        'commentCnt': item['commentCnt'],
-        'viewCnt': item['viewCnt'],
-        'costLower':item['costLower'],
-        'costUpper':item['costUpper'],
-        'costNorm':item['costNorm'],
-        'days':item['days'],
-        'fromLoc': item['fromLoc'],
-        'toLoc': item['toLoc'],
-        'summary':item['summary'],
-        'contents': item['contents'],
-        'startDate':item['startDate'],
-        'endDate':item['endDate'],
-        'source':item['source'],
-        'sourceUrl': item['sourceUrl'],
-        'elite':item['elite']
-         }]
+        doc = [{'id': str(item['id']),
+                'title': item['title'],
+                'authorName': item['authorName'],
+                'authorAvatar': item['authorAvatar'],
+                'publishDate': item['publishDate'],
+                'favorCnt': item['favorCnt'],
+                'commentCnt': item['commentCnt'],
+                'viewCnt': item['viewCnt'],
+                'costLower': item['costLower'],
+                'costUpper': item['costUpper'],
+                'costNorm': item['costNorm'],
+                'days': item['days'],
+                'fromLoc': item['fromLoc'],
+                'toLoc': item['toLoc'],
+                'summary': item['summary'],
+                'contents': item['contents'],
+                'startDate': item['startDate'],
+                'endDate': item['endDate'],
+                'source': item['source'],
+                'sourceUrl': item['sourceUrl'],
+                'elite': item['elite']
+               }]
 
         solr_s.add(doc)
 

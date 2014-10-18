@@ -2,12 +2,12 @@
 
 import json
 import random
-import sys
 
 from scrapy.contrib.spiders import CrawlSpider
-from bs4 import BeautifulSoup
 from scrapy import Request
 
+import sys
+from bs4 import BeautifulSoup
 from items import ZailushangItem
 
 
@@ -82,7 +82,7 @@ class ZailushangSpider(CrawlSpider):
             # re.search(r'(?<=<div class="bm_c">).*?(?=</form>)', content,re.S)
             sidebar = soup.find('div', {'class': 't-sidebar'})
             ss = sidebar.findAll('span', {'class': 't-iti-item-name'})
-            #print ss
+            # print ss
             sights = []
             for it in ss:
                 tt = it.getText()
