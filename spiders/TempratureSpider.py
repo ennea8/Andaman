@@ -6,20 +6,20 @@ __author__ = 'lxf'
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
 from utils import get_mongodb
-import time
+import datetime
 
 
 # ----------------------------define field------------------------------------
-class CityTempratureItem(Item):
+class CityTemperatureItem(Item):
     loc = Field()  # location
     current = Field()
     forecast = Field()
-    updateDate = Field()
+    updateTime = Field()
 
 
 # ----------------------------------define spider------------------------------------
-class CityTempratureSpider(CrawlSpider):
-    name = 'citytempraturespider'  # define the spider name
+class CityTemperatureSpider(CrawlSpider):
+    name = 'citytemperaturespider'  # define the spider name
 
     # def time_format1(temp_time):
     # format_time = datetime.datetime.strptime(temp_time, '%a, %d %d %Y %H:%M %p %Z')
@@ -47,7 +47,7 @@ class CityTempratureSpider(CrawlSpider):
 
     def parse(self, response):
         sel = Selector(response)
-        item = CityTempratureItem()
+        item = CityTemperatureItem()
         current = sel.xpath('//item/*[name()="yweather:condition"]/@*').extract()  # maybe a bug
         forecast = sel.xpath('//item/*[name()="yweather:forecast"]/@*').extract()
         data = response.meta['data']
@@ -56,7 +56,7 @@ class CityTempratureSpider(CrawlSpider):
         if current:
             current_temp = {
                 #'time': self.time_format1(current[3]),
-                'currTemprature': float(current[2]),
+                'currTemperature': float(current[2]),
                 'desc': current[0],
                 'code': int(current[1])
             }
@@ -67,29 +67,29 @@ class CityTempratureSpider(CrawlSpider):
             forecast_temp = [
                 {
                     #'time': self.time_format2(forecast[6] + ' ' + forecast[7]),
-                    'lowerTemprature': float(forecast[8]),
-                    'upperTemprature': float(forecast[9]),
+                    'lowerTempreature': float(forecast[8]),
+                    'upperTempreature': float(forecast[9]),
                     'desc': forecast[10],
                     'code': int(forecast[5])
                 },
                 {
                     #'time': self.time_format2(forecast[12] + ' ' + forecast[13]),
-                    'lowerTemprature': float(forecast[14]),
-                    'upperTemprature': float(forecast[15]),
+                    'lowerTemperature': float(forecast[14]),
+                    'upperTemperature': float(forecast[15]),
                     'desc': forecast[16],
                     'code': int(forecast[11])
                 },
                 {
                     #'time': self.time_format2(forecast[18] + ' ' + forecast[19]),
-                    'lowerTemprature': float(forecast[20]),
-                    'upperTemprature': float(forecast[21]),
+                    'lowerTemperature': float(forecast[20]),
+                    'upperTemperature': float(forecast[21]),
                     'desc': forecast[22],
                     'code': int(forecast[17])
                 },
                 {
                     #'time': self.time_format2(forecast[24] + ' ' + forecast[25]),
-                    'lowerTemprature': float(forecast[26]),
-                    'upperTemprature': float(forecast[27]),
+                    'lowerTemperature': float(forecast[26]),
+                    'upperTemperature': float(forecast[27]),
                     'desc': forecast[28],
                     'code': int(forecast[23])
                 }
@@ -97,14 +97,14 @@ class CityTempratureSpider(CrawlSpider):
         else:
             forecast_temp = None
         item['forecast'] = forecast_temp
-        item['updateDate'] = time.strftime('%Y/%m/%d %H:%M')
+        item['updateTime'] = datetime.datetime.now()
         yield item
 
 
         # -----------------------pipeline--------------------------------------------------
 
-class CityTempraturePipeline(object):
-    spiders = [CityTempratureSpider.name]  # 注册spider
+class CityTemperaturePipeline(object):
+    spiders = [CityTemperatureSpider.name]  # 注册spider
 
     def process_item(self, item, spider):
         data = {}
@@ -116,9 +116,9 @@ class CityTempraturePipeline(object):
             data['forecast'] = item['forecast']
         if 'current' in item:
             data['current'] = item['current']
-        if 'updateDate' in item:
-            data['updateDate'] = item['updateDate']
-        col = get_mongodb('yahooweather', 'CityTemprature', profile=None)
+        if 'updateTime' in item:
+            data['updateTime'] = item['updateTime']
+        col = get_mongodb('yahooweather', 'CityTemperature', profile=None)
         col.save(data)
         return item
 
