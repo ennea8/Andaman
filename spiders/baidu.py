@@ -609,7 +609,7 @@ class BaiduNoteProcSpider(CrawlSpider):
             '''
             if 'avatar_small' in entry:
                 if entry['avatar_small']:
-                    avatar_small = 'himg.bdimg.com/sys/portrait/item/%s.jpg' % entry['avatar_small']
+                    avatar_small = 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % entry['avatar_small']
                     item['authorAvatar'] = avatar_small
 
             if 'create_time' in entry:

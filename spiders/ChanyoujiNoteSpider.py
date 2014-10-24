@@ -7,11 +7,17 @@ import json
 import re
 import utils
 import pysolr
+import time
+import datetime
 
 from scrapy import Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
 
 from items import ChanyoujiYoujiItem, ChanyoujiNoteProcItem
+
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 
 class ChanyoujiYoujiSpider(CrawlSpider):
@@ -129,17 +135,21 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
         super(ChanyoujiNoteProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.chanyouji.com', callback=self.parse)
+        yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
         item = ChanyoujiNoteProcItem()
         col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         part = col.find()
+        content_m=[]
         date_num = []
         day_num = []
         note = []
+        contents = []
+        toLoc = []
+
         for entry in part:
-            content_m = part['note']
+            content_m = entry['note']
             note_len = len(content_m)
             for i in range(note_len):
                 if 'trip_date' in content_m[i]:
@@ -147,18 +157,22 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
 
                 if 'day' in content_m[i]:
                     day_num.append(content_m[i]['day'])
-                    day_text = '第%s天' % content_m[i]['day']
-                    item['contents'].append(day_text)
+                    day_text = '第%d天' % content_m[i]['day']
+                    if day_text not in contents:
+                        contents.append(day_text)
 
                 if 'entry' in content_m[i]:
                     if 'name_zh_cn' in content_m[i]['entry']:
-                        item['toLoc'].append(content_m[i]['entry']['name_zh_cn'])
+                        toLoc.append(content_m[i]['entry']['name_zh_cn'])
 
                 if 'description' in content_m[i]:
-                    item['contents'].append(content_m[i]['description'])
+                    if  content_m[i]['description']:
+                        contents.append(content_m[i]['description'])
+
                 if 'photo' in content_m[i]:
                     if 'src' in content_m[i]['photo']:
-                        item['contents'].append(content_m[i]['photo']['src'])
+                        contents.append(content_m[i]['photo']['src'])
+
 
             item['id'] = entry['_id']
             item['title'] = entry['title']
@@ -173,21 +187,40 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
             item['costNorm'] = None
             item['source'] = 'chanyouji'
             item['sourceUrl'] = 'http://chanyouji/trips/%d' % entry['noteId']
-            item['startDate'] = date_num[0]
-            item['endDate'] = date_num[-1]
+            item['startDate'] = None
+            item['endDate'] = None
             item['elite'] = None
             item['days'] = int(day_num[-1])
             item['summary'] = None
+            item['contents'] = contents
+            item['toLoc'] = toLoc
+            item['fromLoc'] = None
+            if (item['viewCnt']>1500) and (len(item['contents'])>150) or item['favorCnt']>100:
+                item['elite'] = True
+            else :
+                item['elite'] = False
+            if date_num[0]:
+                date0=date_num[0].replace("-0","-")
+                startDate_v = re.split('[-]', date0)
+                item['startDate'] = datetime.datetime(int(startDate_v[0]), int(startDate_v[1]), int(startDate_v[2]))
+            if date_num[-1]:
+                date1=date_num[-1].replace("-0","-")
+                endDate_v = re.split('[-]', date1)
+                item['endDate'] = datetime.datetime(int(endDate_v[0]), int(endDate_v[1]), int(endDate_v[2]))
+            yield item
+
+
+
 
 
 
             # items.append(item)
-            yield item
+
 
 
 class ChanyoujiNoteProcPipeline(object):
     """
-    对穷游的国家数据进行清洗
+    上传禅游记信息
     """
 
     spiders = [ChanyoujiNoteProcSpider.name]
@@ -196,8 +229,8 @@ class ChanyoujiNoteProcPipeline(object):
         if type(item).__name__ != ChanyoujiNoteProcItem.__name__:
             return item
 
-        solr_conf = getattr(conf.global_conf, 'solr', {})
-        solr_s = pysolr.Solr('http://%s:%d/solr' % (solr_conf['host'], solr_conf['port']))
+        solr_conf = conf.global_conf['solr']
+        solr_s = pysolr.Solr('http://%s:%s/solr' % (solr_conf['host'], solr_conf['port']))
         doc = [{'id': str(item['id']),
                 'title': item['title'],
                 'authorName': item['authorName'],
