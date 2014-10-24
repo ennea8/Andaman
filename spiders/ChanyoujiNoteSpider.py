@@ -142,13 +142,11 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
         col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         part = col.find()
         content_m=[]
-        date_num = []
-        day_num = []
-        note = []
-        contents = []
-        toLoc = []
-
         for entry in part:
+            contents = []
+            toLoc = []
+            date_num = []
+            day_num = []
             content_m = entry['note']
             note_len = len(content_m)
             for i in range(note_len):
