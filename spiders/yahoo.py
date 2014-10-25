@@ -85,7 +85,7 @@ class YahooCitySpider(CrawlSpider):
 
             # Get states and provinces
             item = YahooCityItem()
-            item['country'] = country_code
+            item['country'] = {'countrycode': country_code, 'countryname': countryname}
             item['state'] = state_name
             item['level'] = 1
             item['abroad'] = data_1['abroad']
@@ -183,7 +183,7 @@ class YahooCityProcSpider(CrawlSpider):
         col = utils.get_mongodb('raw_data', 'YahooCityInfo', profile='mongodb-crawler')
         countries = response.meta['countries']
         level = response.meta['level']
-        query = {'$or': [{'country': tmp} for tmp in countries]} if countries else {}
+        query = {'$or': [{'country.countrycode': tmp} for tmp in countries]} if countries else {}
         if level:
             query['level'] = level
 
@@ -195,7 +195,7 @@ class YahooCityProcSpider(CrawlSpider):
                 if k in city:
                     item[k] = city[k]
 
-            country_code = city['country']
+            country_code = city['country']['countrycode']
             if country_code not in self.country_map:
                 col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
                 country_info = col_country.find_one({'code': country_code})
@@ -293,7 +293,7 @@ class YahooCityProcPipeline(object):
 
         if level > 1:
             # cities
-            prov = col_loc.find_one({'country.id': country_info['_id'], 'alias': item['state'].lower(), level: 1})
+            prov = col_loc.find_one({'country.id': country_info['_id'], 'alias': item['state'].lower(), 'level': 1})
             if prov:
                 data['superAdm'] = {'id': prov['_id'], 'zhName': prov['zhName'], 'enName': prov['enName']}
             else:
