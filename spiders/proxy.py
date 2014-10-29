@@ -129,27 +129,6 @@ class YoudailiProxySpider(BaseProxySpider):
         if not verifier:
             return
 
-        tmp = []
-        for k in verifier:
-            tmp.append({'verified.%s' % k: True})
-        if not tmp:
-            query = {}
-        elif len(tmp) == 1:
-            query = tmp[0]
-        else:
-            query = {'$or': tmp}
-        for entry in get_mongodb('misc', 'Proxy', profile='mongodb-general').find(query):
-            item = ProxyItem()
-            item['host'] = entry['host']
-            item['port'] = entry['port']
-            item['desc'] = entry['desc']
-            item['scheme'] = 'http'
-
-            proxy = '%s://%s:%d' % (item['scheme'], entry['host'], entry['port'])
-
-            meta = {'item': item, 'proxy': proxy, 'verifier': verifier}
-            yield self.next_req(meta)
-
         template = 'http://www.youdaili.net/Daili/http/list_%d.html'
         try:
             max_page = int(getattr(self, 'param', {})['max-page'][0])
@@ -158,8 +137,7 @@ class YoudailiProxySpider(BaseProxySpider):
 
         # inclusive
         for page in xrange(1, max_page + 1):
-            yield Request(url=template % page, callback=self.parse,
-                          meta={'verifier': verifier})
+            yield Request(url=template % page, callback=self.parse, meta={'verifier': verifier})
 
     def parse(self, response):  # draw the state
         for node in Selector(response).xpath('//div[@class="newslist_body"]/ul[@class="newslist_line"]/li'):
@@ -210,6 +188,125 @@ class YoudailiProxySpider(BaseProxySpider):
                 port = int(port)
             except ValueError:
                 continue
+
+            item = ProxyItem()
+            item['host'] = host
+            item['port'] = port
+            item['desc'] = desc
+            item['scheme'] = 'http'
+
+            proxy = '%s://%s:%d' % (item['scheme'], host, port)
+
+            meta = {'item': item, 'proxy': proxy, 'verifier': response.meta['verifier']}
+            yield self.next_req(meta)
+
+
+class DBProxySpider(BaseProxySpider):
+    name = 'db_proxy'
+
+    def __init__(self, *a, **kw):
+        super(DBProxySpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        verifier = []
+        if 'param' in dir(self):
+            param = getattr(self, 'param', {})
+            if 'verify' in param:
+                if 'baidu' in param['verify']:
+                    verifier.append('baidu')
+                if 'googleapis' in param['verify']:
+                    verifier.append('googleapis')
+
+        if not verifier:
+            return
+
+        tmp = []
+        for k in verifier:
+            tmp.append({'verified.%s' % k: True})
+        if not tmp:
+            query = {}
+        elif len(tmp) == 1:
+            query = tmp[0]
+        else:
+            query = {'$or': tmp}
+        for entry in get_mongodb('misc', 'Proxy', profile='mongodb-general').find(query):
+            item = ProxyItem()
+            item['host'] = entry['host']
+            item['port'] = entry['port']
+            item['desc'] = entry['desc'] if 'desc' in entry else None
+            item['scheme'] = entry['scheme'] if 'scheme' in entry else 'http'
+            item['user'] = entry['user'] if 'user' in entry else None
+            item['passwd'] = entry['passwd'] if 'passwd' in entry else None
+
+            if item['user'] and item['passwd']:
+                proxy = '%s://%s:%s@%s:%d' % (item['scheme'], item['user'], item['passwd'], item['host'], item['port'])
+            else:
+                proxy = '%s://%s:%d' % (item['scheme'], item['host'], item['port'])
+
+            meta = {'item': item, 'proxy': proxy, 'verifier': verifier}
+            yield self.next_req(meta)
+
+
+class FreeListProxySpider(BaseProxySpider):
+    name = 'freelist_proxy'
+
+    def __init__(self, *a, **kw):
+        super(FreeListProxySpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        verifier = []
+        if 'param' in dir(self):
+            param = getattr(self, 'param', {})
+            if 'verify' in param:
+                if 'baidu' in param['verify']:
+                    verifier.append('baidu')
+                if 'googleapis' in param['verify']:
+                    verifier.append('googleapis')
+
+        if not verifier:
+            return
+
+        tmp = []
+        for k in verifier:
+            tmp.append({'verified.%s' % k: True})
+        if not tmp:
+            query = {}
+        elif len(tmp) == 1:
+            query = tmp[0]
+        else:
+            query = {'$or': tmp}
+        for entry in get_mongodb('misc', 'Proxy', profile='mongodb-general').find(query):
+            item = ProxyItem()
+            item['host'] = entry['host']
+            item['port'] = entry['port']
+            item['desc'] = entry['desc']
+            item['scheme'] = 'http'
+
+            proxy = '%s://%s:%d' % (item['scheme'], entry['host'], entry['port'])
+
+            meta = {'item': item, 'proxy': proxy, 'verifier': verifier}
+            yield self.next_req(meta)
+
+        template = 'http://free-proxy-list.net/%s-proxy.html'
+        for country in ['us', 'uk']:
+            yield Request(url=template % country, callback=self.parse, meta={'verifier': verifier})
+
+    def parse(self, response):  # draw the state
+        for node in Selector(response).xpath('//table[@id="proxylisttable"]/tbody/tr'):
+            vals = node.xpath('./td/text()').extract()
+            if len(vals) != 8:
+                continue
+
+            host = vals[0]
+            if not re.search(
+                    r'(^[2][5][0-5]\.|^[2][0-4][0-9]\.|^[1][0-9][0-9]\.|^[0-9][0-9]\.|^[0-9]\.)([2][0-5][0-5]\.|[2][0-4][0-9]\.|[1][0-9][0-9]\.|[0-9][0-9]\.|[0-9]\.)([2][0-5][0-5]\.|[2][0-4][0-9]\.|[1][0-9][0-9]\.|[0-9][0-9]\.|[0-9]\.)([2][0-5][0-5]|[2][0-4][0-9]|[1][0-9][0-9]|[0-9][0-9]|[0-9])$',
+                    host):
+                continue
+            try:
+                port = int(vals[1])
+            except ValueError:
+                continue
+            desc = 'Country: %s, Anonymity: %s, Google: %s, HTTPS: %s' % tuple(vals[3:7])
 
             item = ProxyItem()
             item['host'] = host
