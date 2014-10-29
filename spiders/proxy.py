@@ -13,8 +13,11 @@ __author__ = 'zephyre'
 
 
 class ProxyItem(Item):
+    scheme = Field()
     host = Field()
     port = Field()
+    user = Field()
+    passwd = Field()
     desc = Field()
     latency = Field()
 
@@ -140,8 +143,9 @@ class YoudailiProxySpider(BaseProxySpider):
             item['host'] = entry['host']
             item['port'] = entry['port']
             item['desc'] = entry['desc']
+            item['scheme'] = 'http'
 
-            proxy = 'http://%s:%d' % (entry['host'], entry['port'])
+            proxy = '%s://%s:%d' % (item['scheme'], entry['host'], entry['port'])
 
             meta = {'item': item, 'proxy': proxy, 'verifier': verifier}
             yield self.next_req(meta)
@@ -211,8 +215,9 @@ class YoudailiProxySpider(BaseProxySpider):
             item['host'] = host
             item['port'] = port
             item['desc'] = desc
+            item['scheme'] = 'http'
 
-            proxy = 'http://%s:%d' % (host, port)
+            proxy = '%s://%s:%d' % (item['scheme'], host, port)
 
             meta = {'item': item, 'proxy': proxy, 'verifier': response.meta['verifier']}
             yield self.next_req(meta)
