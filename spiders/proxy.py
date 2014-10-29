@@ -255,6 +255,7 @@ class FreeListProxySpider(BaseProxySpider):
 
     def start_requests(self):
         verifier = []
+        path = None
         if 'param' in dir(self):
             param = getattr(self, 'param', {})
             if 'verify' in param:
@@ -262,34 +263,22 @@ class FreeListProxySpider(BaseProxySpider):
                     verifier.append('baidu')
                 if 'googleapis' in param['verify']:
                     verifier.append('googleapis')
+            if 'path' in param and param['path']:
+                path = param['path'][0]
 
         if not verifier:
             return
 
-        tmp = []
-        for k in verifier:
-            tmp.append({'verified.%s' % k: True})
-        if not tmp:
-            query = {}
-        elif len(tmp) == 1:
-            query = tmp[0]
+        if path:
+            # 从本地文件读取
+            import os
+
+            abs_path = os.path.normpath(os.path.join(os.getcwd(), path))
+            yield Request(url='file://%s' % abs_path, callback=self.parse, meta={'verifier': verifier})
         else:
-            query = {'$or': tmp}
-        for entry in get_mongodb('misc', 'Proxy', profile='mongodb-general').find(query):
-            item = ProxyItem()
-            item['host'] = entry['host']
-            item['port'] = entry['port']
-            item['desc'] = entry['desc']
-            item['scheme'] = 'http'
-
-            proxy = '%s://%s:%d' % (item['scheme'], entry['host'], entry['port'])
-
-            meta = {'item': item, 'proxy': proxy, 'verifier': verifier}
-            yield self.next_req(meta)
-
-        template = 'http://free-proxy-list.net/%s-proxy.html'
-        for country in ['us', 'uk']:
-            yield Request(url=template % country, callback=self.parse, meta={'verifier': verifier})
+            template = 'http://free-proxy-list.net/%s-proxy.html'
+            for country in ['us', 'uk']:
+                yield Request(url=template % country, callback=self.parse, meta={'verifier': verifier})
 
     def parse(self, response):  # draw the state
         for node in Selector(response).xpath('//table[@id="proxylisttable"]/tbody/tr'):
@@ -322,7 +311,7 @@ class FreeListProxySpider(BaseProxySpider):
 
 class ProxyPipeline(object):
     # 向pipline注册
-    spiders = [YoudailiProxySpider.name]
+    spiders = [YoudailiProxySpider.name, DBProxySpider.name, FreeListProxySpider.name]
 
     def process_item(self, item, spider):
         col = get_mongodb('misc', 'Proxy', profile='mongodb-general')
