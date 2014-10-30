@@ -5,40 +5,43 @@ import urllib2
 
 from scrapy import log
 
-import time
-
 
 __author__ = 'zephyre'
 
 
 class ProxySwitchMiddleware(object):
-    def __init__(self):
-        data = None
-        for retry_idx in xrange(3):
-            try:
-                response = urllib2.urlopen('http://cms.lvxingpai.cn/proxy.json')
-                data = json.loads(response.read())
-                break
-            except IOError:
-                if retry_idx < 3:
-                    time.sleep(2)
-                else:
-                    break
+    @classmethod
+    def from_settings(cls, settings, crawler=None):
+        verifier = settings['PROXY_SWITCH_VERIFIER']
+        if not verifier:
+            verifier = 'baidu'
+        latency = settings['PROXY_SWITCH_LATENCY']
+        if not latency:
+            latency = 5
+        count = settings['PROXY_SWITCH_COUNT']
+        if not count:
+            count = 100
 
-        if not data:
-            data = []
+        return cls(verifier, latency, count)
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls.from_settings(crawler.settings, crawler)
+
+    def __init__(self, verifier, latency, count):
+        response = urllib2.urlopen(
+            'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&pageSize=%d' % (verifier, latency, count))
+        data = json.loads(response.read())
 
         # 加载代理列表
         proxy_list = {}
 
-
-
-        #with open('/home/wdx/travelpicrawler/data/proxy_list.txt', 'r') as f:
-        #    for line in f:
-        #        proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
-
-        for line in data:
-            proxy_list['http://' + line.strip()] = {'req': 0, 'fail': 0, 'enabled': True}
+        for entry in data['result']:
+            host = entry['host']
+            scheme = entry['scheme']
+            port = entry['port']
+            proxy = '%s://%s:%d' % (scheme, host, port)
+            proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
 
         self.proxy_list = proxy_list
 
@@ -66,11 +69,11 @@ class ProxySwitchMiddleware(object):
         # if proxy in self.proxy_list:
         # d = self.proxy_list[proxy]
         # d['fail'] += 1
-        #             # 代理是否存活？
-        #             if float(d['fail']) / float(d['req']) > 0.7:
-        #                 d['enabled'] = False
+        # # 代理是否存活？
+        # if float(d['fail']) / float(d['req']) > 0.7:
+        # d['enabled'] = False
         #
-        #     return request
+        # return request
 
         if 'proxy' in request.meta:
             proxy = request.meta['proxy']
