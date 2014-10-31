@@ -38,10 +38,10 @@ class QyerAlienSpotSpider(CrawlSpider):
         sel = Selector(response)
 
         def func(node, hot):
-            country_url = node.xpath('./@href').extract()[0]
-            country_name = node.xpath('./text()').extract()[0]
+            country_url = node.xpath('./@href').extract()[0].strip()
+            country_name = node.xpath('./text()').extract()[0].strip()
             ret = node.xpath('./span[@class="en"]/text()').extract()
-            country_engname = ret[0].lower() if ret else None
+            country_engname = ret[0].lower().strip() if ret else None
 
             if 'country' in self.param and country_engname not in self.param['country']:
                 return None

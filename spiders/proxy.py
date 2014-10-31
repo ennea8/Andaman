@@ -1,7 +1,6 @@
 # coding=utf-8
 import copy
 import re
-
 import datetime
 from scrapy import Item, Field, Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
@@ -83,7 +82,7 @@ class BaseProxySpider(CrawlSpider):
         verifier_head = response.request.meta['verifier_head']
         proxy = response.request.meta['proxy']
 
-        item['verifiedTime'] = datetime.datetime.now()
+        item['verifiedTime'] = datetime.datetime.utcnow()
         if 'verified' not in item or not item['verified']:
             item['verified'] = {}
         item['verified'][verifier_head] = False
@@ -100,7 +99,7 @@ class BaseProxySpider(CrawlSpider):
         if 'latency' not in item or not item['latency']:
             item['latency'] = {}
         item['latency'][verifier_head] = response.meta['download_latency']
-        item['verifiedTime'] = datetime.datetime.now()
+        item['verifiedTime'] = datetime.datetime.utcnow()
         if 'verified' not in item or not item['verified']:
             item['verified'] = {}
         item['verified'][verifier_head] = (response.status == 200
