@@ -21,16 +21,20 @@ class ProxySwitchMiddleware(object):
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
             count = 100
+        recently = settings['PROXY_SWITCH_RECENTLY']
+        if not recently:
+            recently = 12
 
-        return cls(verifier, latency, count)
+        return cls(verifier, latency, recently, count)
 
     @classmethod
     def from_crawler(cls, crawler):
         return cls.from_settings(crawler.settings, crawler)
 
-    def __init__(self, verifier, latency, count):
+    def __init__(self, verifier, latency, recently, count):
         response = urllib2.urlopen(
-            'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&pageSize=%d' % (verifier, latency, count))
+            'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&recently=%d&pageSize=%d' %
+            (verifier, latency, recently, count))
         data = json.loads(response.read())
 
         # 加载代理列表

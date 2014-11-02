@@ -1,10 +1,12 @@
 # coding=utf-8
 import copy
 import re
+
 import datetime
 from scrapy import Item, Field, Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
 
+from middlewares import ProxySwitchMiddleware
 from utils import get_mongodb
 
 
@@ -275,9 +277,11 @@ class FreeListProxySpider(BaseProxySpider):
             abs_path = os.path.normpath(os.path.join(os.getcwd(), path))
             yield Request(url='file://%s' % abs_path, callback=self.parse, meta={'verifier': verifier})
         else:
+            ps = ProxySwitchMiddleware(verifier[0], 10, 12, 100)
+            proxy = ps.pick_proxy()
             template = 'http://free-proxy-list.net/%s-proxy.html'
             for country in ['us', 'uk']:
-                yield Request(url=template % country, callback=self.parse, meta={'verifier': verifier})
+                yield Request(url=template % country, callback=self.parse, meta={'verifier': verifier, 'proxy': proxy})
 
     def parse(self, response):  # draw the state
         for node in Selector(response).xpath('//table[@id="proxylisttable"]/tbody/tr'):
