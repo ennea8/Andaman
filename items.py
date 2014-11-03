@@ -257,22 +257,6 @@ class YikuaiquSpotItem(scrapy.Item):
     url = scrapy.Field()
 
 
-class QyerAlienpoiItem(scrapy.Item):
-    country_info = scrapy.Field()
-    poi_url = scrapy.Field()
-    poi_id = scrapy.Field()
-    poi_cover = scrapy.Field()
-    poi_name = scrapy.Field()
-    poi_score = scrapy.Field()
-    poi_englishName = scrapy.Field()
-    poi_summary = scrapy.Field()
-    poi_detail = scrapy.Field()
-    poi_photo = scrapy.Field()
-    poi_been = scrapy.Field()
-    poi_lat = scrapy.Field()
-    poi_lng = scrapy.Field()
-
-
 class BaiduNoteProcItem(scrapy.Item):
     id = scrapy.Field()
     title = scrapy.Field()
