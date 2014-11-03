@@ -295,3 +295,9 @@ class BaiduNoteProcItem(scrapy.Item):
     source = scrapy.Field()
     sourceUrl = scrapy.Field()
     elite = scrapy.Field()
+
+class BaiduNoteKeywordItem(scrapy.Item):
+    id = scrapy.Field()
+    title = scrapy.Field()
+    url = scrapy.Field()
+    keyword = scrapy.Field()
