@@ -731,9 +731,9 @@ class BaiduNoteKeywordSpider(CrawlSpider):
                     content_v.append(content[1:-4])
                 keyword.extend(content_v)
 
-            item['_id'] = entry['_id']
             item['title'] = entry['title']
             item['keyword'] = keyword
+            item['url'] = entry['url']
             i += 1
 
             yield item
@@ -748,10 +748,10 @@ class BaiduNoteProcPipeline(object):
         if type(item).__name__ != BaiduNoteKeywordItem.__name__:
             return item
 
-        col = utils.get_mongodb('raw_data', 'BaiduView', profile='mongodb-crawler')
+        col = utils.get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
         view = {}
-        view['_id'] = item['id']
         view['title'] = item['title']
         view['keyword'] = item['keyword']
+        view['url'] = item['url']
         col.save(view)
         return item
