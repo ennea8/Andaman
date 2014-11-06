@@ -188,6 +188,8 @@ class CityItem(Item):
     alias = Field()
     # 人口
     population = Field()
+    # featureCode
+    level = Field()
 
 
 class GeoNamesProcSpider(CrawlSpider):
@@ -208,28 +210,37 @@ class GeoNamesProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', meta={'countries': param['countries']}, callback=self.parse)
 
     def parse(self, response):
-        col = utils.get_mongodb('raw_data', 'GeoNamesCity', profile='mongodb-crawler')
+        col = utils.get_mongodb('raw_data', 'GeoNames', profile='mongodb-crawler')
         countries = response.meta['countries']
-        for entry in list(
-                col.find({'$or': [{'countryCode': tmp.upper()} for tmp in countries]} if countries else {},
-                         {'_id': 1})):
-            city = col.find_one({'_id': entry['_id']})
+
+        query = {'featureClass': 'P', 'population': {'$gt': 0}}
+        if countries:
+            if len(countries) > 1:
+                query['$or'] = [{'country': tmp.upper()} for tmp in countries]
+            else:
+                query['country'] = countries[0].upper()
+        for entry in col.find(query):
+            # city = col.find_one({'_id': entry['_id']})
+            city = entry
 
             item = CityItem()
             item['city_id'] = city['_id']
-            en_name = city['enName'].lower().strip()
-            zh_name = city['zhName'].lower().strip()
-            item['en_name'] = en_name
-            item['zh_name'] = zh_name
-            s = set([tmp.lower().strip() for tmp in (item['alias'] if 'alias' in city else [])])
-            s.add(en_name)
-            s.add(zh_name)
-            item['alias'] = list(s)
+            item['en_name'] = city['asciiName']
+            item['zh_name'] = city['enName']
+
             item['lat'] = city['lat']
             item['lng'] = city['lng']
             item['population'] = city['population']
+            item['level'] = city['featureCode']
 
-            country_code = city['countryCode'].lower()
+            s = set([tmp.lower().strip() for tmp in (item['alias'] if 'alias' in city else [])])
+            s.add(city['asciiName'])
+            s.add(city['enName'])
+            for val in city['altName']:
+                s.add(val)
+            item['alias'] = list(s)
+
+            country_code = city['country']
             item['country_code'] = country_code
             if country_code in GeoNamesProcSpider.country_map:
                 country = GeoNamesProcSpider.country_map[country_code]
@@ -255,16 +266,25 @@ class GeoNamesProcSpider(CrawlSpider):
         item = response.meta['item']
         lang = response.meta['lang']
         try:
-            data = json.loads(response.body)['results'][0]['address_components'][0]
-            short_name = data['short_name'].lower()
-            long_name = data['long_name'].lower()
+            data = json.loads(response.body)
+            if data['status'] == 'OVER_QUERY_LIMIT':
+                yield Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
+                              headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
+                              dont_filter=True)
+            geometry = data['results'][0]['geometry']
+            data = data['results'][0]['address_components'][0]
+
+            short_name = data['short_name']
+            long_name = data['long_name']
             s = set(item['alias'])
-            s.add(short_name)
-            s.add(long_name)
+            s.add(short_name.lower())
+            s.add(long_name.lower())
             k = 'zh_name' if lang == 'zh' else 'en_name'
             s.add(item[k])
             item[k] = long_name
             item['alias'] = list(s)
+            item['lat'] = geometry['location']['lat']
+            item['lng'] = geometry['location']['lng']
         except (KeyError, IndexError):
             self.log('ERROR GEOCODEING: %s' % response.url, log.WARNING)
 
@@ -286,39 +306,54 @@ class GeoNamesProcPipeline(object):
     country_map = {}
 
     def process_item(self, item, spider):
-        if type(item).__name__ != CityItem.__name__:
-            return item
-
         col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
 
+        # get country
+        country_code = item['country_code']
+        if country_code not in GeoNamesProcPipeline.country_map:
+            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+            country = col_country.find_one({'code': country_code})
+            assert country != None
+            GeoNamesProcPipeline.country_map[country_code] = country
+        else:
+            country = GeoNamesProcPipeline.country_map[country_code]
+
         city_id = item['city_id']
-        city = col_loc.find_one({'misc.geoNamesId': city_id})
+        city = col_loc.find_one({'source.geonames.id': city_id})
+
+        if not city:
+            city = col_loc.find_one({'alias': item['en_name'].lower(),
+                                     'coords': {'$near': [item['lat'], item['lng']]},
+                                     'country.id': country['_id']})
+            if city:
+                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['lng'], item['lat'])
+                if dist > 10:
+                    city = {}
+
         if not city:
             city = {}
 
         city['enName'] = item['en_name']
         city['zhName'] = item['zh_name']
+
+        source = city['source'] if 'source' in city else {}
+        source['geonames'] = {'id': item['city_id']}
+        city['source'] = source
+
         city['alias'] = item['alias']
         city['shortName'] = utils.get_short_loc(item['zh_name'])
         city['pinyin'] = []
 
-        country_code = item['country_code']
-        if country_code not in GeoNamesProcPipeline.country_map:
-            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
-            country = col_country.find_one({'code': country_code})
-            GeoNamesProcPipeline.country_map[country_code] = country
-        else:
-            country = GeoNamesProcPipeline.country_map[country_code]
         city['country'] = {'id': country['_id'], 'enName': country['enName'], 'zhName': country['zhName']}
 
-        city['level'] = 3
+        city['level'] = 2 if item['level'] == 'PPLA' else 3
         city['images'] = []
         city['imageList'] = []
         city['coords'] = {'lat': item['lat'], 'lng': item['lng']}
-        if 'misc' not in city:
-            city['misc'] = {}
-        city['misc']['geoNamesId'] = city_id
-        city['misc']['geoNamesPopulation'] = item['population']
+        # if 'misc' not in city:
+        # city['misc'] = {}
+        # city['misc']['geoNamesId'] = city_id
+        # city['misc']['geoNamesPopulation'] = item['population']
         city['abroad'] = True
 
         col_loc.save(city)

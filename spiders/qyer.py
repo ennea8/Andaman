@@ -15,7 +15,7 @@ from scrapy import Request, Selector, log
 from scrapy.contrib.spiders import CrawlSpider
 
 
-class QyerAlienpoiItem(scrapy.Item):
+class QyerPoiItem(scrapy.Item):
     country_info = scrapy.Field()
     poi_url = scrapy.Field()
     poi_id = scrapy.Field()
@@ -203,7 +203,7 @@ class QyerSpotSpider(CrawlSpider):
         yield Request(url=poi_photo_url, callback=self.parse_photo, meta={"poi_info": poi_info})
 
     def parse_photo(self, response):
-        item = QyerAlienpoiItem()
+        item = QyerPoiItem()
         sel = Selector(response)
         poi_info = response.meta["poi_info"]
         item["country_info"] = poi_info["country_info"]
@@ -264,7 +264,7 @@ class QyerSpotProcSpider(CrawlSpider):
                 if not lat or not lng:
                     continue
 
-                item = QyerAlienpoiItem()
+                item = QyerPoiItem()
                 for k in entry:
                     if k in item.fields:
                         item[k] = entry[k]
@@ -274,14 +274,27 @@ class QyerSpotProcSpider(CrawlSpider):
 
     def parse_geocode(self, response):
         geocode_ret = json.loads(response.body)
+        item = response.meta['item']
+
+        if geocode_ret['status'] == 'OVER_QUERY_LIMIT':
+            self.log('OVER_QUERY_LIMIT', log.WARNING)
+            return Request(url=response.url, callback=self.parse_geocode, meta={'item': item}, dont_filter=True)
+
         components = geocode_ret['results'][0]['address_components']
 
         # find locality
-        tmp = filter(lambda entry: 'locality' in entry['types'], components)
-        if not tmp:
-            self.log('Failed to find locality from Geocode: %s' % response.url, log.WARNING)
-            return
-        city_name = tmp[0]['long_name']
+        city_name = []
+        for c in components:
+            if 'country' in c['types']:
+                continue
+            else:
+                city_name.append(c['long_name'])
+        # city_name = [tmp['long_name'] for tmp in components]
+        # tmp = filter(lambda entry: 'locality' in entry['types'], components)
+        # if not tmp:
+        # self.log('Failed to find locality from Geocode: %s' % response.url, log.WARNING)
+        # return
+        # city_name = tmp[0]['long_name']
 
         # find country
         tmp = filter(lambda entry: 'country' in entry['types'], components)
@@ -290,10 +303,9 @@ class QyerSpotProcSpider(CrawlSpider):
             return
         country_name = tmp[0]['long_name']
 
-        item = response.meta['item']
         item['poi_city'] = city_name
         item['country_info'] = country_name
-        yield item
+        return item
 
 
 class QyerSpotProcPipeline(object):
@@ -301,8 +313,6 @@ class QyerSpotProcPipeline(object):
 
     def process_item(self, item, spider):
         country_name = item['country_info']
-        city_name = item['poi_city']
-
         # lookup the country
         col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
         ret = col_country.find_one({'alias': country_name.lower()}, {'zhName': 1, 'enName': 1})
@@ -311,13 +321,31 @@ class QyerSpotProcPipeline(object):
             return
         country_info = {'id': ret['_id'], '_id': ret['_id'], 'zhName': ret['zhName'], 'enName': ret['enName']}
 
+        city_candidates = item['poi_city']
         # lookup the city
+        city = None
         col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
-        ret = col_loc.find_one({'country.id': country_info['_id'], 'alias': city_name.lower()}, {'zhName': 1, 'enName': 1})
-        if not ret:
-            spider.log('Failed to find locality from DB: %s' % city_name, log.WARNING)
+        for city_name in city_candidates:
+            for city in col_loc.find({'country.id': country_info['_id'],
+                                      'alias': re.compile(r'^%s' % city_name.lower()),
+                                      'coords': {'$near': [item['poi_lat'], item['poi_lng']]}},
+                                     {'zhName': 1, 'enName': 1, 'coords': 1}).limit(5):
+                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['poi_lng'],
+                                       item['poi_lat'])
+                if dist > 150:
+                    city = None
+                    continue
+
+                break
+
+            if city:
+                break
+
+        if not city:
+            spider.log('Failed to find locality from DB: %s' % ', '.join(city_candidates), log.WARNING)
             return
-        city_info = {'id': ret['_id'], '_id': ret['_id'], 'zhName': ret['zhName'], 'enName': ret['enName']}
+
+        city_info = {'id': city['_id'], '_id': city['_id'], 'zhName': city['zhName'], 'enName': city['enName']}
 
         # lookup the poi
         col_vs = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
@@ -341,9 +369,35 @@ class QyerSpotProcPipeline(object):
         vs['addr'] = {'loc': city_info, 'coords': {'lat': item['poi_lat'], 'lng': item['poi_lng']}}
         vs['country'] = country_info
 
-        vs['alias'] = list(set([vs[k].lower() for k in ['name', 'zhName', 'enName']]))
+        vs['alias'] = filter(lambda val: val,
+                             list(set([vs[k].strip().lower() if vs[k] else '' for k in ['name', 'zhName', 'enName']])))
         vs['targets'] = [city_info['_id'], country_info['_id']]
         vs['enabled'] = True
+        vs['abroad'] = True
+
+        details = item['poi_detail'] if 'poi_detail' in item else []
+        new_det = []
+        for entry in details:
+            if entry['title'][:2] == u'门票':
+                vs['priceDesc'] = entry['content']
+            elif entry['title'][:4] == u'到达方式':
+                vs['trafficInfo'] = entry['content']
+            elif entry['title'][:4] == u'开放时间':
+                vs['openTime'] = entry['content']
+            elif entry['title'][:2] == u'地址':
+                vs['addr']['address'] = entry['content']
+            elif entry['title'][:2] == u'网址':
+                vs['website'] = entry['content']
+            elif entry['title'][:4] == u'所属分类':
+                tags = set(vs['tags'] if 'tags' in vs else [])
+                for t in re.split(ur'[/\|｜\s,]', entry['content']):
+                    # for t in re.split(r'[/\|\s,]', entry['content']):
+                    t = t.strip()
+                    if t:
+                        tags.add(t)
+                vs['tags'] = list(tags)
+            else:
+                new_det.append(entry['title'] + entry['content'])
 
         col_vs.save(vs)
 
