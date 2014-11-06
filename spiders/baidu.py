@@ -19,7 +19,7 @@ import conf
 import utils
 import datetime
 import pysolr
-from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem
+from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem,BaiduNoteKeywordItem
 import qiniu_utils
 
 
@@ -697,4 +697,61 @@ class BaiduNoteProcPipeline(object):
 
         solr_s.add(doc)
 
+        return item
+
+class BaiduNoteKeywordSpider(CrawlSpider):
+    """
+    对百度游记数据提取景点
+    """
+    name = 'baidu_note_keyword'  # name of spider
+
+    def __init__(self, *a, **kw):
+        super(BaiduNoteKeywordSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse)
+
+    def parse(self, response):
+        item = BaiduNoteKeywordItem()
+        col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
+        part = col.find()
+        i=1
+        for entry in part:
+            print i
+            keyword = []
+            content_m = entry['contents']
+            content_v = []
+            # part_u=part.decode('gb2312')
+            if not content_m:
+                continue
+            for i in range(len(content_m)):
+                keyword_raw=re.compile(r'>[\s\S][^>]*</a>')
+                contents=keyword_raw.findall(content_m[i])
+                for content in contents:
+                    content_v.append(content[1:-4])
+                keyword.extend(content_v)
+
+            item['title'] = entry['title']
+            item['keyword'] = keyword
+            item['url'] = entry['url']
+            i += 1
+
+            yield item
+
+class BaiduNoteProcPipeline(object):
+    """
+    存到数据库
+    """
+    spiders = [BaiduNoteKeywordSpider.name]
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != BaiduNoteKeywordItem.__name__:
+            return item
+
+        col = utils.get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
+        view = {}
+        view['title'] = item['title']
+        view['keyword'] = item['keyword']
+        view['url'] = item['url']
+        col.save(view)
         return item
