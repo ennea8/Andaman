@@ -6,8 +6,6 @@ import random
 import re
 import time
 
-from bson import ObjectId
-
 import qiniu.conf
 import qiniu.rs
 import qiniu.io
@@ -59,8 +57,7 @@ class ImageProcSpider(CrawlSpider):
 
         col = utils.get_mongodb(db, col_name, profile='mongodb-general')
         col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        for entry in col.find({'abroad': True, '_id': ObjectId('5459163410114e1e8d7fd67f')},
-                              {list1_name: 1, list2_name: 1}):
+        for entry in col.find({}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
             # 往哪里存？默认：images
