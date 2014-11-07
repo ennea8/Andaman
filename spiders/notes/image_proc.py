@@ -9,7 +9,6 @@ import time
 import qiniu.conf
 import qiniu.rs
 import qiniu.io
-
 from scrapy import Request, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
 
@@ -73,6 +72,7 @@ class ImageProcSpider(CrawlSpider):
             item['list2_name'] = list2_name
 
             upload_list = []
+            modified = False
             for url in list1:
                 url_set = set([tmp['url'] for tmp in list2])
                 url1 = 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
@@ -89,13 +89,18 @@ class ImageProcSpider(CrawlSpider):
                 if image:
                     url2 = 'http://lvxingpai-img-store.qiniudn.com/' + image['key']
                     if url2 not in url_set:
+                        modified = True
                         list2.append({'url': url2, 'h': image['h'], 'w': image['w'], 'fSize': image['size'],
                                       'enabled': True})
                 else:
+                    modified = True
                     upload_list.append(url)
 
-            if not upload_list:
+            if not modified:
                 continue
+
+            if not upload_list:
+                yield item
             else:
                 # 开始链式下载
                 url = upload_list.pop()
