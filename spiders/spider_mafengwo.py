@@ -1,10 +1,7 @@
-
-
 # coding=utf-8
 __author__ = 'lxf'
 
 import re
-
 import pymongo
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
