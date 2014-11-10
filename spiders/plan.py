@@ -58,24 +58,16 @@ class PlanImportSpider(CrawlSpider):
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
 
-    @staticmethod
-    def get_config(section, key):
-        config = ConfigParser.ConfigParser()
-        d = os.path.split(os.path.realpath(__file__))[0]
-        path = os.path.realpath(os.path.join(d, '../conf/private.cfg'))
-        config.read(path)
-        return config.get(section, key)
-
     def parse(self, response):
-        host = self.get_config('cms-mysqldb', 'host')
-        port = int(self.get_config('cms-mysqldb', 'port'))
-        user = self.get_config('cms-mysqldb', 'user')
-        passwd = self.get_config('cms-mysqldb', 'passwd')
+        host = utils.cfg_entries('cms-mysqldb', 'host')
+        port = int(utils.cfg_entries('cms-mysqldb', 'port'))
+        user = utils.cfg_entries('cms-mysqldb', 'user')
+        passwd = utils.cfg_entries('cms-mysqldb', 'passwd')
         my_conn = MySQLdb.connect(host=host, port=port, user=user, passwd=passwd, db='lvplan', cursorclass=DictCursor,
                                   charset='utf8')
         cursor = my_conn.cursor()
         param = getattr(self, 'param', {})
-        stmt = 'SELECT * FROM pre_plan WHERE is_delete=0 AND abroad=1'
+        stmt = 'SELECT * FROM pre_plan WHERE is_delete=0'
         if 'cond' in param:
             stmt = '%s AND %s' % (stmt, ' AND '.join(param['cond']))
         if 'limit' in param:
