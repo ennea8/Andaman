@@ -432,7 +432,17 @@ class QyerVsProcSpider(CrawlSpider):
             self.log('Failed to find locality from DB: %s' % ', '.join(city_candidates), log.WARNING)
             return
 
-        item['poi_city'] = {'id': city['_id'], '_id': city['_id'], 'zhName': city['zhName'], 'enName': city['enName']}
+        alias_names = list(set(filter(lambda val: val, [(city[k].strip() if k in city and city[k] else '') for k in
+                                                        ['zhName', 'enName']])))
+        try:
+            zhName = city['zhName'].strip()
+        except (ValueError, KeyError, AttributeError):
+            zhName = alias_names[0]
+        try:
+            enName = city['enName'].strip()
+        except (ValueError, KeyError, AttributeError):
+            enName = alias_names[0]
+        item['poi_city'] = {'id': city['_id'], '_id': city['_id'], 'zhName': zhName, 'enName': enName}
         return item
 
 
