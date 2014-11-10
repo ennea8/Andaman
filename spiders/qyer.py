@@ -469,6 +469,7 @@ class QyerSpotProcPipeline(object):
                        list(set([vs[k].strip().lower() if vs[k] else '' for k in ['name', 'zhName', 'enName']])))
         alias.extend(item['alias'])
         vs['alias'] = list(set(alias))
+        vs['rating'] = item['rating']
 
         vs['targets'] = [city_info['_id'], country_info['_id']]
         vs['enabled'] = True
