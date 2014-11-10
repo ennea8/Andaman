@@ -1,4 +1,5 @@
 # coding: utf-8
+import random
 import urlparse
 
 import scrapy
@@ -30,13 +31,17 @@ class QyerPoiItem(scrapy.Item):
     poi_lat = scrapy.Field()
     poi_lng = scrapy.Field()
     poi_city = scrapy.Field()
+    rating = scrapy.Field()
+    commentCnt = scrapy.Field()
+    alias = scrapy.Field()
+    viewport = scrapy.Field()
 
 
-class QyerSpotSpider(CrawlSpider):
-    name = 'qyer_spot'
+class QyerVsSpot(CrawlSpider):
+    name = 'qyer-vs'
 
     def __init__(self, *a, **kw):
-        super(QyerSpotSpider, self).__init__(*a, **kw)
+        super(QyerVsSpot, self).__init__(*a, **kw)
         self.param = {}
 
     def start_requests(self):
@@ -61,7 +66,7 @@ class QyerSpotSpider(CrawlSpider):
             ret = node.xpath('./span[@class="en"]/text()').extract()
             country_engname = ret[0].lower().strip() if ret else None
 
-            if 'country' in self.param and country_engname not in self.param['country']:
+            if 'country' in self.param and country_engname.lower() not in self.param['country']:
                 return None
 
             sights_url = urlparse.urljoin(country_url, './sight')
@@ -183,6 +188,33 @@ class QyerSpotSpider(CrawlSpider):
             '//div[@class="poiDet-main"]/div[@class="poiDet-detail"]/descendant-or-self::text()').extract()]))
         # mp])) tmp[0].strip() if tmp else None
 
+        # 景点评分
+        poi_info['rating'] = None
+        tmp = sel.xpath(
+            '//div[@class="poiDet-main"]//div[@class="infos"]//p[@class="points"]/span[@class="number"]/text()').extract()
+        try:
+            poi_info['rating'] = float(tmp[0]) / 10 if tmp else None
+        except ValueError:
+            pass
+
+        # 用户评论次数
+        poi_info['commentCnt'] = None
+        tmp = sel.xpath(
+            '//div[@class="poiDet-main"]//div[@class="infos"]//p[@class="poiDet-stars"]/span[@class="summery"]/a/text()').extract()
+        if tmp:
+            m = re.search(r'^\s*(\d+)', tmp[0])
+            if m:
+                poi_info['commentCnt'] = int(m.group(1))
+
+        # 景点访问次数
+        poi_info['poi_been'] = None
+        tmp = sel.xpath(
+            '//div[@class="poiDet-rightfix"]/div[@class="wrap"]/h2[@class="title"]/span[@class="golden"]/text()').extract()
+        try:
+            poi_info['poi_been'] = int(tmp[0]) if tmp else None
+        except ValueError:
+            pass
+
         detail = []
         for node in sel.xpath('//div[@class="poiDet-main"]/ul[@class="poiDet-tips"]/li'):
             tmp = '\n'.join(
@@ -220,11 +252,13 @@ class QyerSpotSpider(CrawlSpider):
         item['poi_lng'] = poi_info['lng']
         item['poi_photo'] = sel.xpath(
             '//div/ul[contains(@class, "pla_photolist")]/li/p[@class="pic"]/a/img/@src').extract()
+        item['rating'] = poi_info['rating']
+        item['commentCnt'] = poi_info['commentCnt']
         yield item
 
 
-class QyerSpotPipeline(object):
-    spiders = [QyerSpotSpider.name]
+class QyerVsPipeline(object):
+    spiders = [QyerVsSpot.name]
 
     def process_item(self, item, spider):
         col = utils.get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
@@ -237,15 +271,19 @@ class QyerSpotPipeline(object):
         return item
 
 
-class QyerSpotProcSpider(CrawlSpider):
+class QyerVsProcSpider(CrawlSpider):
     """
     处理穷游的景点数据
     """
 
-    name = 'qyer_spot_proc'
+    name = 'qyer-vs-proc'
 
     def __init__(self, *a, **kw):
-        super(QyerSpotProcSpider, self).__init__(*a, **kw)
+        super(QyerVsProcSpider, self).__init__(*a, **kw)
+        section = 'geocode-keys'
+        self.geocode_keys = []
+        for option in utils.cfg_options(section):
+            self.geocode_keys.append(utils.cfg_entries(section, option))
 
     def start_requests(self):
         param = getattr(self, 'param', {})
@@ -257,6 +295,7 @@ class QyerSpotProcSpider(CrawlSpider):
         col_raw = utils.get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
 
         for country in meta['countries']:
+            # 查找指定国家的POI
             for entry in col_raw.find({'country_info.country_engname': country}):
                 lat = entry['poi_lat']
                 lng = entry['poi_lng']
@@ -269,8 +308,10 @@ class QyerSpotProcSpider(CrawlSpider):
                     if k in item.fields:
                         item[k] = entry[k]
 
-                url = 'http://maps.googleapis.com/maps/api/geocode/json?address=%f,%f' % (lat, lng)
-                yield Request(url=url, meta={'item': item}, callback=self.parse_geocode)
+                ridx = random.randint(0, len(self.geocode_keys) - 1)
+                geocode_key = self.geocode_keys[ridx]
+                url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%f,%f&key=%s' % (lat, lng, geocode_key)
+                yield Request(url=url, meta={'item': item}, callback=self.parse_geocode, dont_filter=True)
 
     def parse_geocode(self, response):
         geocode_ret = json.loads(response.body)
@@ -282,19 +323,13 @@ class QyerSpotProcSpider(CrawlSpider):
 
         components = geocode_ret['results'][0]['address_components']
 
-        # find locality
+        # 可能的city候选列表
         city_name = []
         for c in components:
             if 'country' in c['types']:
                 continue
             else:
                 city_name.append(c['long_name'])
-        # city_name = [tmp['long_name'] for tmp in components]
-        # tmp = filter(lambda entry: 'locality' in entry['types'], components)
-        # if not tmp:
-        # self.log('Failed to find locality from Geocode: %s' % response.url, log.WARNING)
-        # return
-        # city_name = tmp[0]['long_name']
 
         # find country
         tmp = filter(lambda entry: 'country' in entry['types'], components)
@@ -305,47 +340,108 @@ class QyerSpotProcSpider(CrawlSpider):
 
         item['poi_city'] = city_name
         item['country_info'] = country_name
-        return item
 
+        item = self.update_country(item)
+        if not item:
+            return
+        item = self.update_city(item)
+        if not item:
+            return
 
-class QyerSpotProcPipeline(object):
-    spiders = [QyerSpotProcSpider.name]
+        ridx = random.randint(0, len(self.geocode_keys) - 1)
+        geocode_key = self.geocode_keys[ridx]
+        url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s&key=%s' % (
+            item['poi_englishName'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
+        item['alias'] = []
+        return Request(url=url, headers={'Accept-Language': 'en-US'}, meta={'item': item, 'lang': 'en'},
+                       callback=self.parse_alias, dont_filter=True)
 
-    def process_item(self, item, spider):
+    def parse_alias(self, response):
+        geocode_ret = json.loads(response.body)
+        item = response.meta['item']
+        lang = response.meta['lang']
+
+        if geocode_ret['status'] == 'OVER_QUERY_LIMIT':
+            self.log('OVER_QUERY_LIMIT', log.WARNING)
+            return Request(url=response.url, headers=response.headers,
+                           callback=self.parse_alias, meta={'item': item, 'lang': lang}, dont_filter=True)
+        elif geocode_ret['status'] == 'OK':
+            c = geocode_ret['results'][0]['address_components'][0]
+            # 找到的是行政区还是POI？
+            if 'political' not in c['types']:
+                alias = set(item['alias'])
+                alias.add(c['long_name'].lower())
+                alias.add(c['short_name'].lower())
+                item['alias'] = list(alias)
+
+                # 顺便处理viewport
+                if 'viewport' not in item:
+                    viewport = geocode_ret['results'][0]['geometry']['viewport']
+                    lat = item['poi_lat']
+                    lng = item['poi_lng']
+                    if lat >= viewport['southwest']['lat'] and lat <= viewport['northeast']['lat'] and lng >= \
+                            viewport['southwest']['lng'] and lng <= viewport['northeast']['lng']:
+                        item['viewport'] = viewport
+        else:
+            self.log(geocode_ret['status'], log.WARNING)
+
+        if lang == 'zh':
+            return item
+        else:
+            ridx = random.randint(0, len(self.geocode_keys) - 1)
+            geocode_key = self.geocode_keys[ridx]
+            url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s&key=%s' % (
+                item['poi_name'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
+            return Request(url=url, headers={'Accept-Language': 'zh-CN'}, meta={'item': item, 'lang': 'zh'},
+                           callback=self.parse_alias, dont_filter=True)
+
+    def update_country(self, item):
         country_name = item['country_info']
         # lookup the country
         col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
         ret = col_country.find_one({'alias': country_name.lower()}, {'zhName': 1, 'enName': 1})
         if not ret:
-            spider.log('Failed to find country: %s' % country_name, log.WARNING)
+            self.log('Failed to find country: %s' % country_name, log.WARNING)
             return
-        country_info = {'id': ret['_id'], '_id': ret['_id'], 'zhName': ret['zhName'], 'enName': ret['enName']}
+        item['country_info'] = {'id': ret['_id'], '_id': ret['_id'], 'zhName': ret['zhName'], 'enName': ret['enName']}
+        return item
 
+    def update_city(self, item):
         city_candidates = item['poi_city']
+        country_info = item['country_info']
         # lookup the city
         city = None
         col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
         for city_name in city_candidates:
-            for city in col_loc.find({'country.id': country_info['_id'],
-                                      'alias': re.compile(r'^%s' % city_name.lower()),
-                                      'coords': {'$near': [item['poi_lat'], item['poi_lng']]}},
-                                     {'zhName': 1, 'enName': 1, 'coords': 1}).limit(5):
-                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['poi_lng'],
-                                       item['poi_lat'])
-                if dist > 150:
-                    city = None
-                    continue
-
-                break
-
-            if city:
+            city_list = list(col_loc.find({'country.id': country_info['_id'],
+                                           'alias': re.compile(r'^%s' % city_name.lower()),
+                                           'location': {
+                                               '$near': {
+                                                   '$geometry': {'type': 'Point',
+                                                                 'coordinates': [item['poi_lng'], item['poi_lat']]},
+                                                   '$minDistance': 0,
+                                                   '$maxDistance': 150 * 1000
+                                               }
+                                           }},
+                                          {'zhName': 1, 'enName': 1, 'coords': 1}).limit(5))
+            if city_list:
+                city = city_list[0]
                 break
 
         if not city:
-            spider.log('Failed to find locality from DB: %s' % ', '.join(city_candidates), log.WARNING)
+            self.log('Failed to find locality from DB: %s' % ', '.join(city_candidates), log.WARNING)
             return
 
-        city_info = {'id': city['_id'], '_id': city['_id'], 'zhName': city['zhName'], 'enName': city['enName']}
+        item['poi_city'] = {'id': city['_id'], '_id': city['_id'], 'zhName': city['zhName'], 'enName': city['enName']}
+        return item
+
+
+class QyerSpotProcPipeline(object):
+    spiders = [QyerVsProcSpider.name]
+
+    def process_item(self, item, spider):
+        city_info = item['poi_city']
+        country_info = item['country_info']
 
         # lookup the poi
         col_vs = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
@@ -369,11 +465,25 @@ class QyerSpotProcPipeline(object):
         vs['addr'] = {'loc': city_info, 'coords': {'lat': item['poi_lat'], 'lng': item['poi_lng']}}
         vs['country'] = country_info
 
-        vs['alias'] = filter(lambda val: val,
-                             list(set([vs[k].strip().lower() if vs[k] else '' for k in ['name', 'zhName', 'enName']])))
+        alias = filter(lambda val: val,
+                       list(set([vs[k].strip().lower() if vs[k] else '' for k in ['name', 'zhName', 'enName']])))
+        alias.extend(item['alias'])
+        vs['alias'] = list(set(alias))
+        vs['rating'] = item['rating']
+
         vs['targets'] = [city_info['_id'], country_info['_id']]
         vs['enabled'] = True
         vs['abroad'] = True
+
+        vs['location'] = {'type': 'Point', 'coordinates': [item['poi_lng'], item['poi_lat']]}
+        if 'viewport' in item:
+            vs['viewport'] = {'northeast': {'type': 'Point',
+                                            'coordinates': [item['viewport']['northeast']['lng'],
+                                                            item['viewport']['northeast']['lat']]},
+                              'southwest': {'type': 'Point',
+                                            'coordinates': [item['viewport']['southwest']['lng'],
+                                                            item['viewport']['southwest']['lat']]},
+            }
 
         details = item['poi_detail'] if 'poi_detail' in item else []
         new_det = []

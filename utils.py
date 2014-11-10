@@ -1,9 +1,13 @@
 # coding=utf-8
+import ConfigParser
+import os
 import re
-
-import pymongo
-
 from math import radians, cos, sin, asin, sqrt
+
+import pymongo.errors
+import pymongo
+import time
+
 import conf
 
 
@@ -27,11 +31,22 @@ def get_mongodb(db_name, col_name, profile=None, host='localhost', port=27017, u
         user = section.get('user', None)
         passwd = section.get('passwd', None)
 
-    mongo_conn = pymongo.Connection(host, port)
-    db = getattr(mongo_conn, db_name)
-    if user and passwd:
-        db.authenticate(name=user, password=passwd)
-    col = getattr(db, col_name)
+    col = None
+    retry = 0
+    while True:
+        retry += 1
+        try:
+            mongo_conn = pymongo.Connection(host, port)
+            db = getattr(mongo_conn, db_name)
+            if user and passwd:
+                db.authenticate(name=user, password=passwd)
+            col = getattr(db, col_name)
+            break
+        except pymongo.errors.PyMongoError as e:
+            if retry >= 5:
+                raise e
+            else:
+                time.sleep(2)
     return col
 
 
@@ -87,3 +102,27 @@ def get_short_loc(name):
             name = tmp
 
     return name
+
+
+def cfg_entries(section, key):
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.get(section, key)
+
+
+def cfg_sections():
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.sections()
+
+
+def cfg_options(section):
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.options(section)
