@@ -1,6 +1,4 @@
 # coding=utf-8
-import ConfigParser
-import os
 import re
 
 import MySQLdb
@@ -143,21 +141,49 @@ class PlanImportSpider(CrawlSpider):
                                      re.split(r'\d+Day:\s*', entry['views'], flags=re.IGNORECASE)]):
                 # 按景点拆分
                 plan_day = []
-                for vs_name in filter(lambda val: val, [tmp.strip() for tmp in re.split(ur'[、,，]', day_entry)]):
-                    m_idx = vs_name.find('-')
-                    if m_idx >= 0:
-                        vs_name = vs_name[m_idx + 1:]
+                # 这一天所在的城市，默认为整条路线所对应的城市
+                day_loc = loc
+
+                # 拆分景点
+                vs_list = filter(lambda val: val, [tmp.strip() for tmp in re.split(ur'[、,，]', day_entry)])
+                if not vs_list:
+                    continue
+
+                # 尝试获得这一天活动所在的城市
+                first_vs = vs_list[0]
+                m_idx = first_vs.find('-')
+                city_name = None
+                if m_idx >= 0:
+                    vs_list[0] = first_vs[m_idx + 1:]
+                    city_name = first_vs[:m_idx]
+
+                if city_name and city_name not in self.city_missing:
+                    tmp = self.fetch_loc(city_name)
+                    if not tmp:
+                        self.log(u'CITY %s CANNOT BE FOUND' % city_name, log.CRITICAL)
+                        self.city_missing.add(city_name)
+                    else:
+                        day_loc = tmp
+
+                location = day_loc['location']
+                for vs_idx, vs_name in enumerate(vs_list):
+                    # 每天的第一个景点：要求和城市中心坐标距离不超过150，其它景点：和上一个景点坐标相比较
+                    proximity = 250 if vs_idx == 0 else 100
+
                     # 是否在人工映射表中已存在？
                     if vs_name in self.vs_dict:
                         vs = self.fetch_vs_id(self.vs_dict[vs_name])
                     else:
                         # 先尝试精确匹配
-                        vs = self.fetch_vs(vs_name, style=0, city=loc)
+                        vs = self.fetch_vs(vs_name, style=0, location=location, proximity=proximity)
                         if not vs:
-                            vs = self.fetch_vs(vs_name, style=1, city=loc)
+                            vs = self.fetch_vs(vs_name, style=1, location=location, proximity=proximity)
 
                     if not vs:
                         continue
+
+                    # 用该景点的坐标代替location
+                    location = vs['location']
 
                     # 获得景点的城市树
                     city = vs['city']
@@ -204,12 +230,12 @@ class PlanImportSpider(CrawlSpider):
             return None
         return loc_list[0]
 
-    def fetch_vs(self, name, style=0, city=None, proximity=500):
+    def fetch_vs(self, name, style=0, location=None, proximity=150):
         """
         查找景点
         :param name:
-        :param city: （可选）景点位于哪个城市
-        :param proximity: （可选）景点和城市的偏差阈值
+        :param location: （可选）制定一个坐标
+        :param proximity: （可选）景点和指定坐标的偏差阈值
         """
         col = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
         if style == 0:
@@ -217,8 +243,8 @@ class PlanImportSpider(CrawlSpider):
         else:
             q_name = name.replace('(', r'\(').replace(')', r'\)')
             query = {'alias': re.compile('^' + q_name)}
-        if city and city['location']:
-            lng, lat = city['location']['coordinates']
+        if location:
+            lng, lat = location['coordinates']
             query['location'] = {'$near': {'$geometry': {'type': 'Point',
                                                          'coordinates': [lng, lat]},
                                            '$minDistance': 0,
