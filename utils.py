@@ -1,9 +1,11 @@
 # coding=utf-8
+import ConfigParser
+import os
 import re
+from math import radians, cos, sin, asin, sqrt
 
 import pymongo
 
-from math import radians, cos, sin, asin, sqrt
 import conf
 
 
@@ -87,3 +89,27 @@ def get_short_loc(name):
             name = tmp
 
     return name
+
+
+def cfg_entries(section, key):
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.get(section, key)
+
+
+def cfg_sections():
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.sections()
+
+
+def cfg_options(section):
+    config = ConfigParser.ConfigParser()
+    d = os.path.split(os.path.realpath(__file__))[0]
+    path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
+    config.read(path)
+    return config.options(section)
