@@ -391,7 +391,7 @@ class QyerVsProcSpider(CrawlSpider):
             ridx = random.randint(0, len(self.geocode_keys) - 1)
             geocode_key = self.geocode_keys[ridx]
             url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s&key=%s' % (
-                item['poi_englishName'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
+                item['poi_name'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
             return Request(url=url, headers={'Accept-Language': 'zh-CN'}, meta={'item': item, 'lang': 'zh'},
                            callback=self.parse_alias, dont_filter=True)
 
