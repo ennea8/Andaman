@@ -460,7 +460,7 @@ class QyerSpotProcPipeline(object):
         vs['name'] = item['poi_name']
         vs['zhName'] = item['poi_name']
         vs['enName'] = item['poi_englishName']
-        vs['imageList'] = item['poi_photo']
+        vs['imageList'] = item['poi_photo'] if 'poi_photo' in item and item['poi_photo'] else []
 
         vs['addr'] = {'loc': city_info, 'coords': {'lat': item['poi_lat'], 'lng': item['poi_lng']}}
         vs['country'] = country_info
