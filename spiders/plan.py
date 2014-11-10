@@ -166,6 +166,8 @@ class PlanImportSpider(CrawlSpider):
                         day_loc = tmp
 
                 location = day_loc['location']
+                # 同一个景点同一天不能访问超过一次
+                visited_vs = set([])
                 for vs_idx, vs_name in enumerate(vs_list):
                     # 每天的第一个景点：要求和城市中心坐标距离不超过150，其它景点：和上一个景点坐标相比较
                     proximity = 250 if vs_idx == 0 else 100
@@ -181,7 +183,9 @@ class PlanImportSpider(CrawlSpider):
 
                     if not vs:
                         continue
-
+                    if vs['_id'] in visited_vs:
+                        continue
+                    visited_vs.add(vs['_id'])
                     # 用该景点的坐标代替location
                     location = vs['location']
 
