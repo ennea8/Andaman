@@ -91,7 +91,7 @@ def setup_spider(spider_name, param={}):
     if 'proxy' in param:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
         settings.set('PROXY_SWITCH_VERIFIER', param['proxy-verifier'][0] if 'proxy-verifier' in param else 'baidu')
-        # settings.set('PROXY_SWITCH_LATENCY', int(param['latency'][0]) if 'latency' in param else 1)
+    settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', 'debug' in param)
     settings.set('AUTOTHROTTLE_ENABLED', 'fast' not in param)

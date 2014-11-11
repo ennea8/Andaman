@@ -1,12 +1,88 @@
 # coding=utf-8
 import json
 import random
+import urllib
 import urllib2
+import urlparse
 
-from scrapy import log
+from scrapy import log, Request
+
+import utils
 
 
 __author__ = 'zephyre'
+
+
+class GoogleGeocodeMiddleware(object):
+    @classmethod
+    def from_settings(cls, settings, crawler=None):
+        return cls()
+
+    def __init__(self):
+        # 读取Google Geocode列表
+        section = 'geocode-keys'
+        self.geocode_keys = {}
+        for option in utils.cfg_options(section):
+            key = utils.cfg_entries(section, option)
+            self.geocode_keys[key] = {'key': key, 'fail_cnt': 0, 'over_quota_cnt': 0, 'fail_tot': 0,
+                                      'over_quota_tot': 0, 'req_tot': 0, 'enabled': True}
+
+    def random_key(self):
+        """
+        随机选取一个启用的key
+        :return:
+        """
+        candidates = filter(lambda val: val, map(
+            lambda opt: self.geocode_keys[opt]['key'] if self.geocode_keys[opt]['enabled'] else None,
+            self.geocode_keys))
+        return candidates[random.randint(0, len(candidates) - 1)] if candidates else None
+
+    def process_spider_input(self, response, spider):
+        url = response.url
+        components = urlparse.urlparse(url)
+        if components.netloc == 'maps.googleapis.com' and '/maps/api/geocode/' in components.path:
+            try:
+                key = response.meta['geocode-key']
+                key_entry = self.geocode_keys[key]
+
+                self.geocode_keys['req_tot'] += 1
+
+                data = json.loads(response.body)
+                status = data['status']
+                if status == 'OVER_QUERY_LIMIT':
+                    for fd in ('over_quota_cnt', 'fail_cnt', 'over_quota_tot', 'fail_cnt'):
+                        key_entry[fd] += 1
+                elif status == 'OK':
+                    # 成功一次以后，清空失败统计
+                    key_entry['fail_cnt'] = 0
+                    key_entry['over_quota_cnt'] = 0
+                else:
+                    key_entry['fail_cnt'] += 1
+                    key_entry['fail_tot'] += 1
+            except (KeyError, ValueError):
+                pass
+
+    def process_spider_output(self, response, result, spider):
+        # 是否需要启用spider
+        def _mapper(request):
+            if isinstance(request, Request):
+                components = urlparse.urlparse(request.url)
+                if components.netloc == 'maps.googleapis.com' and '/maps/api/geocode/' in components.path:
+                    qs = urlparse.parse_qs(components.query)
+                    qs = {k: qs[k][0] for k in qs}
+                    if 'key' not in qs:
+                        key = self.random_key()
+                        qs['key'] = key
+                    else:
+                        key = qs['key']
+                    request.meta['geocode-key'] = key
+                    url = urlparse.urlunparse((components.scheme, components.netloc, components.path, components.params,
+                                               urllib.urlencode(qs), components.fragment))
+                    request.replace(url=url)
+
+            return request
+
+        return map(_mapper, result)
 
 
 class ProxySwitchMiddleware(object):
