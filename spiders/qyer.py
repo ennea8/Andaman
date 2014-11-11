@@ -432,7 +432,17 @@ class QyerVsProcSpider(CrawlSpider):
             self.log('Failed to find locality from DB: %s' % ', '.join(city_candidates), log.WARNING)
             return
 
-        item['poi_city'] = {'id': city['_id'], '_id': city['_id'], 'zhName': city['zhName'], 'enName': city['enName']}
+        alias_names = list(set(filter(lambda val: val, [(city[k].strip() if k in city and city[k] else '') for k in
+                                                        ['zhName', 'enName']])))
+        try:
+            zhName = city['zhName'].strip()
+        except (ValueError, KeyError, AttributeError):
+            zhName = alias_names[0]
+        try:
+            enName = city['enName'].strip()
+        except (ValueError, KeyError, AttributeError):
+            enName = alias_names[0]
+        item['poi_city'] = {'id': city['_id'], '_id': city['_id'], 'zhName': zhName, 'enName': enName}
         return item
 
 
@@ -460,16 +470,16 @@ class QyerSpotProcPipeline(object):
         vs['name'] = item['poi_name']
         vs['zhName'] = item['poi_name']
         vs['enName'] = item['poi_englishName']
-        vs['imageList'] = item['poi_photo']
+        vs['imageList'] = item['poi_photo'] if 'poi_photo' in item and item['poi_photo'] else []
 
-        vs['addr'] = {'loc': city_info, 'coords': {'lat': item['poi_lat'], 'lng': item['poi_lng']}}
         vs['country'] = country_info
+        vs['city'] = city_info
 
         alias = filter(lambda val: val,
                        list(set([vs[k].strip().lower() if vs[k] else '' for k in ['name', 'zhName', 'enName']])))
         alias.extend(item['alias'])
         vs['alias'] = list(set(alias))
-        vs['rating'] = item['rating']
+        vs['rating'] = item['rating'] if 'rating' in item else None
 
         vs['targets'] = [city_info['_id'], country_info['_id']]
         vs['enabled'] = True
@@ -495,7 +505,7 @@ class QyerSpotProcPipeline(object):
             elif entry['title'][:4] == u'开放时间':
                 vs['openTime'] = entry['content']
             elif entry['title'][:2] == u'地址':
-                vs['addr']['address'] = entry['content']
+                vs['address'] = entry['content']
             elif entry['title'][:2] == u'网址':
                 vs['website'] = entry['content']
             elif entry['title'][:4] == u'所属分类':
