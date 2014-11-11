@@ -190,20 +190,21 @@ class PlanImportSpider(CrawlSpider):
                     location = vs['location']
 
                     # 获得景点的城市树
-                    city = vs['city']
-                    if city['id'] not in self.city_tree:
-                        self.city_tree[city['id']] = self.fetch_loc_tree(city['id'])
-                    for tmp in self.city_tree[city['id']].values():
-                        targets[tmp['id']] = tmp
+                    city = self.fetch_loc_id(vs['city']['_id'])
+                    if city['_id'] not in self.city_tree:
+                        self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
+                    for tmp in self.city_tree[city['_id']].values():
+                        targets[tmp['_id']] = tmp
 
                     try:
                         lng, lat = vs['location']['coordinates']
                     except KeyError:
                         lng, lat = None, None
-                    vs_item = {'item': {'id': vs['_id'], 'zhName': vs['name']},
-                               'loc': {'id': city['id'], 'zhName': city['zhName']},
-                               'type': 'vs', 'lng': lng, 'lat': lat}
-                    plan_day.append(vs_item)
+
+                    vs_item = {'id': vs['_id'], '_id': vs['_id'], 'zhName': vs['zhName'], 'enName': vs['enName']}
+                    loc_item = {'id': city['_id'], '_id': city['_id'], 'enName': city['enName'],
+                                'zhName': city['zhName']}
+                    plan_day.append({'item': vs_item, 'loc': loc_item, 'type': 'vs', 'lng': lng, 'lat': lat})
 
                 if plan_day:
                     plan_details.append({'actv': plan_day})
@@ -218,8 +219,12 @@ class PlanImportSpider(CrawlSpider):
                 details.append(u'(%s)' % ('->'.join([tmp['item']['zhName'] for tmp in day_entry['actv']])))
             self.log('PlanId: %d, %s' % (item['planId'], ' '.join(details)), log.INFO)
 
-            yield item
+            if item['details']:
+                yield item
 
+    def fetch_loc_id(self, cid):
+        col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        return col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
 
     def fetch_loc(self, name, stype=0):
         """
@@ -253,13 +258,13 @@ class PlanImportSpider(CrawlSpider):
                                                          'coordinates': [lng, lat]},
                                            '$minDistance': 0,
                                            '$maxDistance': proximity * 1000}}
-        vs_list = list(col.find(query, {'name': 1, 'location': 1, 'city': 1}).limit(1))
+        vs_list = list(col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1}).limit(1))
         # 取距离city最近的一个
         return vs_list[0] if vs_list else None
 
     def fetch_vs_id(self, vs_id):
         col = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
-        return col.find_one({'_id': vs_id}, {'name': 1, 'location': 1, 'city': 1})
+        return col.find_one({'_id': vs_id}, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1})
 
     def fetch_loc_tree(self, loc_id):
         col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
@@ -268,7 +273,7 @@ class PlanImportSpider(CrawlSpider):
             loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
             if not loc:
                 break
-            ret[loc_id] = {'id': loc_id, 'zhName': loc['zhName']}
+            ret[loc_id] = {'_id': loc_id, 'zhName': loc['zhName']}
             try:
                 loc_id = loc['superAdm']['id']
             except KeyError:
