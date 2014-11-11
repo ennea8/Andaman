@@ -59,6 +59,11 @@ class GoogleGeocodeMiddleware(object):
                 else:
                     key_entry['fail_cnt'] += 1
                     key_entry['fail_tot'] += 1
+
+                # 连续错误5次以上，禁用这个key
+                if key_entry['fail_cnt'] > 5:
+                    key_entry['enabled'] = False
+                    
             except (KeyError, ValueError):
                 pass
 
@@ -72,7 +77,10 @@ class GoogleGeocodeMiddleware(object):
                     qs = {k: qs[k][0] for k in qs}
                     if 'key' not in qs:
                         key = self.random_key()
-                        qs['key'] = key
+                        if key:
+                            qs['key'] = key
+                        else:
+                            spider.log('NO MORE GEOCODE KEY AVAILABLE!', log.CRITICAL)
                     else:
                         key = qs['key']
                     request.meta['geocode-key'] = key
