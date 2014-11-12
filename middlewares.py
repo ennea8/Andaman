@@ -84,7 +84,7 @@ class GoogleGeocodeMiddleware(object):
                     else:
                         key = qs['key']
                     request.meta['geocode-key'] = key
-                    url = urlparse.urlunparse((components.scheme, components.netloc, components.path, components.params,
+                    url = urlparse.urlunparse(('https', components.netloc, components.path, components.params,
                                                urllib.urlencode(qs), components.fragment))
                     request.replace(url=url)
 
