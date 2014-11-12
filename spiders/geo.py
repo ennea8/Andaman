@@ -190,6 +190,9 @@ class CityItem(Item):
     population = Field()
     # featureCode
     level = Field()
+    url = Field()
+    desc = Field()
+    imageList = Field()
 
 
 class GeoNamesProcSpider(CrawlSpider):
@@ -236,10 +239,10 @@ class GeoNamesProcSpider(CrawlSpider):
             item['level'] = city['featureCode']
 
             s = set([tmp.lower().strip() for tmp in (item['alias'] if 'alias' in city else [])])
-            s.add(city['asciiName'])
-            s.add(city['enName'])
+            s.add(city['asciiName'].lower())
+            s.add(city['enName'].lower())
             for val in city['altName']:
-                s.add(val)
+                s.add(val.lower())
             item['alias'] = list(s)
 
             country_code = city['country']
@@ -305,7 +308,7 @@ class GeoNamesProcSpider(CrawlSpider):
                 s.add(short_name.lower())
                 s.add(long_name.lower())
                 k = 'zh_name' if lang == 'zh' else 'en_name'
-                s.add(item[k])
+                s.add(item[k].lower())
                 item[k] = long_name
                 item['alias'] = list(s)
                 if location:
@@ -366,9 +369,12 @@ class GeoNamesProcPipeline(object):
         zh_name = item['zh_name']
         short_name = utils.get_short_loc(zh_name)
         city['zhName'] = short_name
-        alias = set(item['alias'])
-        alias.add(short_name)
-        city['alias'] = list(alias)
+
+        alias1 = city['alias'] if 'alias' in city and city['alias'] else []
+        alias2 = item['alias'] if 'alias' in item and item['alias'] else []
+        alias1.extend(alias2)
+        alias1.append(short_name.lower())
+        city['alias'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in alias1])))
 
         source = city['source'] if 'source' in city else {}
         source['geonames'] = {'id': item['city_id']}
@@ -567,5 +573,203 @@ class GeoNamesPipeline(object):
         ret['_id'] = item['city_id']
 
         col.save(ret)
+
+        return item
+
+
+class QyerCityProcSpider(CrawlSpider):
+    """
+    处理穷游的城市数据
+    """
+
+    name = 'qyer-city-proc'
+
+    country_map = {}
+    missed_countries = set([])
+
+    def __init__(self, *a, **kw):
+        super(QyerCityProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        param = getattr(self, 'param', {})
+        if 'country' not in param:
+            param['country'] = []
+        yield Request(url='http://www.baidu.com', meta={'country': param['country']}, callback=self.parse)
+
+    def parse(self, response):
+        col = utils.get_mongodb('raw_data', 'QyerCity', profile='mongodb-crawler')
+        countries = response.meta['country']
+
+        query = {}
+        if countries:
+            if len(countries) > 1:
+                query['$or'] = [{'cname': tmp} for tmp in countries]
+            else:
+                query['cname'] = countries[0]
+        for entry in col.find(query):
+            city = entry
+
+            item = CityItem()
+            item['city_id'] = int(city['id'])
+            item['en_name'] = city['code']
+            item['zh_name'] = city['name']
+
+            s = set([tmp.lower().strip() for tmp in (item['alias'] if 'alias' in city else [])])
+            s.add(city['code'].lower())
+            s.add(city['name'].lower())
+            item['alias'] = list(s)
+
+            country_name = city['cname']
+            if country_name in QyerCityProcSpider.country_map:
+                country = QyerCityProcSpider.country_map[country_name]
+            elif country_name not in QyerCityProcSpider.missed_countries:
+                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                country = col_country.find_one({'alias': country_name})
+                if not country:
+                    self.log('MISSED COUNTRY: %s' % country_name, log.WARNING)
+                    QyerCityProcSpider.missed_countries.add(country_name)
+                    continue
+                else:
+                    QyerCityProcSpider.country_map[country_name] = country
+            else:
+                continue
+
+            item['en_country'] = country['enName'] if 'enName' in country else None
+            item['zh_country'] = country['zhName'] if 'zhName' in country else None
+            item['country_code'] = country['code']
+
+            desc = city['ctyprofile_intro'] if 'ctyprofile_intro' in city else ''
+            if desc:
+                sel = Selector(text=desc)
+                item['desc'] = '\n'.join(
+                    filter(lambda val: val, [tmp.strip() for tmp in sel.xpath('//p/text()').extract()]))
+            else:
+                item['desc'] = ''
+
+            img_list = city['img']
+            if not img_list:
+                img_list = ''
+
+            def _image_proc(url):
+                m = re.search(r'^(.+pic\.qyer\.com/album/.+/index)/[0-9x]+$', url)
+                return m.group(1) if m else url
+
+            item['imageList'] = map(_image_proc, filter(lambda val: val, [tmp.strip() for tmp in img_list.split(',')]))
+
+            item['url'] = city['url']
+
+            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
+                item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'zh'},
+                          headers={'Accept-Language': 'zh-CN'}, dont_filter=True)
+
+    def parse_geocode(self, response):
+        item = response.meta['item']
+        lang = response.meta['lang']
+        try:
+            data = json.loads(response.body)
+            if data['status'] == 'OVER_QUERY_LIMIT':
+                return Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
+                               headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
+                               dont_filter=True)
+            elif data['status'] == 'ZERO_RESULTS':
+                return
+            elif data['status'] != 'OK':
+                self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
+                return
+
+            geometry = data['results'][0]['geometry']
+            # 查找第一个types包含political的项目
+            address_components = filter(lambda val: 'political' in val['types'],
+                                        data['results'][0]['address_components'])
+            data = address_components[0]
+
+            short_name = data['short_name']
+            long_name = data['long_name']
+            s = set(item['alias'])
+            s.add(short_name.lower())
+            s.add(long_name.lower())
+            k = 'zh_name' if lang == 'zh' else 'en_name'
+            s.add(item[k])
+            item[k] = long_name
+            item['alias'] = list(s)
+            item['lat'] = geometry['location']['lat']
+            item['lng'] = geometry['location']['lng']
+        except (KeyError, IndexError):
+            self.log('ERROR GEOCODEING: %s' % response.url, log.WARNING)
+
+        if lang == 'zh':
+            return Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
+                item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'en'},
+                           headers={'Accept-Language': 'en-US'}, dont_filter=True)
+        else:
+            return item
+
+
+class QyerCityProcPipeline(object):
+    """
+    处理穷游的城市数据
+    """
+
+    spiders = [QyerCityProcSpider.name]
+
+    country_map = {}
+
+    def process_item(self, item, spider):
+        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+
+        # get country
+        country_code = item['country_code']
+        if country_code not in QyerCityProcPipeline.country_map:
+            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+            country = col_country.find_one({'code': country_code})
+            assert country != None
+            QyerCityProcPipeline.country_map[country_code] = country
+        else:
+            country = QyerCityProcPipeline.country_map[country_code]
+
+        city_id = item['city_id']
+        city = col_loc.find_one({'source.qyer.id': city_id})
+
+        if not city:
+            city = col_loc.find_one({'alias': item['zh_name'].lower(),
+                                     'location': {
+                                         '$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
+                                     'country._id': country['_id']})
+            if city:
+                dist = utils.haversine(city['location']['coordinates'][0], city['location']['coordinates'][1],
+                                       item['lng'], item['lat'])
+                if dist > 100:
+                    city = {}
+
+        if not city:
+            city = {}
+
+        city['enName'] = item['en_name']
+        zh_name = item['zh_name']
+        short_name = utils.get_short_loc(zh_name)
+        city['zhName'] = short_name
+
+        alias1 = city['alias'] if 'alias' in city and city['alias'] else []
+        alias2 = item['alias'] if 'alias' in item and item['alias'] else []
+        alias1.extend(alias2)
+        alias1.append(short_name)
+        city['alias'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in alias1])))
+
+        source = city['source'] if 'source' in city else {}
+        source['qyer'] = {'id': item['city_id'], 'url': item['url']}
+        city['source'] = source
+        city['country'] = {'id': country['_id'], '_id': country['_id']}
+        for k in ('enName', 'zhName'):
+            if k in country:
+                city['country'][k] = country[k]
+
+        city['level'] = 2
+        city['desc'] = item['desc']
+        city['imageList'] = item['imageList']
+        city['images'] = []
+        city['location'] = {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}
+        city['abroad'] = country_code != 'CN'
+
+        col_loc.save(city)
 
         return item
