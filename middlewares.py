@@ -6,6 +6,7 @@ import urllib2
 import urlparse
 
 from scrapy import log, Request
+import time
 
 import utils
 
@@ -60,7 +61,7 @@ class GoogleGeocodeMiddleware(object):
                     key_entry['fail_tot'] += 1
 
                 # 连续错误5次以上，禁用这个key
-                if key_entry['fail_cnt'] > 10:
+                if key_entry['fail_cnt'] > 20:
                     key_entry['enabled'] = False
 
             except (KeyError, ValueError):
@@ -85,7 +86,7 @@ class GoogleGeocodeMiddleware(object):
                     request.meta['geocode-key'] = key
                     url = urlparse.urlunparse(('https', components.netloc, components.path, components.params,
                                                urllib.urlencode(qs), components.fragment))
-                    request.replace(url=url)
+                    request = request.replace(url=url)
 
             return request
 
