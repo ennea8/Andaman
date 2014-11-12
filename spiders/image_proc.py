@@ -9,7 +9,7 @@ import time
 import qiniu.conf
 import qiniu.rs
 import qiniu.io
-from scrapy import Request, Item, Field
+from scrapy import Request, Item, Field, log
 from scrapy.contrib.spiders import CrawlSpider
 
 import utils
@@ -108,6 +108,7 @@ class ImageProcSpider(CrawlSpider):
                               headers={'Referer': None}, callback=self.parse_img)
 
     def parse_img(self, response):
+        self.log('DOWNLOADED: %s' % response.url, log.INFO)
         # 配置上传策略。
         # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
         bucket = 'lvxingpai-img-store'
