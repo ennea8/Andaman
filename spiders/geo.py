@@ -273,6 +273,8 @@ class GeoNamesProcSpider(CrawlSpider):
                 return Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
                                headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
                                dont_filter=True)
+            elif data['status'] == 'ZERO_RESULTS':
+                return
             elif data['status'] != 'OK':
                 self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
                 return
