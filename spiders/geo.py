@@ -335,10 +335,11 @@ class GeoNamesProcPipeline(object):
         if not city:
             city = col_loc.find_one({'alias': item['en_name'].lower(),
                                      'location': {
-                                     '$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
+                                         '$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
                                      'country._id': country['_id']})
             if city:
-                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['lng'], item['lat'])
+                dist = utils.haversine(city['location']['coordinates']['lng'], city['location']['coordinates']['lat'],
+                                       item['lng'], item['lat'])
                 if dist > 10:
                     city = {}
 
