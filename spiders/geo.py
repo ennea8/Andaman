@@ -279,23 +279,39 @@ class GeoNamesProcSpider(CrawlSpider):
                 self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
                 return
 
-            geometry = data['results'][0]['geometry']
-            # 查找第一个types包含political的项目
-            address_components = filter(lambda val: 'political' in val['types'],
-                                        data['results'][0]['address_components'])
-            data = address_components[0]
+            city_result = None
+            location = None
+            for result in data['results']:
+                # 必须和原来的经纬度比较接近，才能采信
+                geometry = result['geometry']
+                lat = geometry['location']['lat']
+                lng = geometry['location']['lng']
+                dist = utils.haversine(lng, lat, item['lng'], item['lat'])
+                if dist > 100:
+                    continue
+                else:
+                    city_result = result
+                    location = [lng, lat]
+                    break
 
-            short_name = data['short_name']
-            long_name = data['long_name']
-            s = set(item['alias'])
-            s.add(short_name.lower())
-            s.add(long_name.lower())
-            k = 'zh_name' if lang == 'zh' else 'en_name'
-            s.add(item[k])
-            item[k] = long_name
-            item['alias'] = list(s)
-            item['lat'] = geometry['location']['lat']
-            item['lng'] = geometry['location']['lng']
+            if city_result:
+                # 查找第一个types包含political的项目
+                address_components = filter(lambda val: 'political' in val['types'], city_result['address_components'])
+                data = address_components[0]
+
+                short_name = data['short_name']
+                long_name = data['long_name']
+                s = set(item['alias'])
+                s.add(short_name.lower())
+                s.add(long_name.lower())
+                k = 'zh_name' if lang == 'zh' else 'en_name'
+                s.add(item[k])
+                item[k] = long_name
+                item['alias'] = list(s)
+                if location:
+                    item['lng'] = location[0]
+                    item['lat'] = location[1]
+
         except (KeyError, IndexError):
             self.log('ERROR GEOCODEING: %s' % response.url, log.WARNING)
 
@@ -340,7 +356,7 @@ class GeoNamesProcPipeline(object):
             if city:
                 dist = utils.haversine(city['location']['coordinates'][0], city['location']['coordinates'][1],
                                        item['lng'], item['lat'])
-                if dist > 10:
+                if dist > 100:
                     city = {}
 
         if not city:
