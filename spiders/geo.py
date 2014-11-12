@@ -273,6 +273,10 @@ class GeoNamesProcSpider(CrawlSpider):
                 yield Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
                               headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
                               dont_filter=True)
+            elif data['status'] != 'OK':
+                self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
+                return
+
             geometry = data['results'][0]['geometry']
             # 查找第一个types包含political的项目
             address_components = filter(lambda val: 'political' in val['types'],
@@ -328,10 +332,11 @@ class GeoNamesProcPipeline(object):
 
         if not city:
             city = col_loc.find_one({'alias': item['en_name'].lower(),
-                                     'coords': {'$near': [item['lat'], item['lng']]},
-                                     'country.id': country['_id']})
+                                     'location': {'$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
+                                     'country._id': country['_id']})
             if city:
-                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['lng'], item['lat'])
+                coords = city['location']['coordinates']
+                dist = utils.haversine(coords[0], coords[1], item['lng'], item['lat'])
                 if dist > 10:
                     city = {}
 
