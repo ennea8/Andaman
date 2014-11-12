@@ -338,7 +338,7 @@ class GeoNamesProcPipeline(object):
                                          '$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
                                      'country._id': country['_id']})
             if city:
-                dist = utils.haversine(city['location']['coordinates']['lng'], city['location']['coordinates']['lat'],
+                dist = utils.haversine(city['location']['coordinates'][0], city['location']['coordinates'][1],
                                        item['lng'], item['lat'])
                 if dist > 10:
                     city = {}
