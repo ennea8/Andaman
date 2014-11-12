@@ -270,9 +270,9 @@ class GeoNamesProcSpider(CrawlSpider):
         try:
             data = json.loads(response.body)
             if data['status'] == 'OVER_QUERY_LIMIT':
-                yield Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
-                              headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
-                              dont_filter=True)
+                return Request(url=response.url, callback=self.parse_geocode, meta={'item': item, 'lang': lang},
+                               headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
+                               dont_filter=True)
             elif data['status'] != 'OK':
                 self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
                 return
@@ -298,11 +298,11 @@ class GeoNamesProcSpider(CrawlSpider):
             self.log('ERROR GEOCODEING: %s' % response.url, log.WARNING)
 
         if lang == 'zh':
-            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
+            return Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
                 item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'en'},
-                          headers={'Accept-Language': 'en-US'}, dont_filter=True)
+                           headers={'Accept-Language': 'en-US'}, dont_filter=True)
         else:
-            yield item
+            return item
 
 
 class GeoNamesProcPipeline(object):
@@ -332,11 +332,11 @@ class GeoNamesProcPipeline(object):
 
         if not city:
             city = col_loc.find_one({'alias': item['en_name'].lower(),
-                                     'location': {'$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
+                                     'location': {
+                                     '$near': {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}},
                                      'country._id': country['_id']})
             if city:
-                coords = city['location']['coordinates']
-                dist = utils.haversine(coords[0], coords[1], item['lng'], item['lat'])
+                dist = utils.haversine(city['coords']['lng'], city['coords']['lat'], item['lng'], item['lat'])
                 if dist > 10:
                     city = {}
 
