@@ -35,11 +35,11 @@ class ImageProcSpider(CrawlSpider):
     """
     将imageList中的内容，上传到七牛，然后更新images列表
     """
-    name = 'image_proc'
+    name = 'image-proc'
 
     # 获得上传权限
-    qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
-    qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
+    qiniu.conf.ACCESS_KEY = utils.cfg_entries('qiniu', 'ak')
+    qiniu.conf.SECRET_KEY = utils.cfg_entries('qiniu', 'sk')
 
     def __init__(self, *a, **kw):
         super(ImageProcSpider, self).__init__(*a, **kw)
@@ -196,7 +196,7 @@ class ImageProcSpider(CrawlSpider):
         else:
             url = upload.pop()
             yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
-                          headers={'Referer': None}, callback=self.parse_img)
+                          headers={'Ref erer': None}, callback=self.parse_img)
 
 
 class ImageProcPipeline(object):

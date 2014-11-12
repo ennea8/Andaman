@@ -1,5 +1,7 @@
 # coding=utf-8
+import random
 import re
+import math
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
@@ -33,6 +35,7 @@ class PlanItem(Item):
     mTime = Field()
     details = Field()
     enabled = Field()
+    cover = Field()
 
 
 class PlanImportSpider(CrawlSpider):
@@ -133,6 +136,8 @@ class PlanImportSpider(CrawlSpider):
 
             targets = {}
             plan_details = []
+            imagestore = []
+            plan_visited_vs = set([])
 
             # 1Day: 遇龙河漂流,大榕树,月亮山,菩萨水岩,银子岩 2Day: 银子岩,兴坪,古镇渔村,兴坪,杨堤
             # 按天拆分
@@ -149,13 +154,19 @@ class PlanImportSpider(CrawlSpider):
                 if not vs_list:
                     continue
 
-                # 尝试获得这一天活动所在的城市
-                first_vs = vs_list[0]
-                m_idx = first_vs.find('-')
-                city_name = None
-                if m_idx >= 0:
-                    vs_list[0] = first_vs[m_idx + 1:]
-                    city_name = first_vs[:m_idx]
+                if entry['abroad'] == 1:
+                    # 尝试获得这一天活动所在的城市
+                    first_vs = vs_list[0]
+                    m_idx = first_vs.find('-')
+                    city_name = None
+                    if m_idx >= 0:
+                        vs_list[0] = first_vs[m_idx + 1:]
+                        city_name = first_vs[:m_idx]
+                    else:
+                        # 查看一下vs_list的第一个是否为城市
+                        if self.fetch_loc(vs_list[0]):
+                            city_name = vs_list[0]
+                            vs_list = vs_list[1:]
 
                 if city_name and city_name not in self.city_missing:
                     tmp = self.fetch_loc(city_name)
@@ -185,33 +196,58 @@ class PlanImportSpider(CrawlSpider):
                         continue
                     if vs['_id'] in visited_vs:
                         continue
+
+                    # 获得图像
+                    r = vs['rating'] if 'rating' in vs and vs['rating'] else 0.6
+                    if 'images' not in vs or not vs['images']:
+                        vs['images'] = []
+                    for tmp in vs['images']:
+                        imagestore.append({'url': tmp['url'], 'fSize': tmp['fSize'], 'w': tmp['w'], 'h': tmp['h'],
+                                           'weight': tmp['fSize'] * math.pow(r, 2.5)})
+
                     visited_vs.add(vs['_id'])
+                    plan_visited_vs.add(vs['_id'])
                     # 用该景点的坐标代替location
                     location = vs['location']
 
                     # 获得景点的城市树
-                    city = vs['city']
-                    if city['id'] not in self.city_tree:
-                        self.city_tree[city['id']] = self.fetch_loc_tree(city['id'])
-                    for tmp in self.city_tree[city['id']].values():
-                        targets[tmp['id']] = tmp
+                    city = self.fetch_loc_id(vs['city']['_id'])
+                    if city['_id'] not in self.city_tree:
+                        self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
+                    for tmp in self.city_tree[city['_id']].values():
+                        targets[tmp['_id']] = tmp
 
                     try:
                         lng, lat = vs['location']['coordinates']
                     except KeyError:
                         lng, lat = None, None
-                    vs_item = {'item': {'id': vs['_id'], 'zhName': vs['name']},
-                               'loc': {'id': city['id'], 'zhName': city['zhName']},
-                               'type': 'vs', 'lng': lng, 'lat': lat}
-                    plan_day.append(vs_item)
+
+                    vs_item = {'id': vs['_id'], '_id': vs['_id'], 'zhName': vs['zhName'], 'enName': vs['enName']}
+                    loc_item = {'id': city['_id'], '_id': city['_id'], 'enName': city['enName'],
+                                'zhName': city['zhName']}
+                    plan_day.append({'item': vs_item, 'loc': loc_item, 'type': 'vs', 'lng': lng, 'lat': lat})
 
                 if plan_day:
                     plan_details.append({'actv': plan_day})
+
+            if not plan_details or len(plan_visited_vs) < 3:
+                continue
 
             item['targets'] = targets.values()
             item['details'] = plan_details
             item['days'] = len(plan_details)
             item['enabled'] = True
+
+            # 随机取一张图像
+            if imagestore:
+                imagestore = sorted(imagestore, key=lambda val: val['weight'], reverse=True)
+                if len(imagestore) > 20:
+                    imagestore = imagestore[:20]
+                for tmp in imagestore:
+                    tmp.pop('weight')
+                tmp = imagestore[random.randint(0, len(imagestore) - 1)]
+                item['cover'] = tmp
+                item['images'] = imagestore
 
             details = []
             for day_entry in item['details']:
@@ -220,6 +256,9 @@ class PlanImportSpider(CrawlSpider):
 
             yield item
 
+    def fetch_loc_id(self, cid):
+        col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        return col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
 
     def fetch_loc(self, name, stype=0):
         """
@@ -253,13 +292,15 @@ class PlanImportSpider(CrawlSpider):
                                                          'coordinates': [lng, lat]},
                                            '$minDistance': 0,
                                            '$maxDistance': proximity * 1000}}
-        vs_list = list(col.find(query, {'name': 1, 'location': 1, 'city': 1}).limit(1))
+        vs_list = list(
+            col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1}).limit(1))
         # 取距离city最近的一个
         return vs_list[0] if vs_list else None
 
     def fetch_vs_id(self, vs_id):
         col = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
-        return col.find_one({'_id': vs_id}, {'name': 1, 'location': 1, 'city': 1})
+        return col.find_one({'_id': vs_id},
+                            {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1})
 
     def fetch_loc_tree(self, loc_id):
         col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
@@ -268,7 +309,7 @@ class PlanImportSpider(CrawlSpider):
             loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
             if not loc:
                 break
-            ret[loc_id] = {'id': loc_id, 'zhName': loc['zhName']}
+            ret[loc_id] = {'_id': loc_id, 'zhName': loc['zhName']}
             try:
                 loc_id = loc['superAdm']['id']
             except KeyError:
