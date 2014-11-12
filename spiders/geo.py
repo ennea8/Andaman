@@ -197,7 +197,7 @@ class GeoNamesProcSpider(CrawlSpider):
     处理GeoNames的城市数据
     """
 
-    name = 'geonames_proc'
+    name = 'geonames-proc'
 
     country_map = {}
     missed_countries = set([])
@@ -206,12 +206,14 @@ class GeoNamesProcSpider(CrawlSpider):
         super(GeoNamesProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        param = getattr(self, 'param', {'countries': []})
-        yield Request(url='http://www.baidu.com', meta={'countries': param['countries']}, callback=self.parse)
+        param = getattr(self, 'param', {})
+        if 'country' not in param:
+            param['country'] = []
+        yield Request(url='http://www.baidu.com', meta={'country': param['country']}, callback=self.parse)
 
     def parse(self, response):
         col = utils.get_mongodb('raw_data', 'GeoNames', profile='mongodb-crawler')
-        countries = response.meta['countries']
+        countries = response.meta['country']
 
         query = {'featureClass': 'P', 'population': {'$gt': 0}}
         if countries:
@@ -255,8 +257,8 @@ class GeoNamesProcSpider(CrawlSpider):
                     GeoNamesProcSpider.country_map[country_code] = country
             else:
                 continue
-            item['en_country'] = country['enName']
-            item['zh_country'] = country['zhName']
+            item['en_country'] = country['enName'] if 'enName' in country else None
+            item['zh_country'] = country['zhName'] if 'zhName' in country else None
 
             yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
                 item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'zh'},
@@ -272,7 +274,10 @@ class GeoNamesProcSpider(CrawlSpider):
                               headers={'Accept-Language': response.request.headers['Accept-Language'][0]},
                               dont_filter=True)
             geometry = data['results'][0]['geometry']
-            data = data['results'][0]['address_components'][0]
+            # 查找第一个types包含political的项目
+            address_components = filter(lambda val: 'political' in val['types'],
+                                        data['results'][0]['address_components'])
+            data = address_components[0]
 
             short_name = data['short_name']
             long_name = data['long_name']
@@ -334,26 +339,24 @@ class GeoNamesProcPipeline(object):
             city = {}
 
         city['enName'] = item['en_name']
-        city['zhName'] = item['zh_name']
+        zh_name = item['zh_name']
+        short_name = utils.get_short_loc(zh_name)
+        city['zhName'] = short_name
+        alias = set(item['alias'])
+        alias.add(short_name)
+        city['alias'] = list(alias)
 
         source = city['source'] if 'source' in city else {}
         source['geonames'] = {'id': item['city_id']}
         city['source'] = source
-
-        city['alias'] = item['alias']
-        city['shortName'] = utils.get_short_loc(item['zh_name'])
-        city['pinyin'] = []
-
-        city['country'] = {'id': country['_id'], 'enName': country['enName'], 'zhName': country['zhName']}
+        city['country'] = {'id': country['_id'], '_id': country['_id']}
+        for k in ('enName', 'zhName'):
+            if k in country:
+                city['country'][k] = country[k]
 
         city['level'] = 2 if item['level'] == 'PPLA' else 3
         city['images'] = []
-        city['imageList'] = []
-        city['coords'] = {'lat': item['lat'], 'lng': item['lng']}
-        # if 'misc' not in city:
-        # city['misc'] = {}
-        # city['misc']['geoNamesId'] = city_id
-        # city['misc']['geoNamesPopulation'] = item['population']
+        city['location'] = {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}
         city['abroad'] = True
 
         col_loc.save(city)
