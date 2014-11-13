@@ -193,6 +193,7 @@ class CityItem(Item):
     url = Field()
     desc = Field()
     imageList = Field()
+    is_hot = Field()
 
 
 class GeoNamesProcSpider(CrawlSpider):
@@ -657,6 +658,7 @@ class QyerCityProcSpider(CrawlSpider):
             item['imageList'] = map(_image_proc, filter(lambda val: val, [tmp.strip() for tmp in img_list.split(',')]))
 
             item['url'] = city['url']
+            item['is_hot'] = city['is_hot']
 
             yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s,%s&sensor=false' % (
                 item['en_name'], item['en_country']), callback=self.parse_geocode, meta={'item': item, 'lang': 'zh'},
@@ -769,6 +771,7 @@ class QyerCityProcPipeline(object):
         city['images'] = []
         city['location'] = {'type': 'Point', 'coordinates': [item['lng'], item['lat']]}
         city['abroad'] = country_code != 'CN'
+        city['isHot'] = item['is_hot'] > 0
 
         col_loc.save(city)
 
