@@ -56,7 +56,7 @@ class ImageProcSpider(CrawlSpider):
 
         col = utils.get_mongodb(db, col_name, profile='mongodb-general')
         col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        for entry in col.find({}, {list1_name: 1, list2_name: 1}):
+        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
             # 往哪里存？默认：images
@@ -96,8 +96,8 @@ class ImageProcSpider(CrawlSpider):
                     modified = True
                     upload_list.append(url)
 
-            if not modified:
-                continue
+            # if not modified:
+            # continue
 
             if not upload_list:
                 yield item
@@ -127,15 +127,18 @@ class ImageProcSpider(CrawlSpider):
         key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
 
         sc = False
+        self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
         for idx in xrange(5):
             ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
             if err:
+                self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
                 continue
             else:
                 sc = True
                 break
         if not sc:
             raise IOError
+        self.log('UPLOADING COMPLETED: %s' % key)
 
         # 删除上传成功的文件
         os.remove(fname)
@@ -206,11 +209,26 @@ class ImageProcPipeline(object):
     def process_item(self, item, spider):
         db = item['db']
         col_name = item['col']
+        list1_name = item['list1_name']
         list2_name = item['list2_name']
+        list1 = item['list1']
         list2 = item['list2']
         doc_id = item['doc_id']
 
+        # list1中有一些项目，如果已经在list2中存在，则可以删除了
+        new_list1 = []
+        for url in list1:
+            url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
+                else 'http://lvxingpai-img-store.qiniudn.com/%s' % hashlib.md5(url).hexdigest()
+            if url2 not in [tmp['url'] for tmp in list2]:
+                new_list1.append(url)
+
         col = utils.get_mongodb(db, col_name, profile='mongodb-general')
-        col.update({'_id': doc_id}, {'$set': {list2_name: list2}})
+        ops = {'$set': {list2_name: list2}}
+        if new_list1:
+            ops['$set'][list1_name] = new_list1
+        else:
+            ops['$unset'] = {list1_name: 1}
+        col.update({'_id': doc_id}, ops)
 
         return item
