@@ -138,7 +138,7 @@ class ImageProcSpider(CrawlSpider):
                 break
         if not sc:
             raise IOError
-        self.log('UPLOADING COMPLETED: %s' % key)
+        self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
 
         # 删除上传成功的文件
         os.remove(fname)
