@@ -6,6 +6,7 @@ import urllib2
 import urlparse
 
 from scrapy import log, Request
+import time
 
 import utils
 
@@ -44,15 +45,14 @@ class GoogleGeocodeMiddleware(object):
             try:
                 key = response.meta['geocode-key']
                 key_entry = self.geocode_keys[key]
-
-                self.geocode_keys['req_tot'] += 1
+                key_entry['req_tot'] += 1
 
                 data = json.loads(response.body)
                 status = data['status']
                 if status == 'OVER_QUERY_LIMIT':
                     for fd in ('over_quota_cnt', 'fail_cnt', 'over_quota_tot', 'fail_cnt'):
                         key_entry[fd] += 1
-                elif status == 'OK':
+                elif status == 'OK' or status == 'ZERO_RESULTS':
                     # 成功一次以后，清空失败统计
                     key_entry['fail_cnt'] = 0
                     key_entry['over_quota_cnt'] = 0
@@ -61,9 +61,9 @@ class GoogleGeocodeMiddleware(object):
                     key_entry['fail_tot'] += 1
 
                 # 连续错误5次以上，禁用这个key
-                if key_entry['fail_cnt'] > 5:
+                if key_entry['fail_cnt'] > 20:
                     key_entry['enabled'] = False
-                    
+
             except (KeyError, ValueError):
                 pass
 
@@ -84,9 +84,9 @@ class GoogleGeocodeMiddleware(object):
                     else:
                         key = qs['key']
                     request.meta['geocode-key'] = key
-                    url = urlparse.urlunparse((components.scheme, components.netloc, components.path, components.params,
+                    url = urlparse.urlunparse(('https', components.netloc, components.path, components.params,
                                                urllib.urlencode(qs), components.fragment))
-                    request.replace(url=url)
+                    request = request.replace(url=url)
 
             return request
 
