@@ -168,13 +168,13 @@ class PlanImportSpider(CrawlSpider):
                             city_name = vs_list[0]
                             vs_list = vs_list[1:]
 
-                if city_name and city_name not in self.city_missing:
-                    tmp = self.fetch_loc(city_name)
-                    if not tmp:
-                        self.log(u'CITY %s CANNOT BE FOUND' % city_name, log.CRITICAL)
-                        self.city_missing.add(city_name)
-                    else:
-                        day_loc = tmp
+                    if city_name and city_name not in self.city_missing:
+                        tmp = self.fetch_loc(city_name)
+                        if not tmp:
+                            self.log(u'CITY %s CANNOT BE FOUND' % city_name, log.CRITICAL)
+                            self.city_missing.add(city_name)
+                        else:
+                            day_loc = tmp
 
                 location = day_loc['location']
                 # 同一个景点同一天不能访问超过一次
@@ -212,6 +212,8 @@ class PlanImportSpider(CrawlSpider):
 
                     # 获得景点的城市树
                     city = self.fetch_loc_id(vs['city']['_id'])
+                    if not city:
+                        continue
                     if city['_id'] not in self.city_tree:
                         self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
                     for tmp in self.city_tree[city['_id']].values():
@@ -222,9 +224,14 @@ class PlanImportSpider(CrawlSpider):
                     except KeyError:
                         lng, lat = None, None
 
-                    vs_item = {'id': vs['_id'], '_id': vs['_id'], 'zhName': vs['zhName'], 'enName': vs['enName']}
-                    loc_item = {'id': city['_id'], '_id': city['_id'], 'enName': city['enName'],
-                                'zhName': city['zhName']}
+                    vs_item = {'id': vs['_id'], '_id': vs['_id']}
+                    for tmp in ('zhName', 'enName'):
+                        if tmp in vs:
+                            vs_item[tmp] = vs[tmp]
+                    loc_item = {'id': city['_id'], '_id': city['_id']}
+                    for tmp in ('zhName', 'enName'):
+                        if tmp in city:
+                            loc_item[tmp] = city[tmp]
                     plan_day.append({'item': vs_item, 'loc': loc_item, 'type': 'vs', 'lng': lng, 'lat': lat})
 
                 if plan_day:
@@ -309,7 +316,7 @@ class PlanImportSpider(CrawlSpider):
             loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
             if not loc:
                 break
-            ret[loc_id] = {'_id': loc_id, 'zhName': loc['zhName']}
+            ret[loc_id] = {'_id': loc_id, 'id': loc_id, 'zhName': loc['zhName']}
             try:
                 loc_id = loc['superAdm']['id']
             except KeyError:

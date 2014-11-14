@@ -1,5 +1,4 @@
 # coding: utf-8
-import random
 import urlparse
 
 import scrapy
@@ -280,10 +279,6 @@ class QyerVsProcSpider(CrawlSpider):
 
     def __init__(self, *a, **kw):
         super(QyerVsProcSpider, self).__init__(*a, **kw)
-        section = 'geocode-keys'
-        self.geocode_keys = []
-        for option in utils.cfg_options(section):
-            self.geocode_keys.append(utils.cfg_entries(section, option))
 
     def start_requests(self):
         param = getattr(self, 'param', {})
@@ -308,90 +303,78 @@ class QyerVsProcSpider(CrawlSpider):
                     if k in item.fields:
                         item[k] = entry[k]
 
-                ridx = random.randint(0, len(self.geocode_keys) - 1)
-                geocode_key = self.geocode_keys[ridx]
-                url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%f,%f&key=%s' % (lat, lng, geocode_key)
+                # 这一步是为了获得poi所在城市
+                url = 'http://maps.googleapis.com/maps/api/geocode/json?address=%f,%f' % (lat, lng)
                 yield Request(url=url, meta={'item': item}, callback=self.parse_geocode, dont_filter=True)
 
     def parse_geocode(self, response):
-        geocode_ret = json.loads(response.body)
         item = response.meta['item']
 
-        if geocode_ret['status'] == 'OVER_QUERY_LIMIT':
-            self.log('OVER_QUERY_LIMIT', log.WARNING)
+        data = json.loads(response.body)
+        if data['status'] == 'OVER_QUERY_LIMIT':
             return Request(url=response.url, callback=self.parse_geocode, meta={'item': item}, dont_filter=True)
-
-        components = geocode_ret['results'][0]['address_components']
-
-        # 可能的city候选列表
-        city_name = []
-        for c in components:
-            if 'country' in c['types']:
-                continue
-            else:
-                city_name.append(c['long_name'])
-
-        # find country
-        tmp = filter(lambda entry: 'country' in entry['types'], components)
-        if not tmp:
-            self.log('Failed to find country from Geocode: %s' % response.url, log.WARNING)
+        elif data['status'] == 'ZERO_RESULTS':
             return
-        country_name = tmp[0]['long_name']
+        elif data['status'] != 'OK':
+            self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
+            return
 
-        item['poi_city'] = city_name
+        address_components = data['results'][0]['address_components']
+        country_name = filter(lambda val: 'country' in val['types'], address_components)[0]['long_name']
         item['country_info'] = country_name
-
         item = self.update_country(item)
         if not item:
             return
+
+        item['poi_city'] = map(lambda val: val['long_name'],
+                               filter(lambda val: 'political' in val['types'] and 'country' not in val['types'],
+                                      address_components))
         item = self.update_city(item)
         if not item:
             return
 
-        ridx = random.randint(0, len(self.geocode_keys) - 1)
-        geocode_key = self.geocode_keys[ridx]
-        url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s&key=%s' % (
-            item['poi_englishName'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
+        url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s' % (
+            item['poi_englishName'], item['poi_city']['enName'], item['country_info']['enName'])
         item['alias'] = []
         return Request(url=url, headers={'Accept-Language': 'en-US'}, meta={'item': item, 'lang': 'en'},
                        callback=self.parse_alias, dont_filter=True)
 
     def parse_alias(self, response):
-        geocode_ret = json.loads(response.body)
         item = response.meta['item']
         lang = response.meta['lang']
 
-        if geocode_ret['status'] == 'OVER_QUERY_LIMIT':
-            self.log('OVER_QUERY_LIMIT', log.WARNING)
-            return Request(url=response.url, headers=response.headers,
-                           callback=self.parse_alias, meta={'item': item, 'lang': lang}, dont_filter=True)
-        elif geocode_ret['status'] == 'OK':
-            c = geocode_ret['results'][0]['address_components'][0]
-            # 找到的是行政区还是POI？
-            if 'political' not in c['types']:
-                alias = set(item['alias'])
-                alias.add(c['long_name'].lower())
-                alias.add(c['short_name'].lower())
-                item['alias'] = list(alias)
+        data = json.loads(response.body)
+        if data['status'] == 'OVER_QUERY_LIMIT':
+            return Request(url=response.url, callback=self.parse_alias, meta={'item': item, 'lang': lang},
+                           dont_filter=True)
+        elif data['status'] == 'ZERO_RESULTS':
+            return
+        elif data['status'] != 'OK':
+            self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (data['status'], response.url))
+            return
 
-                # 顺便处理viewport
-                if 'viewport' not in item:
-                    viewport = geocode_ret['results'][0]['geometry']['viewport']
-                    lat = item['poi_lat']
-                    lng = item['poi_lng']
-                    if lat >= viewport['southwest']['lat'] and lat <= viewport['northeast']['lat'] and lng >= \
-                            viewport['southwest']['lng'] and lng <= viewport['northeast']['lng']:
-                        item['viewport'] = viewport
-        else:
-            self.log(geocode_ret['status'], log.WARNING)
+        c = data['results'][0]['address_components'][0]
+        # 找到的是行政区还是POI？
+        if 'political' not in c['types']:
+            alias = set(item['alias'])
+            alias.add(c['long_name'].lower())
+            alias.add(c['short_name'].lower())
+            item['alias'] = list(alias)
+
+            # 顺便处理viewport
+            if 'viewport' not in item:
+                viewport = data['results'][0]['geometry']['viewport']
+                lat = item['poi_lat']
+                lng = item['poi_lng']
+                if lat >= viewport['southwest']['lat'] and lat <= viewport['northeast']['lat'] and lng >= \
+                        viewport['southwest']['lng'] and lng <= viewport['northeast']['lng']:
+                    item['viewport'] = viewport
 
         if lang == 'zh':
             return item
         else:
-            ridx = random.randint(0, len(self.geocode_keys) - 1)
-            geocode_key = self.geocode_keys[ridx]
-            url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s&key=%s' % (
-                item['poi_name'], item['poi_city']['enName'], item['country_info']['enName'], geocode_key)
+            url = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s,%s,%s' % (
+                item['poi_name'], item['poi_city']['enName'], item['country_info']['enName'])
             return Request(url=url, headers={'Accept-Language': 'zh-CN'}, meta={'item': item, 'lang': 'zh'},
                            callback=self.parse_alias, dont_filter=True)
 
@@ -420,7 +403,7 @@ class QyerVsProcSpider(CrawlSpider):
                                                    '$geometry': {'type': 'Point',
                                                                  'coordinates': [item['poi_lng'], item['poi_lat']]},
                                                    '$minDistance': 0,
-                                                   '$maxDistance': 150 * 1000
+                                                   '$maxDistance': 100 * 1000
                                                }
                                            }},
                                           {'zhName': 1, 'enName': 1, 'coords': 1}).limit(5))
@@ -470,7 +453,11 @@ class QyerSpotProcPipeline(object):
         vs['name'] = item['poi_name']
         vs['zhName'] = item['poi_name']
         vs['enName'] = item['poi_englishName']
-        vs['imageList'] = item['poi_photo'] if 'poi_photo' in item and item['poi_photo'] else []
+
+        def _image_proc(url):
+            m = re.search(r'^(.+pic\.qyer\.com/album/.+/index)/[0-9x]+$', url)
+            return m.group(1) if m else url
+        vs['imageList'] = map(_image_proc, item['poi_photo'] if 'poi_photo' in item and item['poi_photo'] else [])
 
         vs['country'] = country_info
         vs['city'] = city_info
