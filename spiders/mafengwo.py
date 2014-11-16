@@ -374,10 +374,10 @@ class MafengwoPipeline(object):
         images_set = set([tmp['url'] for tmp in db_data['imageList']])
         for key in data.keys():
             if key == 'imageList':
-                val = data[key]
-                if val['url'] not in images_set:
-                    images_set.add(val['url'])
-                    db_data['imageList'].append(val)
+                for image_entry in data[key]:
+                    if image_entry['url'] not in images_set:
+                        images_set.add(image_entry['url'])
+                        db_data['imageList'].append(image_entry)
             else:
                 db_data[key] = data[key]
         db_data['imageList'] = list(images_set)
