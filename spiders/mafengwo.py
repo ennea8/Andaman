@@ -306,7 +306,7 @@ class MafengwoSpider(AizouCrawlSpider):
                     user_url = self.build_href(response.url, user_node.xpath('./@href').extract()[0])
                     user_id = int(re.search(r'/u/(\d+)\.html', user_url).group(1))
                     user_name = user_node.xpath('./text()').extract()[0].strip()
-                    image['user_id'] = user_id,
+                    image['user_id'] = user_id
                     image['user_name'] = user_name
 
                 if img_url not in [tmp['url'] for tmp in images]:
