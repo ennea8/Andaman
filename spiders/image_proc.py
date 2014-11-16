@@ -105,7 +105,27 @@ class ImageProcSpider(AizouCrawlSpider):
                 # 开始链式下载
                 url = upload_list.pop()
                 yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload_list},
-                              headers={'Referer': None}, callback=self.parse_img)
+                              headers={'Referer': None}, callback=self.parse_img, errback=self.parse_error)
+
+    def parse_error(self, failure):
+        status = None
+        try:
+            meta = failure.request.meta
+            upload = meta['upload']
+            item = meta['item']
+            status = failure.value.response.status
+            if status == 404:
+                if not upload:
+                    yield item
+                else:
+                    url = upload.pop()
+                    yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                                  headers={'Ref erer': None}, callback=self.parse_img)
+                return
+        except AttributeError:
+            pass
+
+        self.log('Downloading images failed. Code=%d, url=%s' % (status, failure.request.url), log.WARNING)
 
     def parse_img(self, response):
         self.log('DOWNLOADED: %s' % response.url, log.INFO)
