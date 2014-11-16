@@ -61,6 +61,12 @@ class ImageProcSpider(AizouCrawlSpider):
         for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
+
+            # list1有两种格式，一种是原始的plain string list，另一种是带有metadata的，形如：[{'url': '', 'author': ''}]
+            # 这里需要做转换
+            if list1 and (isinstance(list1[0], str) or isinstance(list1[0], unicode)):
+                list1 = [{'url': tmp} for tmp in list1]
+
             # 往哪里存？默认：images
             list2 = entry[list2_name] if list2_name in entry else []
 
@@ -74,9 +80,9 @@ class ImageProcSpider(AizouCrawlSpider):
             item['list2_name'] = list2_name
 
             upload_list = []
-            modified = False
-            for url in list1:
-                url_set = set([tmp['url'] for tmp in list2])
+            url_set = set([tmp['url'] for tmp in list2])
+            for list1_entry in list1:
+                url = list1_entry['url']
                 url1 = 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
                 if url in url_set or url1 in url_set:
                     continue
@@ -91,22 +97,20 @@ class ImageProcSpider(AizouCrawlSpider):
                 if image:
                     url2 = 'http://lvxingpai-img-store.qiniudn.com/' + image['key']
                     if url2 not in url_set:
-                        modified = True
                         list2.append({'url': url2, 'h': image['h'], 'w': image['w'], 'fSize': image['size'],
                                       'enabled': True})
                 else:
-                    modified = True
-                    upload_list.append(url)
-
-            # if not modified:
-            # continue
+                    # 原始的元数据
+                    img_meta = {k: list1_entry[k] for k in list1_entry if k != 'url'}
+                    upload_list.append((url, img_meta))
 
             if not upload_list:
                 yield item
             else:
                 # 开始链式下载
-                url = upload_list.pop()
-                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload_list},
+                url, img_meta = upload_list[0]
+                upload_list = upload_list[1:]
+                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload_list, 'img_meta': img_meta},
                               headers={'Referer': None}, callback=self.parse_img)
 
     def parse_img(self, response):
@@ -150,7 +154,7 @@ class ImageProcSpider(AizouCrawlSpider):
             url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
             meta = response.meta
             yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
-                                         'bucket': bucket}, callback=self.parse_stat)
+                                         'bucket': bucket, 'img_meta': meta['img_meta']}, callback=self.parse_stat)
         else:
             for entry in self.next_proc(response):
                 yield entry
@@ -165,13 +169,14 @@ class ImageProcSpider(AizouCrawlSpider):
         item = meta['item']
         # 从list1中去掉这个url
         list1 = item['list1']
-        item['list1'] = filter(lambda val: val != meta['src'], list1)
+        item['list1'] = filter(lambda val: val['url'] != meta['src'], list1)
 
         if not upload:
             yield item
         else:
-            url = upload.pop()
-            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+            url, img_meta = upload[0]
+            upload = upload[1:]
+            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload, 'img_meta': img_meta},
                           headers={'Ref erer': None}, callback=self.parse_img)
 
     def parse_stat(self, response):
@@ -185,7 +190,7 @@ class ImageProcSpider(AizouCrawlSpider):
 
         url = 'http://%s.qiniudn.com/%s?imageInfo' % (bucket, key)
         yield Request(url=url, meta={'item': item, 'upload': upload, 'key': key, 'bucket': bucket, 'stat': stat,
-                                     'src': src}, callback=self.parse_image_info)
+                                     'img_meta': meta['img_meta'], 'src': src}, callback=self.parse_image_info)
 
     def parse_image_info(self, response):
         image_info = json.loads(response.body)
@@ -200,6 +205,7 @@ class ImageProcSpider(AizouCrawlSpider):
             bucket = meta['bucket']
             stat = meta['stat']
             src = meta['src']
+            img_meta = meta['img_meta']
 
             entry = {'url_hash': hashlib.md5(src).hexdigest(),
                      'cTime': long(time.time() * 1000),
@@ -212,6 +218,9 @@ class ImageProcSpider(AizouCrawlSpider):
                      'key': key,
                      'type': stat['mimeType'],
                      'hash': stat['hash']}
+            for k, v in enumerate(img_meta):
+                if k not in entry:
+                    entry[k] = v
             col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
             col_im.save(entry)
 
@@ -227,8 +236,9 @@ class ImageProcSpider(AizouCrawlSpider):
             if not upload:
                 yield item
             else:
-                url = upload.pop()
-                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                url, img_meta = upload[0]
+                upload = upload[1:]
+                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload, 'img_meta': img_meta},
                               headers={'Ref erer': None}, callback=self.parse_img)
 
 
@@ -246,11 +256,12 @@ class ImageProcPipeline(object):
 
         # list1中有一些项目，如果已经在list2中存在，则可以删除了
         new_list1 = []
-        for url in list1:
+        for list1_entry in list1:
+            url = list1_entry['url']
             url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
                 else 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
             if url2 not in [tmp['url'] for tmp in list2]:
-                new_list1.append(url)
+                new_list1.append(list1_entry)
 
         col = utils.get_mongodb(db, col_name, profile='mongodb-general')
         ops = {'$set': {list2_name: list2}}
