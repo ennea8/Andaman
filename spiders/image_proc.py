@@ -38,8 +38,8 @@ class ImageProcSpider(AizouCrawlSpider):
     name = 'image-proc'
 
     # 获得上传权限
-    qiniu.conf.ACCESS_KEY = utils.cfg_entries('qiniu', 'ak')
-    qiniu.conf.SECRET_KEY = utils.cfg_entries('qiniu', 'sk')
+    ak = utils.cfg_entries('qiniu', 'ak')
+    sk = utils.cfg_entries('qiniu', 'sk')
 
     handle_httpstatus_list = [400, 403, 404]
 
@@ -119,6 +119,8 @@ class ImageProcSpider(AizouCrawlSpider):
             self.log('DOWNLOADED: %s' % response.url, log.INFO)
             # 配置上传策略。
             # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+            qiniu.conf.ACCESS_KEY = self.ak
+            qiniu.conf.SECRET_KEY = self.sk
             bucket = 'lvxingpai-img-store'
             policy = qiniu.rs.PutPolicy(bucket)
             # 取得上传token
@@ -139,7 +141,7 @@ class ImageProcSpider(AizouCrawlSpider):
             for idx in xrange(5):
                 ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
                 if err:
-                    self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
+                    self.log('UPLOADING FAILED #%d: %s, reason: %s, file=%s' % (idx, key, err, fname), log.INFO)
                     continue
                 else:
                     sc = True
