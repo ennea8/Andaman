@@ -41,6 +41,8 @@ class ImageProcSpider(AizouCrawlSpider):
     qiniu.conf.ACCESS_KEY = utils.cfg_entries('qiniu', 'ak')
     qiniu.conf.SECRET_KEY = utils.cfg_entries('qiniu', 'sk')
 
+    handle_httpstatus_list = [403]
+
     def __init__(self, *a, **kw):
         super(ImageProcSpider, self).__init__(*a, **kw)
 
@@ -115,6 +117,10 @@ class ImageProcSpider(AizouCrawlSpider):
             item = meta['item']
             status = failure.value.response.status
             if status == 404:
+                # 从list1中去掉这个404的url
+                list1 = item['list1']
+                item['list1'] = filter(lambda val: val != failure.request.url, list1)
+
                 if not upload:
                     yield item
                 else:
@@ -128,46 +134,61 @@ class ImageProcSpider(AizouCrawlSpider):
         self.log('Downloading images failed. Code=%d, url=%s' % (status, failure.request.url), log.WARNING)
 
     def parse_img(self, response):
-        self.log('DOWNLOADED: %s' % response.url, log.INFO)
-        # 配置上传策略。
-        # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
-        bucket = 'lvxingpai-img-store'
-        policy = qiniu.rs.PutPolicy(bucket)
-        # 取得上传token
-        uptoken = policy.token()
+        if response.status != 403:
+            self.log('DOWNLOADED: %s' % response.url, log.INFO)
+            # 配置上传策略。
+            # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+            bucket = 'lvxingpai-img-store'
+            policy = qiniu.rs.PutPolicy(bucket)
+            # 取得上传token
+            uptoken = policy.token()
 
-        # 上传的额外选项
-        extra = qiniu.io.PutExtra()
-        # 文件自动校验crc
-        extra.check_crc = 1
+            # 上传的额外选项
+            extra = qiniu.io.PutExtra()
+            # 文件自动校验crc
+            extra.check_crc = 1
 
-        fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
-        with open(fname, 'wb') as f:
-            f.write(response.body)
-        key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
+            fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
+            with open(fname, 'wb') as f:
+                f.write(response.body)
+            key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
 
-        sc = False
-        self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
-        for idx in xrange(5):
-            ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
-            if err:
-                self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
-                continue
+            sc = False
+            self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
+            for idx in xrange(5):
+                ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
+                if err:
+                    self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
+                    continue
+                else:
+                    sc = True
+                    break
+            if not sc:
+                raise IOError
+            self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
+
+            # 删除上传成功的文件
+            os.remove(fname)
+
+            # 统计信息
+            url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
+            meta = response.meta
+            yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
+                                         'bucket': bucket}, callback=self.parse_stat)
+        else:
+            meta = response.meta
+            upload = meta['upload']
+            item = meta['item']
+            # 从list1中去掉这个404的url
+            list1 = item['list1']
+            item['list1'] = filter(lambda val: val != response.url, list1)
+
+            if not upload:
+                yield item
             else:
-                sc = True
-                break
-        if not sc:
-            raise IOError
-        self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
-
-        # 删除上传成功的文件
-        os.remove(fname)
-
-        # 统计信息
-        url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
-        meta = response.meta
-        yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
-                                     'bucket': bucket}, callback=self.parse_stat)
+                url = upload.pop()
+                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                              headers={'Ref erer': None}, callback=self.parse_img)
 
     def parse_stat(self, response):
         stat = json.loads(response.body)
