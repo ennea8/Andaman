@@ -5,16 +5,17 @@ import re
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider
+import utils
 
 
 __author__ = 'zephyre'
 
 
-class MafengwoMddItem(Item):
+class MafengwoItem(Item):
     data = Field()
 
 
-class MafengwoMddSpider(AizouCrawlSpider):
+class MafengwoSpider(AizouCrawlSpider):
     """
     马蜂窝目的地的抓取
     """
@@ -23,7 +24,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         self.name = 'weather'
-        super(MafengwoMddSpider, self).__init__(*a, **kw)
+        super(MafengwoSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
         urls = [
@@ -55,7 +56,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
             yield Request(url=url, callback=self.parse_mdd_home, meta={'id': mdd_id})
 
     def parse_mdd_home(self, response):
-        item = MafengwoMddItem()
+        item = MafengwoItem()
         data = {'id': response.meta['id']}
         item['data'] = data
 
@@ -255,7 +256,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
 
         data = {'id': pid, 'type': response.meta['poi_type'], 'title': title, 'crumb': crumb, 'rating': score,
                 'comment_cnt': comment_cnt, 'images_tot': photo_cnt, 'desc': desc, 'lat': lat, 'lng': lng}
-        item = MafengwoMddItem()
+        item = MafengwoItem()
         item['data'] = data
 
         url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=getPoiPhotoList&poiid=%d&page=1' % pid
@@ -313,4 +314,34 @@ class MafengwoMddSpider(AizouCrawlSpider):
                 act, param_name, data['id'], page)
             yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo)
 
+
+class MafengwoPipeline(object):
+    spiders = [MafengwoSpider.name]
+
+    def process_item(self, item, spider):
+        data = item['data']
+        item_type = data['type']
+
+        col_name = None
+        if item_type == 'country':
+            col_name = 'MafengwoCountry'
+        elif item_type == 'region':
+            col_name = 'MafengwoMdd'
+        elif item_type == 'vs':
+            col_name = 'MafengwoVs'
+        elif item_type == 'gw':
+            col_name = 'MafengwoGw'
+        elif item_type == 'yl':
+            col_name = 'MafengwoYl'
+        elif item_type == 'cy':
+            col_name = 'MafengwoCy'
+
+        col = utils.get_mongodb('raw_data', col_name, profile='mongodb-crawler')
+        db_data = col.find_one({'id': data['id']})
+        if not db_data:
+            db_data = {}
+        for key in data.keys():
+            db_data[key] = data[key]
+        col.save(db_data)
+        return item
 
