@@ -380,7 +380,6 @@ class MafengwoPipeline(object):
                         db_data['imageList'].append(image_entry)
             else:
                 db_data[key] = data[key]
-        db_data['imageList'] = list(images_set)
         col.save(db_data)
         return item
 
