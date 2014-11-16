@@ -5,16 +5,17 @@ import re
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider
+import utils
 
 
 __author__ = 'zephyre'
 
 
-class MafengwoMddItem(Item):
+class MafengwoItem(Item):
     data = Field()
 
 
-class MafengwoMddSpider(AizouCrawlSpider):
+class MafengwoSpider(AizouCrawlSpider):
     """
     马蜂窝目的地的抓取
     """
@@ -23,7 +24,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         self.name = 'weather'
-        super(MafengwoMddSpider, self).__init__(*a, **kw)
+        super(MafengwoSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
         urls = [
@@ -55,7 +56,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
             yield Request(url=url, callback=self.parse_mdd_home, meta={'id': mdd_id})
 
     def parse_mdd_home(self, response):
-        item = MafengwoMddItem()
+        item = MafengwoItem()
         data = {'id': response.meta['id']}
         item['data'] = data
 
@@ -87,6 +88,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
         tags = sel.xpath(
             '//div[contains(@class,"m-tags")]/div[@class="bd"]/ul/li[@class="impress-tip"]/a[@href]/text()').extract()
         data['tags'] = list(set(filter(lambda val: val, [tmp.strip() for tmp in tags])))
+        data['images_tot'] = int(sel.xpath('//div[@class="m-photo"]/a/em/text()').extract()[0])
 
         url = 'http://www.mafengwo.cn/jd/%d/gonglve.html' % data['id']
         yield Request(url=url, callback=self.parse_jd, meta={'item': item, 'type': 'region'})
@@ -152,9 +154,11 @@ class MafengwoMddSpider(AizouCrawlSpider):
                 next_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
                 # 根据是否出现国家攻略来判断是否为国家
                 if info_title == u'国家概况' or info_title == u'城市概况':
-                    col_list.extend(
-                        [(self.build_href(response.url, tmp), self.parse_info, {'type': 'region'}) for tmp in
-                         node.xpath('..//dl/dt/a[@href]/@href').extract()])
+                    for info_node in node.xpath('..//dl/dt/a[@href]'):
+                        info_url = self.build_href(response.url, info_node.xpath('./@href').extract()[0])
+                        info_cat = info_node.xpath('./text()').extract()[0].strip()
+                        col_list.append([info_url, self.parse_info, {'info_cat': info_cat}])
+                        
                     if info_title == u'国家概况':
                         data['type'] = 'country'
                     elif info_title == u'城市概况':
@@ -179,6 +183,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
     def parse_info(self, response):
         sel = Selector(response)
         item = response.meta['item']
+        info_cat = response.meta['info_cat']
         data = item['data']
 
         if 'title' not in data:
@@ -196,7 +201,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
             class_name = node.xpath('./@class').extract()[0]
             if 'm-subTit' in class_name:
                 contents.append(entry)
-                entry = {'title': node.xpath('./h2/text()').extract()[0].strip()}
+                entry = {'title': node.xpath('./h2/text()').extract()[0].strip(), 'info_cat': info_cat}
             elif 'm-txt' in class_name or 'm-img' in class_name:
                 entry['txt'] = node.extract().strip()
             else:
@@ -255,7 +260,7 @@ class MafengwoMddSpider(AizouCrawlSpider):
 
         data = {'id': pid, 'type': response.meta['poi_type'], 'title': title, 'crumb': crumb, 'rating': score,
                 'comment_cnt': comment_cnt, 'images_tot': photo_cnt, 'desc': desc, 'lat': lat, 'lng': lng}
-        item = MafengwoMddItem()
+        item = MafengwoItem()
         item['data'] = data
 
         url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=getPoiPhotoList&poiid=%d&page=1' % pid
@@ -313,4 +318,34 @@ class MafengwoMddSpider(AizouCrawlSpider):
                 act, param_name, data['id'], page)
             yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo)
 
+
+class MafengwoPipeline(object):
+    spiders = [MafengwoSpider.name]
+
+    def process_item(self, item, spider):
+        data = item['data']
+        item_type = data['type']
+
+        col_name = None
+        if item_type == 'country':
+            col_name = 'MafengwoCountry'
+        elif item_type == 'region':
+            col_name = 'MafengwoMdd'
+        elif item_type == 'vs':
+            col_name = 'MafengwoVs'
+        elif item_type == 'gw':
+            col_name = 'MafengwoGw'
+        elif item_type == 'yl':
+            col_name = 'MafengwoYl'
+        elif item_type == 'cy':
+            col_name = 'MafengwoCy'
+
+        col = utils.get_mongodb('raw_data', col_name, profile='mongodb-crawler')
+        db_data = col.find_one({'id': data['id']})
+        if not db_data:
+            db_data = {}
+        for key in data.keys():
+            db_data[key] = data[key]
+        col.save(db_data)
+        return item
 
