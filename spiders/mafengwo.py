@@ -154,9 +154,11 @@ class MafengwoSpider(AizouCrawlSpider):
                 next_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
                 # 根据是否出现国家攻略来判断是否为国家
                 if info_title == u'国家概况' or info_title == u'城市概况':
-                    col_list.extend(
-                        [(self.build_href(response.url, tmp), self.parse_info, {'type': 'region'}) for tmp in
-                         node.xpath('..//dl/dt/a[@href]/@href').extract()])
+                    for info_node in node.xpath('..//dl/dt/a[@href]'):
+                        info_url = self.build_href(response.url, info_node.xpath('./@href').extract()[0])
+                        info_cat = info_node.xpath('./text()').extract()[0].strip()
+                        col_list.append([info_url, self.parse_info, {'info_cat': info_cat}])
+                        
                     if info_title == u'国家概况':
                         data['type'] = 'country'
                     elif info_title == u'城市概况':
@@ -181,6 +183,7 @@ class MafengwoSpider(AizouCrawlSpider):
     def parse_info(self, response):
         sel = Selector(response)
         item = response.meta['item']
+        info_cat = response.meta['info_cat']
         data = item['data']
 
         if 'title' not in data:
@@ -198,7 +201,7 @@ class MafengwoSpider(AizouCrawlSpider):
             class_name = node.xpath('./@class').extract()[0]
             if 'm-subTit' in class_name:
                 contents.append(entry)
-                entry = {'title': node.xpath('./h2/text()').extract()[0].strip()}
+                entry = {'title': node.xpath('./h2/text()').extract()[0].strip(), 'info_cat': info_cat}
             elif 'm-txt' in class_name or 'm-img' in class_name:
                 entry['txt'] = node.extract().strip()
             else:
