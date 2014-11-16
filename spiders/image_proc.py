@@ -55,8 +55,9 @@ class ImageProcSpider(AizouCrawlSpider):
         col_name = param['col'][0]
         list1_name = param['from'][0] if 'from' in param else 'imageList'
         list2_name = param['to'][0] if 'to' in param else 'images'
+        profile = param['profile'][0] if 'profile' in param else 'mongodb-general'
 
-        col = utils.get_mongodb(db, col_name, profile='mongodb-general')
+        col = utils.get_mongodb(db, col_name, profile=profile)
         col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
         for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
@@ -101,7 +102,7 @@ class ImageProcSpider(AizouCrawlSpider):
                                       'enabled': True})
                 else:
                     # 原始的元数据
-                    img_meta = {k: list1_entry[k] for k in list1_entry if k != 'url'}
+                    img_meta = {k.encode('utf-8'): list1_entry[k] for k in list1_entry if k != 'url'}
                     upload_list.append((url, img_meta))
 
             if not upload_list:
@@ -218,7 +219,7 @@ class ImageProcSpider(AizouCrawlSpider):
                      'key': key,
                      'type': stat['mimeType'],
                      'hash': stat['hash']}
-            for k, v in enumerate(img_meta):
+            for k, v in img_meta.items():
                 if k not in entry:
                     entry[k] = v
             col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
