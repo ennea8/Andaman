@@ -41,7 +41,7 @@ class ImageProcSpider(AizouCrawlSpider):
     qiniu.conf.ACCESS_KEY = utils.cfg_entries('qiniu', 'ak')
     qiniu.conf.SECRET_KEY = utils.cfg_entries('qiniu', 'sk')
 
-    handle_httpstatus_list = [403]
+    handle_httpstatus_list = [400, 403, 404]
 
     def __init__(self, *a, **kw):
         super(ImageProcSpider, self).__init__(*a, **kw)
@@ -107,34 +107,10 @@ class ImageProcSpider(AizouCrawlSpider):
                 # 开始链式下载
                 url = upload_list.pop()
                 yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload_list},
-                              headers={'Referer': None}, callback=self.parse_img, errback=self.parse_error)
-
-    def parse_error(self, failure):
-        status = None
-        try:
-            meta = failure.request.meta
-            upload = meta['upload']
-            item = meta['item']
-            status = failure.value.response.status
-            if status == 404:
-                # 从list1中去掉这个404的url
-                list1 = item['list1']
-                item['list1'] = filter(lambda val: val != failure.request.url, list1)
-
-                if not upload:
-                    yield item
-                else:
-                    url = upload.pop()
-                    yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
-                                  headers={'Ref erer': None}, callback=self.parse_img)
-                return
-        except AttributeError:
-            pass
-
-        self.log('Downloading images failed. Code=%d, url=%s' % (status, failure.request.url), log.WARNING)
+                              headers={'Referer': None}, callback=self.parse_img)
 
     def parse_img(self, response):
-        if response.status != 403:
+        if response.status not in [400, 403, 404]:
             self.log('DOWNLOADED: %s' % response.url, log.INFO)
             # 配置上传策略。
             # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
@@ -176,19 +152,27 @@ class ImageProcSpider(AizouCrawlSpider):
             yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
                                          'bucket': bucket}, callback=self.parse_stat)
         else:
-            meta = response.meta
-            upload = meta['upload']
-            item = meta['item']
-            # 从list1中去掉这个404的url
-            list1 = item['list1']
-            item['list1'] = filter(lambda val: val != response.url, list1)
+            for entry in self.next_proc(response):
+                yield entry
 
-            if not upload:
-                yield item
-            else:
-                url = upload.pop()
-                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
-                              headers={'Ref erer': None}, callback=self.parse_img)
+    def next_proc(self, response):
+        """
+        放弃当前的item chain，处理下一个item
+        :param response:
+        """
+        meta = response.meta
+        upload = meta['upload']
+        item = meta['item']
+        # 从list1中去掉这个url
+        list1 = item['list1']
+        item['list1'] = filter(lambda val: val != meta['src'], list1)
+
+        if not upload:
+            yield item
+        else:
+            url = upload.pop()
+            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                          headers={'Ref erer': None}, callback=self.parse_img)
 
     def parse_stat(self, response):
         stat = json.loads(response.body)
@@ -205,43 +189,47 @@ class ImageProcSpider(AizouCrawlSpider):
 
     def parse_image_info(self, response):
         image_info = json.loads(response.body)
-        meta = response.meta
-        item = meta['item']
-        upload = meta['upload']
-        key = meta['key']
-        bucket = meta['bucket']
-        stat = meta['stat']
-        src = meta['src']
-
-        entry = {'url_hash': hashlib.md5(src).hexdigest(),
-                 'cTime': long(time.time() * 1000),
-                 'cm': image_info['colorModel'],
-                 'h': image_info['height'],
-                 'w': image_info['width'],
-                 'fmt': image_info['format'],
-                 'size': stat['fsize'],
-                 'url': src,
-                 'key': key,
-                 'type': stat['mimeType'],
-                 'hash': stat['hash']}
-        col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        col_im.save(entry)
-
-        # 修正list
-        item['list2'].append({
-            'url': 'http://%s.qiniudn.com/%s' % (bucket, key),
-            'h': image_info['height'],
-            'w': image_info['width'],
-            'fSize': stat['fsize'],
-            'enabled': True
-        })
-
-        if not upload:
-            yield item
+        if 'error' in image_info:
+            for entry in self.next_proc(response):
+                yield entry
         else:
-            url = upload.pop()
-            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
-                          headers={'Ref erer': None}, callback=self.parse_img)
+            meta = response.meta
+            item = meta['item']
+            upload = meta['upload']
+            key = meta['key']
+            bucket = meta['bucket']
+            stat = meta['stat']
+            src = meta['src']
+
+            entry = {'url_hash': hashlib.md5(src).hexdigest(),
+                     'cTime': long(time.time() * 1000),
+                     'cm': image_info['colorModel'],
+                     'h': image_info['height'],
+                     'w': image_info['width'],
+                     'fmt': image_info['format'],
+                     'size': stat['fsize'],
+                     'url': src,
+                     'key': key,
+                     'type': stat['mimeType'],
+                     'hash': stat['hash']}
+            col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
+            col_im.save(entry)
+
+            # 修正list
+            item['list2'].append({
+                'url': 'http://%s.qiniudn.com/%s' % (bucket, key),
+                'h': image_info['height'],
+                'w': image_info['width'],
+                'fSize': stat['fsize'],
+                'enabled': True
+            })
+
+            if not upload:
+                yield item
+            else:
+                url = upload.pop()
+                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                              headers={'Ref erer': None}, callback=self.parse_img)
 
 
 class ImageProcPipeline(object):
