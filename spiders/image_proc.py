@@ -12,7 +12,6 @@ import qiniu.io
 from scrapy import Request, Item, Field, log
 
 from spiders import AizouCrawlSpider
-
 import utils
 
 
@@ -41,6 +40,8 @@ class ImageProcSpider(AizouCrawlSpider):
     # 获得上传权限
     qiniu.conf.ACCESS_KEY = utils.cfg_entries('qiniu', 'ak')
     qiniu.conf.SECRET_KEY = utils.cfg_entries('qiniu', 'sk')
+
+    handle_httpstatus_list = [400, 403, 404]
 
     def __init__(self, *a, **kw):
         super(ImageProcSpider, self).__init__(*a, **kw)
@@ -109,46 +110,69 @@ class ImageProcSpider(AizouCrawlSpider):
                               headers={'Referer': None}, callback=self.parse_img)
 
     def parse_img(self, response):
-        self.log('DOWNLOADED: %s' % response.url, log.INFO)
-        # 配置上传策略。
-        # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
-        bucket = 'lvxingpai-img-store'
-        policy = qiniu.rs.PutPolicy(bucket)
-        # 取得上传token
-        uptoken = policy.token()
+        if response.status not in [400, 403, 404]:
+            self.log('DOWNLOADED: %s' % response.url, log.INFO)
+            # 配置上传策略。
+            # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+            bucket = 'lvxingpai-img-store'
+            policy = qiniu.rs.PutPolicy(bucket)
+            # 取得上传token
+            uptoken = policy.token()
 
-        # 上传的额外选项
-        extra = qiniu.io.PutExtra()
-        # 文件自动校验crc
-        extra.check_crc = 1
+            # 上传的额外选项
+            extra = qiniu.io.PutExtra()
+            # 文件自动校验crc
+            extra.check_crc = 1
 
-        fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
-        with open(fname, 'wb') as f:
-            f.write(response.body)
-        key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
+            fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
+            with open(fname, 'wb') as f:
+                f.write(response.body)
+            key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
 
-        sc = False
-        self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
-        for idx in xrange(5):
-            ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
-            if err:
-                self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
-                continue
-            else:
-                sc = True
-                break
-        if not sc:
-            raise IOError
-        self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
+            sc = False
+            self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
+            for idx in xrange(5):
+                ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
+                if err:
+                    self.log('UPLOADING FAILED #1: %s' % key, log.INFO)
+                    continue
+                else:
+                    sc = True
+                    break
+            if not sc:
+                raise IOError
+            self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
 
-        # 删除上传成功的文件
-        os.remove(fname)
+            # 删除上传成功的文件
+            os.remove(fname)
 
-        # 统计信息
-        url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
+            # 统计信息
+            url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
+            meta = response.meta
+            yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
+                                         'bucket': bucket}, callback=self.parse_stat)
+        else:
+            for entry in self.next_proc(response):
+                yield entry
+
+    def next_proc(self, response):
+        """
+        放弃当前的item chain，处理下一个item
+        :param response:
+        """
         meta = response.meta
-        yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
-                                     'bucket': bucket}, callback=self.parse_stat)
+        upload = meta['upload']
+        item = meta['item']
+        # 从list1中去掉这个url
+        list1 = item['list1']
+        item['list1'] = filter(lambda val: val != meta['src'], list1)
+
+        if not upload:
+            yield item
+        else:
+            url = upload.pop()
+            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                          headers={'Ref erer': None}, callback=self.parse_img)
 
     def parse_stat(self, response):
         stat = json.loads(response.body)
@@ -165,43 +189,47 @@ class ImageProcSpider(AizouCrawlSpider):
 
     def parse_image_info(self, response):
         image_info = json.loads(response.body)
-        meta = response.meta
-        item = meta['item']
-        upload = meta['upload']
-        key = meta['key']
-        bucket = meta['bucket']
-        stat = meta['stat']
-        src = meta['src']
-
-        entry = {'url_hash': hashlib.md5(src).hexdigest(),
-                 'cTime': long(time.time() * 1000),
-                 'cm': image_info['colorModel'],
-                 'h': image_info['height'],
-                 'w': image_info['width'],
-                 'fmt': image_info['format'],
-                 'size': stat['fsize'],
-                 'url': src,
-                 'key': key,
-                 'type': stat['mimeType'],
-                 'hash': stat['hash']}
-        col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        col_im.save(entry)
-
-        # 修正list
-        item['list2'].append({
-            'url': 'http://%s.qiniudn.com/%s' % (bucket, key),
-            'h': image_info['height'],
-            'w': image_info['width'],
-            'fSize': stat['fsize'],
-            'enabled': True
-        })
-
-        if not upload:
-            yield item
+        if 'error' in image_info:
+            for entry in self.next_proc(response):
+                yield entry
         else:
-            url = upload.pop()
-            yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
-                          headers={'Ref erer': None}, callback=self.parse_img)
+            meta = response.meta
+            item = meta['item']
+            upload = meta['upload']
+            key = meta['key']
+            bucket = meta['bucket']
+            stat = meta['stat']
+            src = meta['src']
+
+            entry = {'url_hash': hashlib.md5(src).hexdigest(),
+                     'cTime': long(time.time() * 1000),
+                     'cm': image_info['colorModel'],
+                     'h': image_info['height'],
+                     'w': image_info['width'],
+                     'fmt': image_info['format'],
+                     'size': stat['fsize'],
+                     'url': src,
+                     'key': key,
+                     'type': stat['mimeType'],
+                     'hash': stat['hash']}
+            col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
+            col_im.save(entry)
+
+            # 修正list
+            item['list2'].append({
+                'url': 'http://%s.qiniudn.com/%s' % (bucket, key),
+                'h': image_info['height'],
+                'w': image_info['width'],
+                'fSize': stat['fsize'],
+                'enabled': True
+            })
+
+            if not upload:
+                yield item
+            else:
+                url = upload.pop()
+                yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload},
+                              headers={'Ref erer': None}, callback=self.parse_img)
 
 
 class ImageProcPipeline(object):
@@ -220,7 +248,7 @@ class ImageProcPipeline(object):
         new_list1 = []
         for url in list1:
             url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
-                else 'http://lvxingpai-img-store.qiniudn.com/%s' % hashlib.md5(url).hexdigest()
+                else 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
             if url2 not in [tmp['url'] for tmp in list2]:
                 new_list1.append(url)
 
@@ -229,6 +257,7 @@ class ImageProcPipeline(object):
         if new_list1:
             ops['$set'][list1_name] = new_list1
         else:
+            spider.log('Unset %s for document: _id=%s' % (list1_name, doc_id))
             ops['$unset'] = {list1_name: 1}
         col.update({'_id': doc_id}, ops)
 
