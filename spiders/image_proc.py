@@ -10,7 +10,8 @@ import qiniu.conf
 import qiniu.rs
 import qiniu.io
 from scrapy import Request, Item, Field, log
-from scrapy.contrib.spiders import CrawlSpider
+
+from spiders import AizouCrawlSpider
 
 import utils
 
@@ -31,7 +32,7 @@ class ImageProcItem(Item):
     image_info = Field()
 
 
-class ImageProcSpider(CrawlSpider):
+class ImageProcSpider(AizouCrawlSpider):
     """
     将imageList中的内容，上传到七牛，然后更新images列表
     """
@@ -138,7 +139,7 @@ class ImageProcSpider(CrawlSpider):
                 break
         if not sc:
             raise IOError
-        self.log('UPLOADING COMPLETED: %s' % key)
+        self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
 
         # 删除上传成功的文件
         os.remove(fname)
