@@ -157,7 +157,7 @@ class MafengwoSpider(AizouCrawlSpider):
                         info_url = self.build_href(response.url, info_node.xpath('./@href').extract()[0])
                         info_cat = info_node.xpath('./text()').extract()[0].strip()
                         col_list.append([info_url, self.parse_info, {'info_cat': info_cat}])
-                        
+
                     if info_title == u'国家概况':
                         data['type'] = 'country'
                     elif info_title == u'城市概况':
@@ -217,7 +217,8 @@ class MafengwoSpider(AizouCrawlSpider):
         else:
             # 开始抓取图像
             url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=getMddPhotoList&mddid=%d&page=1' % data['id']
-            yield Request(url=url, callback=self.parse_photo, meta={'item': item, 'page': 1, 'act': 'getMddPhotoList'})
+            yield Request(url=url, callback=self.parse_photo, meta={'item': item, 'page': 1, 'act': 'getMddPhotoList'},
+                          errback=self.photo_err)
 
     def parse_poi(self, response):
         sel = Selector(response)
@@ -263,7 +264,8 @@ class MafengwoSpider(AizouCrawlSpider):
         item['data'] = data
 
         url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=getPoiPhotoList&poiid=%d&page=1' % pid
-        yield Request(url=url, meta={'item': item, 'page': 1, 'act': 'getPoiPhotoList'}, callback=self.parse_photo)
+        yield Request(url=url, meta={'item': item, 'page': 1, 'act': 'getPoiPhotoList'}, callback=self.parse_photo,
+                      errback=self.photo_err)
 
     def parse_photo(self, response):
         sel = Selector(response)
@@ -271,8 +273,8 @@ class MafengwoSpider(AizouCrawlSpider):
         page = response.meta['page']
         data = item['data']
 
-        images = data['images'] if 'images' in data else []
-        data['images'] = images
+        images = data['imageList'] if 'imageList' in data else []
+        data['imageList'] = images
         node_list = sel.xpath('//ul/li')
         # 最多去50张照片左右
         if not node_list or len(images) > 200:
@@ -315,7 +317,30 @@ class MafengwoSpider(AizouCrawlSpider):
             param_name = 'mddid' if act == 'getMddPhotoList' else 'poiid'
             url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=%s&%s=%d&page=%d' % (
                 act, param_name, data['id'], page)
-            yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo)
+            yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
+                          errback=self.photo_err)
+
+    def photo_err(self, failure):
+        status = None
+        try:
+            status = failure.value.response.status
+            if status == 404 or status == 403 or status == 400:
+                meta = failure.request.meta
+                item = meta['item']
+                page = meta['page'] + 1
+                data = item['data']
+                images = data['imageList'] if 'imageList' in data else []
+                data['imageList'] = images
+                act = meta['act']
+                param_name = 'mddid' if act == 'getMddPhotoList' else 'poiid'
+                url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=%s&%s=%d&page=%d' % (
+                    act, param_name, data['id'], page)
+                yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
+                              errback=self.photo_err)
+        except AttributeError:
+            pass
+
+        self.log('Downloading images failed. Code=%d, url=%s' % (status, failure.request.url), log.WARNING)
 
 
 class MafengwoPipeline(object):
@@ -343,8 +368,19 @@ class MafengwoPipeline(object):
         db_data = col.find_one({'id': data['id']})
         if not db_data:
             db_data = {}
+
+        if 'imageList' not in db_data:
+            db_data['imageList'] = []
+        images_set = set([tmp['url'] for tmp in db_data['imageList']])
         for key in data.keys():
-            db_data[key] = data[key]
+            if key == 'imageList':
+                val = data[key]
+                if val['url'] not in images_set:
+                    images_set.add(val['url'])
+                    db_data['imageList'].append(val)
+            else:
+                db_data[key] = data[key]
+        db_data['imageList'] = list(images_set)
         col.save(db_data)
         return item
 
