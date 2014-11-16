@@ -300,7 +300,7 @@ class MafengwoSpider(AizouCrawlSpider):
                 if title:
                     image['title'] = title
 
-                tmp = img_node.xpath('./div[contains(@class,"info")]/a[@href]')
+                tmp = node.xpath('./div[contains(@class,"info")]/p/a[@href]')
                 if tmp:
                     user_node = tmp[0]
                     user_url = self.build_href(response.url, user_node.xpath('./@href').extract()[0])
