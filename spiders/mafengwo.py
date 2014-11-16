@@ -23,7 +23,6 @@ class MafengwoSpider(AizouCrawlSpider):
     name = 'mafengwo-mdd'
 
     def __init__(self, *a, **kw):
-        self.name = 'weather'
         super(MafengwoSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
