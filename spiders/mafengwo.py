@@ -88,6 +88,7 @@ class MafengwoSpider(AizouCrawlSpider):
         tags = sel.xpath(
             '//div[contains(@class,"m-tags")]/div[@class="bd"]/ul/li[@class="impress-tip"]/a[@href]/text()').extract()
         data['tags'] = list(set(filter(lambda val: val, [tmp.strip() for tmp in tags])))
+        data['images_tot'] = int(sel.xpath('//div[@class="m-photo"]/a/em/text()').extract()[0])
 
         url = 'http://www.mafengwo.cn/jd/%d/gonglve.html' % data['id']
         yield Request(url=url, callback=self.parse_jd, meta={'item': item, 'type': 'region'})
