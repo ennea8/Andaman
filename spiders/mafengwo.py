@@ -300,13 +300,13 @@ class MafengwoSpider(AizouCrawlSpider):
                 if title:
                     image['title'] = title
 
-                tmp = img_node.xpath('./div[contains(@class,"info")]/a[@href]')
+                tmp = node.xpath('./div[contains(@class,"info")]/p/a[@href]')
                 if tmp:
                     user_node = tmp[0]
                     user_url = self.build_href(response.url, user_node.xpath('./@href').extract()[0])
                     user_id = int(re.search(r'/u/(\d+)\.html', user_url).group(1))
                     user_name = user_node.xpath('./text()').extract()[0].strip()
-                    image['user_id'] = user_id,
+                    image['user_id'] = user_id
                     image['user_name'] = user_name
 
                 if img_url not in [tmp['url'] for tmp in images]:
@@ -374,13 +374,12 @@ class MafengwoPipeline(object):
         images_set = set([tmp['url'] for tmp in db_data['imageList']])
         for key in data.keys():
             if key == 'imageList':
-                val = data[key]
-                if val['url'] not in images_set:
-                    images_set.add(val['url'])
-                    db_data['imageList'].append(val)
+                for image_entry in data[key]:
+                    if image_entry['url'] not in images_set:
+                        images_set.add(image_entry['url'])
+                        db_data['imageList'].append(image_entry)
             else:
                 db_data[key] = data[key]
-        db_data['imageList'] = list(images_set)
         col.save(db_data)
         return item
 
