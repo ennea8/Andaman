@@ -7,6 +7,7 @@ import hashlib
 import random
 import time
 import sys
+import urlparse
 
 from scrapy import log
 
@@ -26,3 +27,11 @@ class AizouCrawlSpider(CrawlSpider):
         # message前面添加爬虫id
         message = '[%s] %s' % (self.spider_id, message)
         super(CrawlSpider, self).log(message, level=level, **kw)
+
+    def build_href(self, url, href):
+        c = urlparse.urlparse(href)
+        if c.netloc:
+            return href
+        else:
+            c1 =urlparse.urlparse(url)
+            return urlparse.urlunparse((c1.scheme, c1.netloc, c.path, c.params, c.query, c.fragment))
