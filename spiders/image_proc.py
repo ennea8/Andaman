@@ -12,7 +12,6 @@ import qiniu.io
 from scrapy import Request, Item, Field, log
 
 from spiders import AizouCrawlSpider
-
 import utils
 
 
@@ -220,7 +219,7 @@ class ImageProcPipeline(object):
         new_list1 = []
         for url in list1:
             url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
-                else 'http://lvxingpai-img-store.qiniudn.com/%s' % hashlib.md5(url).hexdigest()
+                else 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
             if url2 not in [tmp['url'] for tmp in list2]:
                 new_list1.append(url)
 
@@ -229,6 +228,7 @@ class ImageProcPipeline(object):
         if new_list1:
             ops['$set'][list1_name] = new_list1
         else:
+            spider.log('Unset %s for document: _id=%s' % (list1_name, doc_id))
             ops['$unset'] = {list1_name: 1}
         col.update({'_id': doc_id}, ops)
 
