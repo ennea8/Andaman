@@ -196,13 +196,15 @@ class MafengwoSpider(AizouCrawlSpider):
             data['contents'] = []
         contents = data['contents']
         entry = {}
-        for node in sel.xpath('//div[@class="content"]/div[@class]'):
+        for node in sel.xpath('//div[@class="content"]/div[@class]|//div[@class="content"]/ul[@class]'):
             class_name = node.xpath('./@class').extract()[0]
             if 'm-subTit' in class_name:
                 contents.append(entry)
-                entry = {'title': node.xpath('./h2/text()').extract()[0].strip(), 'info_cat': info_cat}
+                entry = {'title': node.xpath('./h2/text()').extract()[0].strip(), 'info_cat': info_cat, 'details': []}
             elif 'm-txt' in class_name or 'm-img' in class_name:
-                entry['txt'] = node.extract().strip()
+                entry['details'].append(node.extract().strip())
+            elif 'm-tripDate' in class_name:
+                entry['details'].append(node.extract().strip())
             else:
                 continue
         contents.append(entry)
