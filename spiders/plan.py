@@ -11,6 +11,7 @@ import pymongo
 from scrapy import Item, Field, Request, log
 from scrapy.contrib.spiders import CrawlSpider
 
+import conf
 import utils
 
 
@@ -60,10 +61,11 @@ class PlanImportSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com')
 
     def parse(self, response):
-        host = utils.cfg_entries('cms-mysqldb', 'host')
-        port = int(utils.cfg_entries('cms-mysqldb', 'port'))
-        user = utils.cfg_entries('cms-mysqldb', 'user')
-        passwd = utils.cfg_entries('cms-mysqldb', 'passwd')
+        section = conf.global_conf.get('cms-mysqldb', {})
+        host = section['host']
+        port = int(section['port'])
+        user = section['user']
+        passwd = section['passwd']
         my_conn = MySQLdb.connect(host=host, port=port, user=user, passwd=passwd, db='lvplan', cursorclass=DictCursor,
                                   charset='utf8')
         cursor = my_conn.cursor()
