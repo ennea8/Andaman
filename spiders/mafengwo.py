@@ -84,6 +84,10 @@ class MafengwoSpider(AizouCrawlSpider):
                 self.log('Unsupported region homepage: %d' % data['id'], log.WARNING)
                 continue
 
+        loc_text = re.search(r'var\s+mdd_center[^;]+;', response.body).group()
+        data['lat'] = float(re.search(r"lat:parseFloat\(\s*'\s*(\d+\.\d+)", loc_text).group(1))
+        data['lng'] = float(re.search(r"lng:parseFloat\(\s*'\s*(\d+\.\d+)", loc_text).group(1))
+
         tags = sel.xpath(
             '//div[contains(@class,"m-tags")]/div[@class="bd"]/ul/li[@class="impress-tip"]/a[@href]/text()').extract()
         data['tags'] = list(set(filter(lambda val: val, [tmp.strip() for tmp in tags])))
