@@ -6,9 +6,8 @@ import urllib2
 import urlparse
 
 from scrapy import log, Request
-import time
 
-import utils
+import conf
 
 
 __author__ = 'zephyre'
@@ -21,10 +20,8 @@ class GoogleGeocodeMiddleware(object):
 
     def __init__(self):
         # 读取Google Geocode列表
-        section = 'geocode-keys'
         self.geocode_keys = {}
-        for option in utils.cfg_options(section):
-            key = utils.cfg_entries(section, option)
+        for key in conf.global_conf.get('geocode-keys', {}).values():
             self.geocode_keys[key] = {'key': key, 'fail_cnt': 0, 'over_quota_cnt': 0, 'fail_tot': 0,
                                       'over_quota_tot': 0, 'req_tot': 0, 'enabled': True}
 
