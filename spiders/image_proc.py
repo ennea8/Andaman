@@ -47,6 +47,7 @@ class ImageProcSpider(AizouCrawlSpider):
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
+        self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
     def parse(self, response):
@@ -103,7 +104,9 @@ class ImageProcSpider(AizouCrawlSpider):
                 else:
                     # 原始的元数据
                     img_meta = {k.encode('utf-8'): list1_entry[k] for k in list1_entry if k != 'url'}
-                    upload_list.append((url, img_meta))
+                    # 两种工作模式：是否下载缺失的图像
+                    if 'skip-upload' not in self.param:
+                        upload_list.append((url, img_meta))
 
             if not upload_list:
                 yield item
