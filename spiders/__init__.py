@@ -17,6 +17,7 @@ from scrapy.contrib.spiders import CrawlSpider
 class AizouCrawlSpider(CrawlSpider):
     def __init__(self, *a, **kw):
         super(CrawlSpider, self).__init__(*a, **kw)
+        self.param = {}
 
         # 每个爬虫需要分配一个唯一的爬虫id，用来在日志文件里面作出区分。
         r = long(time.time() * 1000) + random.randint(0, sys.maxint)
