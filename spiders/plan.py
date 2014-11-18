@@ -70,11 +70,12 @@ class PlanImportSpider(CrawlSpider):
                                   charset='utf8')
         cursor = my_conn.cursor()
         param = getattr(self, 'param', {})
-        stmt = 'SELECT * FROM pre_plan WHERE is_delete=0'
+        stmt = u'SELECT * FROM pre_plan WHERE is_delete=0'
         if 'cond' in param:
-            stmt = '%s AND %s' % (stmt, ' AND '.join(param['cond']))
+            stmt = u'%s AND %s' % (stmt, u' AND '.join(param['cond']))
         if 'limit' in param:
-            stmt = '%s LIMIT %s' % (stmt, param['limit'][0])
+            stmt = u'%s LIMIT %s' % (stmt, param['limit'][0])
+        stmt = stmt.encode('utf-8')
 
         cursor.execute(stmt)
 
@@ -178,7 +179,10 @@ class PlanImportSpider(CrawlSpider):
                         else:
                             day_loc = tmp
 
+                if 'location' not in day_loc:
+                    continue
                 location = day_loc['location']
+
                 # 同一个景点同一天不能访问超过一次
                 visited_vs = set([])
                 for vs_idx, vs_name in enumerate(vs_list):
@@ -267,7 +271,11 @@ class PlanImportSpider(CrawlSpider):
 
     def fetch_loc_id(self, cid):
         col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
-        return col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
+        ret = col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
+        if not ret:
+            col = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
+            ret = col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
+        return ret
 
     def fetch_loc(self, name, stype=0):
         """
@@ -316,6 +324,9 @@ class PlanImportSpider(CrawlSpider):
         ret = {}
         while True:
             loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
+            if not loc:
+                col = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
+                loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
             if not loc:
                 break
             ret[loc_id] = {'_id': loc_id, 'id': loc_id, 'zhName': loc['zhName']}
