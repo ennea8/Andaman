@@ -11,6 +11,8 @@ import qiniu.rs
 import qiniu.io
 from scrapy import Request, Item, Field, log
 
+import conf
+
 from spiders import AizouCrawlSpider
 import utils
 
@@ -37,13 +39,11 @@ class ImageProcSpider(AizouCrawlSpider):
     """
     name = 'image-proc'
 
-    # 获得上传权限
-    ak = utils.cfg_entries('qiniu', 'ak')
-    sk = utils.cfg_entries('qiniu', 'sk')
-
     handle_httpstatus_list = [400, 403, 404]
 
     def __init__(self, *a, **kw):
+        self.ak = None
+        self.sk = None
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
@@ -119,8 +119,15 @@ class ImageProcSpider(AizouCrawlSpider):
             self.log('DOWNLOADED: %s' % response.url, log.INFO)
             # 配置上传策略。
             # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
+
+            if not self.ak or not self.sk:
+                # 获得上传权限
+                section = conf.global_conf.get('qiniu', {})
+                self.ak = section['ak']
+                self.sk = section['sk']
             qiniu.conf.ACCESS_KEY = self.ak
             qiniu.conf.SECRET_KEY = self.sk
+
             bucket = 'lvxingpai-img-store'
             policy = qiniu.rs.PutPolicy(bucket)
             # 取得上传token
