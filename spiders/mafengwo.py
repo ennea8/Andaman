@@ -341,7 +341,7 @@ class MafengwoSpider(AizouCrawlSpider):
                 param_name = 'mddid' if act == 'getMddPhotoList' else 'poiid'
                 url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=%s&%s=%d&page=%d' % (
                     act, param_name, data['id'], page)
-                yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
+                return Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
                               errback=self.photo_err)
         except AttributeError:
             pass
@@ -493,6 +493,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['source'] = {'name': 'mafengwo',
                               'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
                               'id': entry['id']}
+
+            if 'lat' in entry and 'lng' in entry:
+                data['location'] = {'type': 'Point', 'coordinates': [data['lng'], data['lat']]}
 
             item = MafengwoProcItem()
             item['data'] = data
