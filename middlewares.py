@@ -87,7 +87,13 @@ class GoogleGeocodeMiddleware(object):
 
             return request
 
-        return map(_mapper, result)
+        result = list(result)
+        try:
+            res = map(_mapper, result)
+            return res
+        except AttributeError:
+            print res
+            return res
 
 
 class ProxySwitchMiddleware(object):
