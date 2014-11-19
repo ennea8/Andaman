@@ -1,8 +1,9 @@
 # coding=utf-8
 import json
 import re
-from bson import ObjectId
+import math
 
+from bson import ObjectId
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider
@@ -28,7 +29,7 @@ class MafengwoSpider(AizouCrawlSpider):
 
     def start_requests(self):
         urls = [
-            'http://www.mafengwo.cn/jd/52314/gonglve.html',  # 亚洲
+            'http://www.mafengwo.cn/jd/52314/',  # 亚洲
             'http://www.mafengwo.cn/jd/10853/',  # 南极州
             'http://www.mafengwo.cn/jd/14701/',  # 大洋洲
             'http://www.mafengwo.cn/jd/14517/',  # 非洲
@@ -37,6 +38,17 @@ class MafengwoSpider(AizouCrawlSpider):
             'http://www.mafengwo.cn/jd/16867/',  # 北美
         ]
         return [Request(url=url) for url in urls]
+
+    def get_region_list(self, response):
+        sel = Selector(response)
+        self_id = response.meta['id']
+        ctype = response.meta['type']
+        for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
+            url = self.build_href(response.url, node.xpath('./@href').extract()[0])
+            mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
+            if mdd_id != self_id:
+                url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
+                yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
 
     def parse(self, response):
         self.param = getattr(self, 'param', {})
@@ -62,6 +74,7 @@ class MafengwoSpider(AizouCrawlSpider):
 
         crumb = self.get_crumb(response)
         data['crumb'] = crumb
+        # 抓取导航栏中的目的地
         for crumb_url in [tmp['url'] for tmp in crumb]:
             mdd_id = int(re.search(r'travel-scenic-spot/mafengwo/(\d+).html', crumb_url).group(1))
             yield Request(url=crumb_url, callback=self.parse_mdd_home, meta={'id': mdd_id})
@@ -89,13 +102,21 @@ class MafengwoSpider(AizouCrawlSpider):
         data['lat'] = float(re.search(r"lat:parseFloat\(\s*'([^']+)'", loc_text).group(1))
         data['lng'] = float(re.search(r"lng:parseFloat\(\s*'([^']+)'", loc_text).group(1))
 
+        # 访问次数
+        digits = [int(tmp) for tmp in sel.xpath(
+            '//div[@class="num-been"]/div[@class="num-count"]/em[@data-number and @class="_j_rollnumber"]/@data-number').extract()]
+        visit_cnt = 0
+        for idx, d in enumerate(digits):
+            visit_cnt += math.pow(10, len(digits) - 1 - idx) * d
+        data['vs_cnt'] = int(visit_cnt)
+
         tags = sel.xpath(
             '//div[contains(@class,"m-tags")]/div[@class="bd"]/ul/li[@class="impress-tip"]/a[@href]/text()').extract()
         data['tags'] = list(set(filter(lambda val: val, [tmp.strip() for tmp in tags])))
         data['images_tot'] = int(sel.xpath('//div[@class="m-photo"]/a/em/text()').extract()[0])
 
         url = 'http://www.mafengwo.cn/jd/%d/gonglve.html' % data['id']
-        yield Request(url=url, callback=self.parse_jd, meta={'item': item, 'type': 'region'})
+        yield Request(url=url, callback=self.parse_jd, meta={'item': item, 'id': data['id'], 'type': 'region'})
 
     def parse_poi_list(self, response):
         """
@@ -128,20 +149,11 @@ class MafengwoSpider(AizouCrawlSpider):
         poi_type = 'vs' if ctype == 'region' else ctype
         response.meta['poi_type'] = poi_type
 
-        # 继续抓取下级的region
-        if ctype == 'region':
-            for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
-                url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-                mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-                url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-                yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
-
+        # 抓取景点页面中的
         results = self.parse_poi_list(response)
-        if hasattr(results, '__iter__'):
+        if results:
             for entry in results:
                 yield entry
-        elif isinstance(results, Request):
-            yield results
 
         # poi列表的翻页
         for href in sel.xpath('//div[@class="page-hotel"]/a[@href]/@href').extract():
@@ -149,6 +161,13 @@ class MafengwoSpider(AizouCrawlSpider):
                           meta={'poi_type': poi_type})
 
         if ctype == 'region':
+            # 抓取下级的region
+            region_list = self.get_region_list(response)
+            if region_list:
+                for entry in self.get_region_list(response):
+                    yield entry
+
+            # 处理当前region
             item = response.meta['item']
             data = item['data']
 
@@ -165,12 +184,8 @@ class MafengwoSpider(AizouCrawlSpider):
 
                     if info_title == u'国家概况':
                         data['type'] = 'country'
-                    elif info_title == u'城市概况':
-                        data['type'] = 'region'
                     else:
-                        self.log(u'Invalid MDD type: %s, %s' % (info_title, response.url), log.WARNING)
-                        return
-
+                        data['type'] = 'region'
                 elif info_title == u'购物':
                     yield Request(url=next_url, callback=self.parse_jd, meta={'type': 'gw'})
                 elif info_title == u'娱乐':
