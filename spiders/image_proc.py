@@ -12,7 +12,6 @@ import qiniu.io
 from scrapy import Request, Item, Field, log
 
 import conf
-
 from spiders import AizouCrawlSpider
 import utils
 
@@ -89,6 +88,9 @@ class ImageProcSpider(AizouCrawlSpider):
                 if url in url_set or url1 in url_set:
                     continue
 
+                # 原始的元数据
+                img_meta = {k.encode('utf-8'): list1_entry[k] for k in list1_entry if k != 'url'}
+
                 # 是否已经在数据库中存在
                 match = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url)
                 if match:
@@ -99,12 +101,14 @@ class ImageProcSpider(AizouCrawlSpider):
                 if image:
                     url2 = 'http://lvxingpai-img-store.qiniudn.com/' + image['key']
                     if url2 not in url_set:
-                        list2.append({'url': url2, 'h': image['h'], 'w': image['w'], 'fSize': image['size'],
-                                      'enabled': True})
+                        tmp = {'url': url2, 'h': image['h'], 'w': image['w'], 'fSize': image['size'],
+                               'enabled': True}
+                        for k in img_meta:
+                            if k not in tmp:
+                                tmp[k] = img_meta[k]
+                        list2.append(tmp)
                 else:
-                    # 原始的元数据
-                    img_meta = {k.encode('utf-8'): list1_entry[k] for k in list1_entry if k != 'url'}
-                    # 两种工作模式：是否下载缺失的图像
+                    # 是否下载缺失的图像
                     if 'skip-upload' not in self.param:
                         upload_list.append((url, img_meta))
 
