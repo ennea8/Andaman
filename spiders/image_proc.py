@@ -81,7 +81,7 @@ class ImageProcSpider(AizouCrawlSpider):
 
         col = utils.get_mongodb(db, col_name, profile=profile)
         col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}).skip(832).limit(20):
+        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
 
