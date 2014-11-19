@@ -134,9 +134,9 @@ class BaiduNoteSpider(CrawlSpider):
             #
             # sel = Selector(response)
             #
-            #     node_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]')
-            #     for node in node_list:
-            #         ret = node.xpath('./div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
+            # node_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]')
+            # for node in node_list:
+            # ret = node.xpath('./div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
             #         if not ret:
             #             continue
             #         c_node = ret[0]
@@ -743,9 +743,9 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 
 # class BaiduNoteProcPipeline(object):
 # """
-#     存到数据库
-#     """
-#     spiders = [BaiduNoteKeywordSpider.name]
+# 存到数据库
+# """
+# spiders = [BaiduNoteKeywordSpider.name]
 #
 #     def process_item(self, item, spider):
 #         if type(item).__name__ != BaiduNoteKeywordItem.__name__:
@@ -797,7 +797,6 @@ class BaiduSceneSpider(AizouCrawlSpider):
         page_idx = response.meta['page_idx']
         curr_surl = response.meta['surl']
         item = response.meta['item']
-        item_data = item['data']
 
         # 解析body
         json_data = json.loads(response.body)['data']
@@ -815,6 +814,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
             json_data.pop('scene_list')
             item['data'] = json_data
+
+        item_data = item['data']
 
         for surl in next_surls:
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % surl,
@@ -840,10 +841,16 @@ class BaiduScenePipeline(object):
         if type(item).__name__ != BaiduSceneItem.__name__:
             return item
 
-        col_loc = utils.get_mongodb('raw_data', 'BaiduAjax', profile='mongodb-crawler')
-        data = {}
-        if 'data' in item:
-            data['data'] = item['data']
-        col_loc.save(data)
+        data = item['data']
+        if not data:
+            return item
+
+        col = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        ret = col.find_one({'surl': data['surl']})
+        if not ret:
+            ret = {}
+        for key in data:
+            ret[key] = data[key]
+        col.save(ret)
 
         return item
