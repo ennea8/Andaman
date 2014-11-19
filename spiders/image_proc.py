@@ -143,29 +143,29 @@ class ImageProcSpider(AizouCrawlSpider):
                 yield Request(url=url, meta={'src': url, 'item': item, 'upload': upload_list, 'img_meta': img_meta},
                               headers={'Referer': None}, callback=self.parse_img)
 
+    def get_upload_token(self, key, bucket='lvxingpai-img-store', overwrite=True):
+        """
+        获得七牛的上传凭证
+        :param key:
+        :param bucket:
+        :param overwrite: 是否为覆盖模式
+        """
+        if not self.ak or not self.sk:
+            # 获得上传权限
+            section = conf.global_conf.get('qiniu', {})
+            self.ak = section['ak']
+            self.sk = section['sk']
+        qiniu.conf.ACCESS_KEY = self.ak
+        qiniu.conf.SECRET_KEY = self.sk
+
+        # 配置上传策略。
+        scope = '%s:%s' % (bucket, key) if overwrite else bucket
+        policy = qiniu.rs.PutPolicy(scope)
+        return policy.token()
+
     def parse_img(self, response):
         if response.status not in [400, 403, 404]:
             self.log('DOWNLOADED: %s' % response.url, log.INFO)
-            # 配置上传策略。
-            # 其中lvxingpai是上传空间的名称（或者成为bucket名称）
-
-            if not self.ak or not self.sk:
-                # 获得上传权限
-                section = conf.global_conf.get('qiniu', {})
-                self.ak = section['ak']
-                self.sk = section['sk']
-            qiniu.conf.ACCESS_KEY = self.ak
-            qiniu.conf.SECRET_KEY = self.sk
-
-            bucket = 'lvxingpai-img-store'
-            policy = qiniu.rs.PutPolicy(bucket)
-            # 取得上传token
-            uptoken = policy.token()
-
-            # 上传的额外选项
-            extra = qiniu.io.PutExtra()
-            # 文件自动校验crc
-            extra.check_crc = 1
 
             fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
             with open(fname, 'wb') as f:
@@ -180,6 +180,13 @@ class ImageProcSpider(AizouCrawlSpider):
 
                 sc = False
                 self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
+
+                uptoken = self.get_upload_token(key)
+                # 上传的额外选项
+                extra = qiniu.io.PutExtra()
+                # 文件自动校验crc
+                extra.check_crc = 1
+
                 for idx in xrange(5):
                     ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
                     if err:
@@ -196,10 +203,12 @@ class ImageProcSpider(AizouCrawlSpider):
                 os.remove(fname)
 
                 # 统计信息
+                bucket = 'lvxingpai-img-store'
                 url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
                 meta = response.meta
-                yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
-                                             'bucket': bucket, 'img_meta': meta['img_meta']}, callback=self.parse_stat)
+                yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'],
+                                             'key': key, 'bucket': bucket, 'img_meta': meta['img_meta']},
+                              callback=self.parse_stat)
         else:
             for entry in self.next_proc(response):
                 yield entry
