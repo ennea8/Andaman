@@ -28,16 +28,27 @@ class MafengwoSpider(AizouCrawlSpider):
         super(MafengwoSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        urls = [
-            'http://www.mafengwo.cn/jd/52314/',  # 亚洲
-            'http://www.mafengwo.cn/jd/10853/',  # 南极州
-            'http://www.mafengwo.cn/jd/14701/',  # 大洋洲
-            'http://www.mafengwo.cn/jd/14517/',  # 非洲
-            'http://www.mafengwo.cn/jd/14383/',  # 欧洲
-            'http://www.mafengwo.cn/jd/16406/',  # 南美
-            'http://www.mafengwo.cn/jd/16867/',  # 北美
+        cont_list = [
+            52314,  # 亚洲
+            10853,  # 南极州
+            14701,  # 大洋洲
+            14517,  # 非洲
+            14383,  # 欧洲
+            16406,  # 南美
+            16867   # 北美
         ]
-        return [Request(url=url) for url in urls]
+        self.param = getattr(self, 'param', {})
+
+        # 大洲的过滤
+        if 'cont' in self.param:
+            cont_filter = [int(tmp) for tmp in self.param['cont']]
+        else:
+            cont_filter = None
+
+        for cont_id in cont_list:
+            if cont_filter and cont_id not in cont_filter:
+                continue
+            yield Request(url='http://www.mafengwo.cn/jd/%d/' % cont_id)
 
     def get_region_list(self, response):
         sel = Selector(response)
@@ -53,6 +64,7 @@ class MafengwoSpider(AizouCrawlSpider):
     def parse(self, response):
         self.param = getattr(self, 'param', {})
 
+        # 地区的过滤
         if 'region' in self.param:
             region_list = [int(tmp) for tmp in self.param['region']]
         else:
