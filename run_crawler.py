@@ -180,7 +180,7 @@ def main():
         if 'verbose' in param:
             logfile = None
         else:
-            logfile = './logs/%s_%s.log' % (s.name, datetime.datetime.now().strftime('%Y%m%d'))
+            logfile = './logs/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
         reactor.run()  # the script will block here until the spider_closed signal was sent

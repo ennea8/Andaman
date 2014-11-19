@@ -10,7 +10,6 @@ import sys
 import urlparse
 
 from scrapy import log
-
 from scrapy.contrib.spiders import CrawlSpider
 
 
@@ -22,17 +21,12 @@ class AizouCrawlSpider(CrawlSpider):
         # 每个爬虫需要分配一个唯一的爬虫id，用来在日志文件里面作出区分。
         r = long(time.time() * 1000) + random.randint(0, sys.maxint)
         h = hashlib.md5('%d' % r).hexdigest()
-        self.spider_id = h[:16]
-
-    def log(self, message, level=log.DEBUG, **kw):
-        # message前面添加爬虫id
-        message = '[%s] %s' % (self.spider_id, message)
-        super(CrawlSpider, self).log(message, level=level, **kw)
+        self.name = '%s:%s' % (self.name, h[:16])
 
     def build_href(self, url, href):
         c = urlparse.urlparse(href)
         if c.netloc:
             return href
         else:
-            c1 =urlparse.urlparse(url)
+            c1 = urlparse.urlparse(url)
             return urlparse.urlunparse((c1.scheme, c1.netloc, c.path, c.params, c.query, c.fragment))
