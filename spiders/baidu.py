@@ -808,8 +808,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
         # 是否为第一页
         if page_idx == 1:
             # 整合url进行投递
-            if 'relate_scene_list' in json_data and 'around_scene_list' in json_data:
-                for key in ['relate_scene_list', 'around_scene_list']:
+            for key in ['relate_scene_list', 'around_scene_list', 'scene_path']:
+                if key in json_data:
                     next_surls.extend([tmp['surl'] for tmp in json_data[key]])
 
             json_data.pop('scene_list')
