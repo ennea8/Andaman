@@ -43,8 +43,8 @@ class ImageProcSpider(AizouCrawlSpider):
     def __init__(self, *a, **kw):
         self.ak = None
         self.sk = None
-        self.min_width = 400
-        self.min_height = 400
+        self.min_width = 100
+        self.min_height = 100
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
@@ -64,7 +64,7 @@ class ImageProcSpider(AizouCrawlSpider):
                 img = Image.open(f, 'r')
                 img.load()
                 w, h = img.size
-                if w < self.min_width and h < self.min_height:
+                if w < self.min_width or h < self.min_height:
                     return False
                 else:
                     return True
