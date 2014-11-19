@@ -1,6 +1,7 @@
 # coding=utf-8
 import json
 import re
+from bson import ObjectId
 
 from scrapy import Item, Request, Field, Selector, log
 
@@ -177,11 +178,12 @@ class MafengwoSpider(AizouCrawlSpider):
                 elif info_title == u'美食':
                     yield Request(url=next_url, callback=self.parse_jd, meta={'type': 'cy'})
 
-            col_url, cb, meta = col_list[0]
-            col_list = col_list[1:]
-            meta['col_list'] = col_list
-            meta['item'] = item
-            yield Request(url=col_url, callback=cb, meta=meta)
+            if col_list:
+                col_url, cb, meta = col_list[0]
+                col_list = col_list[1:]
+                meta['col_list'] = col_list
+                meta['item'] = item
+                yield Request(url=col_url, callback=cb, meta=meta)
 
     def parse_info(self, response):
         sel = Selector(response)
@@ -341,8 +343,8 @@ class MafengwoSpider(AizouCrawlSpider):
                 param_name = 'mddid' if act == 'getMddPhotoList' else 'poiid'
                 url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=%s&%s=%d&page=%d' % (
                     act, param_name, data['id'], page)
-                yield Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
-                              errback=self.photo_err)
+                return Request(url=url, meta={'item': item, 'page': page, 'act': act}, callback=self.parse_photo,
+                               errback=self.photo_err)
         except AttributeError:
             pass
 
@@ -393,6 +395,7 @@ class MafengwoPipeline(object):
 class MafengwoProcItem(Item):
     data = Field()
     col_name = Field()
+    db_name = Field()
 
 
 class MafengwoProcSpider(AizouCrawlSpider):
@@ -403,9 +406,11 @@ class MafengwoProcSpider(AizouCrawlSpider):
     name = 'mafengwo-mdd-proc'
 
     def __init__(self, *a, **kw):
+        self.param = {}
         super(MafengwoProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
+        self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
     def parse_name(self, name):
@@ -436,6 +441,97 @@ class MafengwoProcSpider(AizouCrawlSpider):
         return result
 
     def parse(self, response):
+        mdd = 'mdd' in self.param
+        vs = 'vs' in self.param
+
+        if mdd:
+            for entry in self.parse_loc():
+                yield entry
+
+        if vs:
+            for entry in self.parse_vs():
+                yield entry
+
+    def parse_vs(self):
+        col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
+
+        for entry in col_raw.find({}):
+            data = {'abroad': True, 'enabled': True}
+
+            tmp = self.parse_name(entry['title'])
+            if not tmp:
+                self.log('Failed to get names for id=%d' % entry['id'], log.CRITICAL)
+                continue
+
+            data['enName'] = tmp['enName']
+            data['zhName'] = tmp['zhName']
+            data['alias'] = tmp['alias']
+
+            desc = None
+            address = None
+            traffic_info = None
+            details = []
+
+            for info_entry in entry['desc']:
+                txt_entry = info_entry['contents']
+                proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
+                    '//p/descendant-or-self::text()').extract()]))
+
+                if info_entry['name'] == u'简介':
+                    desc = proc_text
+                elif info_entry['name'] == u'地址':
+                    address = proc_text
+                elif info_entry['name'] == u'交通':
+                    traffic_info = proc_text
+                else:
+                    details.append(u'%s：%s' % (info_entry['name'], proc_text))
+
+            if desc:
+                data['desc'] = desc
+            elif details:
+                data['desc'] = '\n\n'.join(details)
+                details = None
+
+            if address:
+                data['address'] = address
+            if traffic_info:
+                data['trafficInfo'] = traffic_info
+            if details:
+                data['details'] = '\n\n'.join(details)
+
+            data['tags'] = []  # list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
+
+            image_list = []
+            image_urls = set([])
+            for img in entry['imageList']:
+                url = img['url']
+                if url in image_urls:
+                    continue
+                image_list.append({'url': url})
+                image_urls.add(url)
+            data['imageList'] = image_list
+
+            crumb_ids = []
+            for crumb_entry in entry['crumb']:
+                cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
+                if cid not in crumb_ids:
+                    crumb_ids.append(cid)
+            data['crumbIds'] = crumb_ids
+
+            data['source'] = {'mafengwo':
+                                  {'url': 'http://www.mafengwo.cn/poi/%d.html' % entry['id'],
+                                   'id': entry['id']}}
+
+            if 'lat' in entry and 'lng' in entry:
+                data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
+
+            item = MafengwoProcItem()
+            item['data'] = data
+            item['col_name'] = 'ViewSpot'
+            item['db_name'] = 'poi'
+            yield item
+
+    def parse_mdd(self):
         col_raw_mdd = utils.get_mongodb('raw_data', 'MafengwoMdd', profile='mongodb-crawler')
 
         for entry in col_raw_mdd.find({'type': 'region'}):
@@ -453,23 +549,50 @@ class MafengwoProcSpider(AizouCrawlSpider):
             desc = None
             travel_month = None
             time_cost = None
+            details = []
+            traffic_info = []
 
             for info_entry in entry['contents']:
-                raw_text = Selector(text=info_entry['txt']).xpath('//p/descendant-or-self::text()').extract()
-                proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
+                # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
+                # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
+
+                txt_list = []
+                if 'details' not in info_entry and 'txt' in info_entry:
+                    info_entry['details'] = [info_entry['txt']]
+                for txt_entry in info_entry['details']:
+                    txt_list.append(
+                        '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
+                            '//p/descendant-or-self::text()').extract()])))
+                proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
+
+                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
+                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
+                # info_entry['details']]]))
+
                 if info_entry['title'] == u'简介':
                     desc = proc_text
                 elif info_entry['title'] == u'最佳旅行时间':
                     travel_month = proc_text
                 elif info_entry['title'] == u'建议游玩天数':
                     time_cost = proc_text
+                elif info_entry['info_cat'] == u'外部交通':
+                    traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
+                else:
+                    details.append(u'%s：%s' % (info_entry['title'], proc_text))
 
             if desc:
                 data['desc'] = desc
+            elif details:
+                data['desc'] = '\n\n'.join(details)
+                details = None
             if travel_month:
                 data['travelMonth'] = travel_month
             if time_cost:
                 data['timeCostDesc'] = time_cost
+            if details:
+                data['details'] = '\n\n'.join(details)
+            if traffic_info:
+                data['trafficInfo'] = '\n\n'.join(traffic_info)
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
@@ -490,13 +613,120 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
 
-            data['source'] = {'name': 'mafengwo',
-                              'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
-                              'id': entry['id']}
+            data['source'] = {'mafengwo':
+                                  {'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
+                                   'id': entry['id']}}
+
+            if 'lat' in entry and 'lng' in entry:
+                data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
 
             item = MafengwoProcItem()
             item['data'] = data
             item['col_name'] = 'Destination'
+            item['db_name'] = 'geo'
+            yield item
+
+    def parse_loc(self):
+        col_raw_mdd = utils.get_mongodb('raw_data', 'MafengwoMdd', profile='mongodb-crawler')
+
+        for entry in col_raw_mdd.find({'type': 'region'}):
+            data = {}
+
+            tmp = self.parse_name(entry['title'])
+            if not tmp:
+                self.log('Failed to get names for id=%d' % entry['id'], log.CRITICAL)
+                continue
+
+            data['enabled'] = True
+            data['enName'] = tmp['enName']
+            data['zhName'] = tmp['zhName']
+            data['shortName'] = tmp['zhName']
+            data['alias'] = tmp['alias']
+            data['pinyin'] = []
+            data['travelMonth'] = []
+            data['level'] = 2
+            data['rating'] = entry['rating'] if 'rating' in entry else 0
+            data['sib'] = []
+            data['abroad'] = True
+
+            desc = None
+            travel_month = None
+            time_cost = None
+            details = []
+            traffic_info = []
+
+            for info_entry in entry['contents']:
+                # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
+                # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
+
+                txt_list = []
+                if 'details' not in info_entry and 'txt' in info_entry:
+                    info_entry['details'] = [info_entry['txt']]
+                for txt_entry in info_entry['details']:
+                    txt_list.append(
+                        '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
+                            '//p/descendant-or-self::text()').extract()])))
+                proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
+
+                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
+                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
+                # info_entry['details']]]))
+
+                if info_entry['title'] == u'简介':
+                    desc = proc_text
+                elif info_entry['title'] == u'最佳旅行时间':
+                    travel_month = proc_text
+                elif info_entry['title'] == u'建议游玩天数':
+                    time_cost = proc_text
+                elif info_entry['info_cat'] == u'外部交通':
+                    traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
+                else:
+                    details.append(u'%s：%s' % (info_entry['title'], proc_text))
+
+            if desc:
+                data['desc'] = desc
+            elif details:
+                data['desc'] = '\n\n'.join(details)
+                details = None
+            # if travel_month:
+            # data['travelMonth'] = travel_month
+            if time_cost:
+                data['timeCostDesc'] = time_cost
+            if details:
+                data['details'] = '\n\n'.join(details)
+            if traffic_info:
+                data['trafficInfo'] = '\n\n'.join(traffic_info)
+
+            data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
+
+            image_list = []
+            image_urls = set([])
+            for img in entry['imageList']:
+                url = img['url']
+                if url in image_urls:
+                    continue
+                image_list.append({'url': url})
+                image_urls.add(url)
+            data['imageList'] = image_list
+
+            crumb_ids = []
+            for crumb_entry in entry['crumb']:
+                cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
+                if cid not in crumb_ids:
+                    crumb_ids.append(cid)
+            data['crumbIds'] = crumb_ids
+
+            data['source'] = {'mafengwo':
+                                  {'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
+                                   'id': entry['id']}}
+
+            if 'lat' in entry and 'lng' in entry:
+                data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
+
+            item = MafengwoProcItem()
+            item['data'] = data
+            item['col_name'] = 'Locality'
+            item['db_name'] = 'geo'
             yield item
 
 
@@ -511,24 +741,87 @@ class MafengwoProcPipeline(object):
         if type(item).__name__ != MafengwoProcItem.__name__:
             return item
 
+        col_name = item['col_name']
+        if col_name == 'Destination' or col_name == 'Locality':
+            return self.process_mdd(item, spider)
+        elif col_name == 'ViewSpot':
+            return self.process_vs(item, spider)
+
+    def process_mdd(self, item, spider):
         data = item['data']
         col_name = item['col_name']
-        col = utils.get_mongodb('geo', col_name, profile='mongodb-general')
+        db_name = item['db_name']
+        col = utils.get_mongodb(db_name, col_name, profile='mongodb-general')
+        col_mdd = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
 
-        entry = col.find_one({'geo.%s.source.id' % col_name: data['source']['id']})
+        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
+        if not entry:
+            entry = {}
+
+        crumb_list = data.pop('crumbIds')
+        crumb = []
+        super_adm = []
+        for cid in crumb_list:
+            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if ret:
+                crumb.append(ret)
+                sa_entry = {'id': ret['_id']}
+                for tmp in ['zhName', 'enName']:
+                    if tmp in ret:
+                        sa_entry[tmp] = ret[tmp]
+                super_adm.append(sa_entry)
+
+        data['locList'] = crumb
+        # data['superAdm'] = super_adm
+
+        for k in data:
+            entry[k] = data[k]
+
+        entry['className'] = 'models.geo.Locality'
+        entry['_id'] = ObjectId()
+        col.save(entry)
+        col = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
+        col.save(entry)
+
+        return item
+
+    def process_vs(self, item, spider):
+        data = item['data']
+        col_name = item['col_name']
+        db_name = item['db_name']
+        col = utils.get_mongodb(db_name, col_name, profile='mongodb-general')
+        col_mdd = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
+
+        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
         if not entry:
             entry = {}
 
         crumb_list = data.pop('crumbIds')
         crumb = []
         for cid in crumb_list:
-            ret = col.find_one({'geo.%s.source.id' % col_name: cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if ret:
-                crumb.append(ret)
+                crumb.append(ret['_id'])
+        entry['targets'] = crumb
+        entry['name'] = data['zhName']
 
-        data['locList'] = crumb
+        # 从crumb的最后开始查找。第一个目的地即为city
+        city = None
+        for idx in xrange(len(crumb_list) - 1, -1, -1):
+            cid = crumb_list[idx]
+            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if ret:
+                city = {'id': ret['_id'], '_id': ret['_id']}
+                for key in ['zhName', 'enName']:
+                    if key in ret:
+                        city[key] = ret[key]
+        if city:
+            entry['city'] = city
 
         for k in data:
             entry[k] = data[k]
 
+        entry['className'] = 'models.poi.ViewSpot'
         col.save(entry)
+
+        return item
