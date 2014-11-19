@@ -43,11 +43,33 @@ class ImageProcSpider(AizouCrawlSpider):
     def __init__(self, *a, **kw):
         self.ak = None
         self.sk = None
+        self.min_width = 400
+        self.min_height = 400
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
         self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
+
+    def check_img(self, fname):
+        """
+        检查fname是否为有效的图像（是否能打开，是否能加载，内容是否有误）
+        :param fname:
+        :return:
+        """
+        from PIL import Image
+
+        try:
+            with open(fname, 'rb') as f:
+                img = Image.open(f, 'r')
+                img.load()
+                w, h = img.size
+                if w < self.min_width and h < self.min_height:
+                    return False
+                else:
+                    return True
+        except IOError:
+            return False
 
     def parse(self, response):
         param = getattr(self, 'param', {})
@@ -59,7 +81,7 @@ class ImageProcSpider(AizouCrawlSpider):
 
         col = utils.get_mongodb(db, col_name, profile=profile)
         col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
-        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
+        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}).skip(832).limit(20):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
 
@@ -148,30 +170,36 @@ class ImageProcSpider(AizouCrawlSpider):
             fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
             with open(fname, 'wb') as f:
                 f.write(response.body)
-            key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
 
-            sc = False
-            self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
-            for idx in xrange(5):
-                ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
-                if err:
-                    self.log('UPLOADING FAILED #%d: %s, reason: %s, file=%s' % (idx, key, err, fname), log.INFO)
-                    continue
-                else:
-                    sc = True
-                    break
-            if not sc:
-                raise IOError
-            self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
+            if not self.check_img(fname):
+                os.remove(fname)
+                for entry in self.next_proc(response):
+                    yield entry
+            else:
+                key = 'assets/images/%s' % hashlib.md5(response.meta['src']).hexdigest()
 
-            # 删除上传成功的文件
-            os.remove(fname)
+                sc = False
+                self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
+                for idx in xrange(5):
+                    ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
+                    if err:
+                        self.log('UPLOADING FAILED #%d: %s, reason: %s, file=%s' % (idx, key, err, fname), log.INFO)
+                        continue
+                    else:
+                        sc = True
+                        break
+                if not sc:
+                    raise IOError
+                self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
 
-            # 统计信息
-            url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
-            meta = response.meta
-            yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
-                                         'bucket': bucket, 'img_meta': meta['img_meta']}, callback=self.parse_stat)
+                # 删除上传成功的文件
+                os.remove(fname)
+
+                # 统计信息
+                url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
+                meta = response.meta
+                yield Request(url=url, meta={'src': meta['src'], 'item': meta['item'], 'upload': meta['upload'], 'key': key,
+                                             'bucket': bucket, 'img_meta': meta['img_meta']}, callback=self.parse_stat)
         else:
             for entry in self.next_proc(response):
                 yield entry
