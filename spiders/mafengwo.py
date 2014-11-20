@@ -686,7 +686,14 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['enName'] = tmp['enName']
             data['zhName'] = tmp['zhName']
-            data['alias'] = tmp['alias']
+            alias = set([])
+            # 去除名称中包含国家的
+            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+            for a in tmp['alias']:
+                c = col_country.find_one({'alias': a}, {'_id': 1})
+                if not c:
+                    alias.add(a)
+            data['alias'] = list(alias)
 
             desc = None
             travel_month = None
