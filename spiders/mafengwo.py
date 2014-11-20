@@ -574,7 +574,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
             glng = entry['geometry']['location']['lng']
 
             if utils.haversine(lng, lat, glng, glat) < 100:
-                tmp = filter(lambda val: 'political' in val['types'], entry['address_components'])
+                tmp = filter(lambda val: 'political' in val['types'] and 'country' not in val['types'],
+                             entry['address_components'])
                 if tmp:
                     c = tmp[0]
                     alias = set(data['alias']) if 'alias' in data else set([])
