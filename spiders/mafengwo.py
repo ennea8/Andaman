@@ -738,6 +738,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     if tmp:
                         remote_traffic.append({'title': info_entry['title'], 'contents': tmp})
                 else:
+                    # 忽略出入境信息
+                    if info_entry['info_cat'] == u'出入境':
+                        continue
                     tmp = get_html(info_entry['details'])
                     if tmp:
                         misc_info.append({'title': info_entry['title'], 'contents': tmp})
