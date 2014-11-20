@@ -3,7 +3,6 @@ import json
 import re
 import math
 
-from bson import ObjectId
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider
@@ -445,6 +444,53 @@ class MafengwoProcSpider(AizouCrawlSpider):
         self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
+    def is_chn(self, text):
+        """
+        是否为中文
+        判断算法：至少出现一个中文字符，并且只包含中文字符及简单ascii字符
+        :param text:
+        """
+        has_chn = False
+        for c in text:
+            if not has_chn and ord(c) >= 0x4e00 and ord(c) <= 0x9fff:
+                has_chn = True
+            if ord(c) < 32 or (ord(c) > 126 and ord(c) < 0x4e00) or (ord(c) >= 0x9fff):
+                return False
+
+        return has_chn
+
+    def is_eng(self, text):
+        for c in text:
+            if ord(c) < 32 or ord(c) > 126:
+                return False
+        return True
+
+    def proc_etree(self, body):
+        def f1(node):
+            # 去掉可能的包含有蚂蜂窝字样的元素
+            if node.text and u'蚂蜂窝' in node.text:
+                return True, None
+            else:
+                return False, node
+
+        def f2(node):
+            if node.tag == 'a' and node.get('href') and 'mafengwo' in node.get('href'):
+                return True, parse_etree(node[0], [f1, f2, f3])
+            else:
+                return False, node
+
+        def f3(node):
+            # 去掉不必要的class
+            if node.get('class') and ('m-txt' in node.get('class') or 'm-img' in node.get('class')):
+                del node.attrib['class']
+            return False, node
+
+        from utils import parse_etree
+        from lxml import etree
+
+        node = parse_etree(body, [f1, f2, f3])
+        return etree.tostring(node, encoding='utf-8').decode('utf-8')
+
     def parse_name(self, name):
         term_list = []
 
@@ -458,14 +504,46 @@ class MafengwoProcSpider(AizouCrawlSpider):
         name_list = []
         for term in term_list:
             # 处理/的情况
-            tmp = filter(lambda val: val, [tmp.strip() for tmp in re.split(r'/', term)])
+            tmp = filter(lambda val: val,
+                         [re.sub(r'\s+', ' ', tmp.strip(), flags=re.U) for tmp in re.split(r'/', term)])
             if not tmp:
                 continue
             name_list.extend(tmp)
-        if not name_list:
-            return
 
-        result = {'zhName': name_list[0], 'enName': name_list[0]}
+        # 名称推测算法：从前往后测试。
+        # 第一个至少含有一个中文，且可能包含简单英语及数字的term，为zhName。
+        # 第一个全英文term，为enName。
+        # 第一个既不是zhName，也不是enName的，为localName
+
+        # 优先级
+        # zhName: zhName > enName > localName
+        # enName: enName > localName
+        # localName: localName
+
+        zh_name = None
+        en_name = None
+        loc_name = None
+        for name in name_list:
+            if not zh_name and self.is_chn(name):
+                zh_name = name
+            elif not en_name and self.is_eng(name):
+                en_name = name
+            elif not loc_name:
+                loc_name = name
+
+        result = {'locName': loc_name}
+        if zh_name:
+            result['zhName'] = zh_name
+        elif en_name:
+            result['zhName'] = en_name
+        else:
+            result['zhName'] = loc_name
+
+        if en_name:
+            result['enName'] = en_name
+        else:
+            result['enName'] = loc_name
+
         alias = set([])
         for tmp in name_list:
             alias.add(tmp.lower())
@@ -480,6 +558,40 @@ class MafengwoProcSpider(AizouCrawlSpider):
             if k in self.param:
                 for entry in v():
                     yield entry
+
+    def parse_geocode(self, response):
+        item = response.meta['item']
+        data = item['data']
+
+        geocode_data = json.loads(response.body)
+        if geocode_data['status'] not in ['OK', 'ZERO_RESULTS']:
+            self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (geocode_data['status'], response.url))
+        if geocode_data['status'] == 'OK':
+            entry = geocode_data['results'][0]
+            # 检查是否足够接近
+            lng, lat = data['location']['coordinates']
+            glat = entry['geometry']['location']['lat']
+            glng = entry['geometry']['location']['lng']
+
+            if utils.haversine(lng, lat, glng, glat) < 100:
+                tmp = filter(lambda val: 'political' in val['types'], entry['address_components'])
+                if tmp:
+                    c = tmp[0]
+                    alias = set(data['alias']) if 'alias' in data else set([])
+                    for key in ['short_name', 'long_name']:
+                        alias.add(c[key].strip().lower())
+                    data['alias'] = list(alias)
+
+        lang = response.meta['lang']
+        if not lang:
+            yield item
+        else:
+            addr = re.search(r'address=(.+?)(&|\s*$)', response.url).group(1)
+            lang_set = lang.pop()
+            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+                          headers={'Accept-Language': lang_set}, callback=self.parse_geocode, dont_filter=True,
+                          meta={'item': item, 'lang': lang})
+
 
     def parse_vs(self):
         col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
@@ -578,50 +690,72 @@ class MafengwoProcSpider(AizouCrawlSpider):
             desc = None
             travel_month = None
             time_cost = None
-            details = []
-            traffic_info = []
+
+            def get_plain(body_list):
+                """
+                将body_list中的内容，作为纯文本格式输出
+                """
+                plain_list = []
+                for body in body_list:
+                    tmp = self.proc_etree(body)
+                    if not tmp:
+                        continue
+                    sel = Selector(text=tmp)
+                    plain_list.append('\n'.join(filter(lambda val: val, [tmp.strip() for tmp in sel.xpath(
+                        '//p/descendant-or-self::text()').extract()])))
+                return '\n\n'.join(plain_list) if plain_list else None
+
+            def get_html(body_list):
+                proc_list = []
+                for body in body_list:
+                    tmp = self.proc_etree(body)
+                    if not tmp:
+                        continue
+                    proc_list.append(tmp)
+                if proc_list:
+                    return '<div>%s</div>' % '\n'.join(proc_list) if len(proc_list) > 1 else proc_list[0]
+                else:
+                    return None
+
+            local_traffic = []
+            remote_traffic = []
+            misc_info = []
 
             for info_entry in entry['contents']:
-                # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
-                # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
-
-                txt_list = []
-                if 'details' not in info_entry and 'txt' in info_entry:
-                    info_entry['details'] = [info_entry['txt']]
-                for txt_entry in info_entry['details']:
-                    txt_list.append(
-                        '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
-                            '//p/descendant-or-self::text()').extract()])))
-                proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
-
-                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
-                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
-                # info_entry['details']]]))
-
-                if info_entry['title'] == u'简介':
-                    desc = proc_text
-                elif info_entry['title'] == u'最佳旅行时间':
-                    travel_month = proc_text
-                elif info_entry['title'] == u'建议游玩天数':
-                    time_cost = proc_text
+                if info_entry['info_cat'] == u'概况' and info_entry['title'] == u'简介':
+                    desc = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'概况' and info_entry['title'] == u'最佳旅行时间':
+                    travel_month = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'概况' and info_entry['title'] == u'建议游玩天数':
+                    time_cost = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'内部交通':
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        local_traffic.append({'title': info_entry['title'], 'contents': tmp})
                 elif info_entry['info_cat'] == u'外部交通':
-                    traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        remote_traffic.append({'title': info_entry['title'], 'contents': tmp})
                 else:
-                    details.append(u'%s：%s' % (info_entry['title'], proc_text))
+                    # 忽略出入境信息
+                    if info_entry['info_cat'] == u'出入境':
+                        continue
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        misc_info.append({'title': info_entry['title'], 'contents': tmp})
 
             if desc:
                 data['desc'] = desc
-            elif details:
-                data['desc'] = '\n\n'.join(details)
-                details = None
             if travel_month:
                 data['travelMonth'] = travel_month
             if time_cost:
                 data['timeCostDesc'] = time_cost
-            if details:
-                data['details'] = '\n\n'.join(details)
-            if traffic_info:
-                data['trafficInfo'] = '\n\n'.join(traffic_info)
+            if local_traffic:
+                data['localTraffic'] = local_traffic
+            if remote_traffic:
+                data['remoteTraffic'] = remote_traffic
+            if misc_info:
+                data['miscInfo'] = misc_info
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
@@ -653,7 +787,26 @@ class MafengwoProcSpider(AizouCrawlSpider):
             item['data'] = data
             item['col_name'] = 'Destination'
             item['db_name'] = 'geo'
-            yield item
+
+            # 尝试通过geocode获得目的地别名及其它信息
+            addr = u''
+            for idx in xrange(len(entry['crumb']) - 1, -1, -1):
+                addr += u'%s,' % (entry['crumb'][idx]['name'])
+            idx = addr.rfind(',')
+            addr = addr[:idx] if idx > 0 else addr
+
+            if 'skip-geocode' not in self.param:
+                if addr and 'location' in data:
+                    lang = ['en-US']
+                    yield Request(
+                        url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+                        headers={'Accept-Language': 'zh-CN'},
+                        meta={'item': item, 'lang': lang},
+                        callback=self.parse_geocode)
+                else:
+                    yield item
+            else:
+                yield item
 
     def parse_loc(self):
         col_raw_mdd = utils.get_mongodb('raw_data', 'MafengwoMdd', profile='mongodb-crawler')
@@ -697,10 +850,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
                             '//p/descendant-or-self::text()').extract()])))
                 proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
 
-                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
-                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
-                # info_entry['details']]]))
-
                 if info_entry['title'] == u'简介':
                     desc = proc_text
                 elif info_entry['title'] == u'最佳旅行时间':
@@ -717,8 +866,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
             elif details:
                 data['desc'] = '\n\n'.join(details)
                 details = None
-            # if travel_month:
-            # data['travelMonth'] = travel_month
+            if travel_month:
+                data['travelMonth'] = travel_month
             if time_cost:
                 data['timeCostDesc'] = time_cost
             if details:
@@ -792,6 +941,9 @@ class MafengwoProcPipeline(object):
         super_adm = []
         for cid in crumb_list:
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if not ret:
+                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if ret:
                 crumb.append(ret)
                 sa_entry = {'id': ret['_id']}
@@ -803,11 +955,33 @@ class MafengwoProcPipeline(object):
         data['locList'] = crumb
         # data['superAdm'] = super_adm
 
+        # 有几个字段具有天然的追加属性：alias, imageList
+        # 其它都是覆盖型
+        image_set = set([tmp['url'] for tmp in entry['imageList']]) if 'imageList' in entry else set([])
+        alias_set = set(entry['alias']) if 'alias' in entry else set([])
         for k in data:
-            entry[k] = data[k]
+            if k == 'imageList':
+                if k not in entry:
+                    entry[k] = []
+                for tmp in data[k]:
+                    if tmp['url'] in image_set:
+                        continue
+                    entry[k].append(tmp)
+                    image_set.add(tmp['url'])
 
-        entry['className'] = 'models.geo.Locality'
-        entry['_id'] = ObjectId()
+            elif k == 'alias':
+                if k not in entry:
+                    entry[k] = []
+                for tmp in data[k]:
+                    if tmp in alias_set:
+                        continue
+                    entry[k].append(tmp)
+                    alias_set.add(tmp)
+            else:
+                entry[k] = data[k]
+
+        # entry['className'] = 'models.geo.Locality'
+        # entry['_id'] = ObjectId()
         col.save(entry)
         col = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
         col.save(entry)
