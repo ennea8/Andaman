@@ -876,7 +876,10 @@ class BaiduScenePro(AizouCrawlSpider):
 
     # 解析url
     def images_pro(self, urls):
-        tmp_list = (('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls)
+        if urls:
+            tmp_list = (('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls)
+        else:
+            return list()
         urls_list = list()
         for tmp in tmp_list:
             urls_list.append({'url': tmp})
@@ -1088,27 +1091,28 @@ class BaiduScenePro(AizouCrawlSpider):
                         tips_list.append(tips_tmp)
                 data['activities'] = tips_list
 
-            # 地理文化
-            if 'geography_history' in key_list:
-                geo_keys = tmp['geography_history'].keys()
-                geo_list = list()
-                if 'list' in geo_keys:
-                    for node in tmp['geography_history']['list']:
-                        # TODO images需要进行拼接
-                        # 图片
-                        if 'pic_url' in node.keys():
-                            pic_url = node['pic_url']
-                            images = self.images_pro(list(pic_url))
-                        else:
-                            images = list()
-                        geo_tmp = {
-                            'title': node['name'],
-                            'desc': node['desc'],
-                            'images': images
-                        }
-                        geo_list.append(geo_tmp)
-                data['geography_history'] = geo_list
+            # # 地理文化
+            # if 'geography_history' in key_list:
+            #     geo_keys = tmp['geography_history'].keys()
+            #     geo_list = list()
+            #     if 'list' in geo_keys:
+            #         for node in tmp['geography_history']['list']:
+            #             # TODO images需要进行拼接
+            #             # 图片
+            #             if 'pic_url' in node.keys():
+            #                 pic_url = node['pic_url']
+            #                 images = self.images_pro(list(pic_url))
+            #             else:
+            #                 images = list()
+            #             geo_tmp = {
+            #                 'title': node['name'],
+            #                 'desc': node['desc'],
+            #                 'images': images
+            #             }
+            #             geo_list.append(geo_tmp)
+            #     data['geography_history'] = geo_list
 
+            data['miscInfo']=list()     #杂项信息
             item = BaiduSceneProItem()
             item['data'] = data
             item['col_name'] = 'BaiduScene'
