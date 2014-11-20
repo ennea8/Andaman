@@ -560,6 +560,40 @@ class MafengwoProcSpider(AizouCrawlSpider):
                 for entry in v():
                     yield entry
 
+    def parse_geocode(self, response):
+        item = response.meta['item']
+        data = item['data']
+
+        geocode_data = json.loads(response.body)
+        if geocode_data['status'] not in ['OK', 'ZERO_RESULTS']:
+            self.log('ERROR GEOCODING. STATUS=%s, URL=%s' % (geocode_data['status'], response.url))
+        if geocode_data['status'] == 'OK':
+            entry = geocode_data['results'][0]
+            # 检查是否足够接近
+            lng, lat = data['location']['coordinates']
+            glat = entry['geometry']['location']['lat']
+            glng = entry['geometry']['location']['lng']
+
+            if utils.haversine(lng, lat, glng, glat) < 100:
+                tmp = filter(lambda val: 'political' in val['types'], entry['address_components'])
+                if tmp:
+                    c = tmp[0]
+                    alias = set(data['alias']) if 'alias' in data else set([])
+                    for key in ['short_name', 'long_name']:
+                        alias.add(c[key].strip().lower())
+                    data['alias'] = list(alias)
+
+        lang = response.meta['lang']
+        if not lang:
+            yield item
+        else:
+            addr = re.search(r'address=(.+?)(&|\s*$)', response.url).group(1)
+            lang_set = lang.pop()
+            yield Request(url='http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+                          headers={'Accept-Language': lang_set}, callback=self.parse_geocode, dont_filter=True,
+                          meta={'item': item, 'lang': lang})
+
+
     def parse_vs(self):
         col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
 
@@ -793,7 +827,25 @@ class MafengwoProcSpider(AizouCrawlSpider):
             item['data'] = data
             item['col_name'] = 'Destination'
             item['db_name'] = 'geo'
-            yield item
+
+            # 尝试通过geocode获得目的地别名及其它信息
+            addr = u''
+            for idx in xrange(len(entry['crumb']) - 1, -1, -1):
+                addr += u'%s,' % (entry['crumb'][idx]['name'])
+            idx = addr.rfind(',')
+            addr = addr[:idx] if idx > 0 else addr
+
+            if 'skip-geocode' not in self.param:
+                if addr and 'location' in data:
+                    lang = ['en-US']
+                    yield Request(url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+                                  headers={'Accept-Language': 'zh-CN'},
+                                  meta={'item': item, 'lang': lang},
+                                  callback=self.parse_geocode)
+                else:
+                    yield item
+            else:
+                yield item
 
     def parse_loc(self):
         col_raw_mdd = utils.get_mongodb('raw_data', 'MafengwoMdd', profile='mongodb-crawler')
