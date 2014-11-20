@@ -3,7 +3,6 @@ import json
 import re
 import math
 
-from bson import ObjectId
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider
@@ -799,10 +798,11 @@ class MafengwoProcSpider(AizouCrawlSpider):
             if 'skip-geocode' not in self.param:
                 if addr and 'location' in data:
                     lang = ['en-US']
-                    yield Request(url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
-                                  headers={'Accept-Language': 'zh-CN'},
-                                  meta={'item': item, 'lang': lang},
-                                  callback=self.parse_geocode)
+                    yield Request(
+                        url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+                        headers={'Accept-Language': 'zh-CN'},
+                        meta={'item': item, 'lang': lang},
+                        callback=self.parse_geocode)
                 else:
                     yield item
             else:
@@ -941,6 +941,9 @@ class MafengwoProcPipeline(object):
         super_adm = []
         for cid in crumb_list:
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if not ret:
+                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if ret:
                 crumb.append(ret)
                 sa_entry = {'id': ret['_id']}
