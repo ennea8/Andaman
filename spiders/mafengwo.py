@@ -26,9 +26,7 @@ class MafengwoSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         super(MafengwoSpider, self).__init__(*a, **kw)
-
-    def start_requests(self):
-        cont_list = [
+        self.cont_list = [
             52314,  # 亚洲
             10853,  # 南极州
             14701,  # 大洋洲
@@ -37,6 +35,8 @@ class MafengwoSpider(AizouCrawlSpider):
             16406,  # 南美
             16867  # 北美
         ]
+
+    def start_requests(self):
         self.param = getattr(self, 'param', {})
 
         # 大洲的过滤
@@ -45,7 +45,7 @@ class MafengwoSpider(AizouCrawlSpider):
         else:
             cont_filter = None
 
-        for cont_id in cont_list:
+        for cont_id in self.cont_list:
             if cont_filter and cont_id not in cont_filter:
                 continue
             yield Request(url='http://www.mafengwo.cn/jd/%d/' % cont_id)
@@ -148,7 +148,12 @@ class MafengwoSpider(AizouCrawlSpider):
                 '//div[@class="crumb"]/div[contains(@class,"item")]/div[@class="drop"]/span[@class="hd"]/a[@href]'):
             crumb_name = node.xpath('./text()').extract()[0].strip()
             crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-            if not re.search(r'travel-scenic-spot/mafengwo/\d+\.html', crumb_url):
+            match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
+            if not match:
+                continue
+            mdd_id = int(match.group(1))
+            # 目标为洲的那些scrumb，不要抓取
+            if mdd_id in self.cont_list:
                 continue
             crumb.append({'name': crumb_name, 'url': crumb_url})
         return crumb
@@ -176,7 +181,7 @@ class MafengwoSpider(AizouCrawlSpider):
             # 抓取下级的region
             region_list = self.get_region_list(response)
             if region_list:
-                for entry in self.get_region_list(response):
+                for entry in region_list:
                     yield entry
 
             # 处理当前region
