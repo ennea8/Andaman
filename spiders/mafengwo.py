@@ -758,48 +758,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
             if misc_info:
                 data['miscInfo'] = misc_info
 
-            # if False:
-            # # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
-            # # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
-            #
-            # txt_list = []
-            # for txt_entry in info_entry['details']:
-            #         txt_list.append(
-            #             '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
-            #                 '//p/descendant-or-self::text()').extract()])))
-            #     proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
-            #
-            #     # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
-            #     # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
-            #     # info_entry['details']]]))
-            #
-            #
-            #
-            #     if info_entry['title'] == u'简介':
-            #         desc = proc_text
-            #     elif info_entry['title'] == u'最佳旅行时间':
-            #         travel_month = proc_text
-            #     elif info_entry['title'] == u'建议游玩天数':
-            #         time_cost = proc_text
-            #     elif info_entry['info_cat'] == u'外部交通':
-            #         traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
-            #     else:
-            #         details.append(u'%s：%s' % (info_entry['title'], proc_text))
-            #
-            # if desc:
-            #     data['desc'] = desc
-            # elif details:
-            #     data['desc'] = '\n\n'.join(details)
-            #     details = None
-            # if travel_month:
-            #     data['travelMonth'] = travel_month
-            # if time_cost:
-            #     data['timeCostDesc'] = time_cost
-            # if details:
-            #     data['details'] = '\n\n'.join(details)
-            # if traffic_info:
-            #     data['trafficInfo'] = '\n\n'.join(traffic_info)
-
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
             image_list = []
@@ -892,10 +850,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
                             '//p/descendant-or-self::text()').extract()])))
                 proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
 
-                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
-                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
-                # info_entry['details']]]))
-
                 if info_entry['title'] == u'简介':
                     desc = proc_text
                 elif info_entry['title'] == u'最佳旅行时间':
@@ -912,8 +866,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
             elif details:
                 data['desc'] = '\n\n'.join(details)
                 details = None
-            # if travel_month:
-            # data['travelMonth'] = travel_month
+            if travel_month:
+                data['travelMonth'] = travel_month
             if time_cost:
                 data['timeCostDesc'] = time_cost
             if details:
@@ -998,11 +952,33 @@ class MafengwoProcPipeline(object):
         data['locList'] = crumb
         # data['superAdm'] = super_adm
 
+        # 有几个字段具有天然的追加属性：alias, imageList
+        # 其它都是覆盖型
+        image_set = set([tmp['url'] for tmp in entry['imageList']]) if 'imageList' in entry else set([])
+        alias_set = set(entry['alias']) if 'alias' in entry else set([])
         for k in data:
-            entry[k] = data[k]
+            if k == 'imageList':
+                if k not in entry:
+                    entry[k] = []
+                for tmp in data[k]:
+                    if tmp['url'] in image_set:
+                        continue
+                    entry[k].append(tmp)
+                    image_set.add(tmp['url'])
 
-        entry['className'] = 'models.geo.Locality'
-        entry['_id'] = ObjectId()
+            elif k == 'alias':
+                if k not in entry:
+                    entry[k] = []
+                for tmp in data[k]:
+                    if tmp in alias_set:
+                        continue
+                    entry[k].append(tmp)
+                    alias_set.add(tmp)
+            else:
+                entry[k] = data[k]
+
+        # entry['className'] = 'models.geo.Locality'
+        # entry['_id'] = ObjectId()
         col.save(entry)
         col = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
         col.save(entry)
