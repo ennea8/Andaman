@@ -35,7 +35,7 @@ class MafengwoSpider(AizouCrawlSpider):
             14517,  # 非洲
             14383,  # 欧洲
             16406,  # 南美
-            16867   # 北美
+            16867  # 北美
         ]
         self.param = getattr(self, 'param', {})
 
@@ -468,16 +468,13 @@ class MafengwoProcSpider(AizouCrawlSpider):
         return result
 
     def parse(self, response):
-        mdd = 'mdd' in self.param
-        vs = 'vs' in self.param
+        func_map = {'mdd': self.parse_mdd,
+                    'vs': self.parse_vs}
 
-        if mdd:
-            for entry in self.parse_loc():
-                yield entry
-
-        if vs:
-            for entry in self.parse_vs():
-                yield entry
+        for k, v in func_map.items():
+            if k in self.param:
+                for entry in v():
+                    yield entry
 
     def parse_vs(self):
         col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
