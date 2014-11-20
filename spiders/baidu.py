@@ -854,3 +854,283 @@ class BaiduScenePipeline(object):
         col.save(ret)
 
         return item
+
+
+class BaiduSceneProItem(Item):
+    data = Field()
+    col_name = Field()
+
+
+class BaiduScenePro(AizouCrawlSpider):
+    """
+    百度目的地数据的整理
+    """
+
+    name = 'baidu-scene-proc'
+
+    def __init__(self, *a, **kw):
+        super(BaiduScenePro, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com')
+
+    # 解析url
+    def images_pro(self, urls):
+        tmp_list = (('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls)
+        urls_list = list()
+        for tmp in tmp_list:
+            urls_list.append({'url': tmp})
+        return urls_list
+
+    def parse(self, response):
+        col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+
+        for entry in col_raw_scene.find():
+            data = {}
+
+            data['id'] = entry['sid']  # 设置id
+
+            alias = set()
+            for key in ['sname', 'ambiguity_sname']:
+                if key in entry:
+                    data['zhName'] = entry['sname']  # 中文名
+                    alias.add(entry[key])
+            data['tags'] = alias  # 别名设置
+
+            data['enName'] = ""  # 英文名(没有)
+
+            data['source'] = {
+                'name': 'baidulvyou',
+                'url': 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&'
+                       'surl=%s&cid=0&pn=1' % entry['surl'],
+                'id': entry['sid']
+            }
+
+            # 层级结构
+            if 'scene_path' in entry:
+                length = len(entry['scene_path'])
+                if length > 1:
+                    tmp = entry['scene_path'][1]
+                    data['country'] = {
+                        'id': tmp['sid'],
+                        'zhName': tmp['sname'],
+                        'enName': ""
+                    }
+                    locList = list()  # 存放层级列表
+                    for key in entry['scene_path'][:(length - 1)]:
+                        tmp_loc = {
+                            'id': key['sid'],
+                            'zhName': key['sname'],
+                            'enName': ""
+                        }
+                        locList.append(tmp_loc)
+                    data['locList'] = locList
+
+                else:
+                    log.WARNING("not a country")
+                    data['country'] = list()
+                    data['locList'] = list()
+
+            data['tags'] = list()
+
+            if 'ext' in entry:
+                tmp = entry['ext']
+                data['desc'] = tmp['abs_desc']
+
+            tmp = entry['content']
+
+            key_list = dict(tmp).keys()
+
+
+            # 处理图片
+            if 'highlight' in key_list:
+                if 'list' in tmp['highlight']:
+                    pic_list = tmp['highlight']['list']
+                    data['images'] = self.images_pro(pic_list)
+            else:
+                data['images'] = list()
+            # 处理交通
+            if 'traffic' in key_list:
+                if 'remote' in tmp['traffic']:
+                    traffic = list()
+                    for node in tmp['traffic']['remote']:
+                        remote_data = {
+                            'name': node['name'],
+                            'desc': node['desc']
+                        }
+                        traffic.append(remote_data)
+                    data['remoteTraffic'] = traffic
+                else:
+                    data['remoteTraffic'] = list()
+                if 'local' in tmp['traffic']:
+                    traffic = list()
+                    for node in tmp['traffic']['local']:
+                        local_data = {
+                            'name': node['name'],
+                            'desc': node['desc']
+                        }
+                        traffic.append(local_data)
+                    data['localTraffic'] = traffic
+                else:
+                    data['localTraffic'] = list()
+            else:
+                data['remoteTraffic'] = list()
+                data['localTraffic'] = list()
+
+            # 旅行时间
+            if 'besttime' in key_list:
+                if 'simple_desc' in tmp['besttime']:
+                    data['travelMonth'] = tmp['besttime']['simple_desc']
+                else:
+                    data['travelMonth'] = ""
+                if 'recommend_visit_time' in tmp['besttime']:
+                    data['timeCost'] = tmp['besttime']['recommend_visit_time']
+                else:
+                    data['timeCost'] = ""
+                if 'more_desc' in tmp['besttime']:
+                    data['timeCostDesc'] = tmp['besttime']['more_desc']
+                else:
+                    data['timeCostDesc'] = ""
+
+            # 购物
+            if 'shopping' in key_list:
+                if 'desc' in tmp['shopping']:
+                    data['shoppingIntro'] = tmp['shopping']['desc']
+                else:
+                    data['shoppingIntro'] = ""
+                shopping_keys = tmp['shopping'].keys()
+                goods_list = list()
+                if 'goods' in shopping_keys:
+                    for node in tmp['shopping']['goods']:
+                        # 图片
+                        if 'pic_url' in node.keys():
+                            pic_url = node['pic_url']
+                            images = self.images_pro(list(pic_url))
+                        else:
+                            images = list()
+                        goods_tmp = {
+                            'zhName': node['name'],
+                            'enName': "",
+                            'desc': node['desc'],
+                            'images': images
+                        }
+                        goods_list.append(goods_tmp)
+                data['commodities'] = goods_list
+
+            # dinig
+            if 'dining' in key_list:
+                if 'desc' in tmp['dining']:
+                    data['dinningIntro'] = tmp['dining']['desc']
+                else:
+                    data['dinningIntro'] = ""
+                dining_keys = tmp['dining'].keys()
+                food_list = list()
+                if 'food' in dining_keys:
+                    for node in tmp['dining']['food']:
+                        # 图片
+                        if 'pic_url' in node.keys():
+                            pic_url = node['pic_url']
+                            images = self.images_pro(list(pic_url))
+                        else:
+                            images = list()
+                        food_tmp = {
+                            'zhName': node['name'],
+                            'enName': "",
+                            'desc': node['desc'],
+                            'images': images
+                        }
+                        food_list.append(food_tmp)
+                data['cuisine'] = food_list
+
+            # 活动
+            if 'entertainment' in key_list:
+                if 'desc' in tmp['entertainment']:
+                    data['activityIntro'] = tmp['entertainment']['desc']
+                else:
+                    data['activityIntro'] = ""
+                activity_keys = tmp['entertainment'].keys()
+                activity_list = list()
+                if 'activity' in activity_keys:
+                    for node in tmp['entertainment']['activity']:
+                        # 图片
+                        if 'pic_url' in node.keys():
+                            pic_url = node['pic_url']
+                            images = self.images_pro(list(pic_url))
+                        else:
+                            images = list()
+                        activity_tmp = {
+                            'zhName': node['name'],
+                            'enName': "",
+                            'desc': node['desc'],
+                            'images': images
+                        }
+                        activity_list.append(activity_tmp)
+                data['activities'] = activity_list
+
+            # 小贴士
+            if 'attention' in key_list:
+                tips_keys = tmp['attention'].keys()
+                tips_list = list()
+                if 'list' in tips_keys:
+                    for node in tmp['attention']['list']:
+                        # 图片
+                        # 图片
+                        if 'pic_url' in node.keys():
+                            pic_url = node['pic_url']
+                            images = self.images_pro(list(pic_url))
+                        else:
+                            images = list()
+                        tips_tmp = {
+                            'title': node['name'],
+                            'desc': node['desc'],
+                            'images': images
+                        }
+                        tips_list.append(tips_tmp)
+                data['activities'] = tips_list
+
+            # 地理文化
+            if 'geography_history' in key_list:
+                geo_keys = tmp['geography_history'].keys()
+                geo_list = list()
+                if 'list' in geo_keys:
+                    for node in tmp['geography_history']['list']:
+                        # TODO images需要进行拼接
+                        # 图片
+                        if 'pic_url' in node.keys():
+                            pic_url = node['pic_url']
+                            images = self.images_pro(list(pic_url))
+                        else:
+                            images = list()
+                        geo_tmp = {
+                            'title': node['name'],
+                            'desc': node['desc'],
+                            'images': images
+                        }
+                        geo_list.append(geo_tmp)
+                data['geography_history'] = geo_list
+
+            item = BaiduSceneProItem()
+            item['data'] = data
+            item['col_name'] = 'BaiduScene'
+            yield item
+
+
+class BaiduSceneProPipeline(object):
+
+    spiders = [BaiduScenePro.name]
+
+    def process_item(self, item, spider):
+        if type(item).__name__ != BaiduSceneItem.__name__:
+            return item
+
+        data = item['data']
+        col_name = item['col_name']
+        col = utils.get_mongodb('geo', col_name, profile='mongodb-general')
+
+        entry = col.find_one({'geo.%s.id' % col_name: data['id']})
+        if not entry:
+            entry = {}
+        for k in data:
+            entry[k] = data[k]
+
+        col.save(entry)
