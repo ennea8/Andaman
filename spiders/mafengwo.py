@@ -445,6 +445,27 @@ class MafengwoProcSpider(AizouCrawlSpider):
         self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
+    def is_chn(self, text):
+        """
+        是否为中文
+        判断算法：至少出现一个中文字符，并且只包含中文字符及简单ascii字符
+        :param text:
+        """
+        has_chn = False
+        for c in text:
+            if not has_chn and ord(c) >= 0x4e00 and ord(c) <= 0x9fff:
+                has_chn = True
+            if ord(c) < 32 or (ord(c) > 126 and ord(c) < 0x4e00) or (ord(c) >= 0x9fff):
+                return False
+
+        return has_chn
+
+    def is_eng(self, text):
+        for c in text:
+            if ord(c) < 32 or ord(c) > 126:
+                return False
+        return True
+
     def parse_name(self, name):
         term_list = []
 
@@ -458,14 +479,46 @@ class MafengwoProcSpider(AizouCrawlSpider):
         name_list = []
         for term in term_list:
             # 处理/的情况
-            tmp = filter(lambda val: val, [tmp.strip() for tmp in re.split(r'/', term)])
+            tmp = filter(lambda val: val,
+                         [re.sub(r'\s+', ' ', tmp.strip(), flags=re.U) for tmp in re.split(r'/', term)])
             if not tmp:
                 continue
             name_list.extend(tmp)
-        if not name_list:
-            return
 
-        result = {'zhName': name_list[0], 'enName': name_list[0]}
+        # 名称推测算法：从前往后测试。
+        # 第一个至少含有一个中文，且可能包含简单英语及数字的term，为zhName。
+        # 第一个全英文term，为enName。
+        # 第一个既不是zhName，也不是enName的，为localName
+
+        # 优先级
+        # zhName: zhName > enName > localName
+        # enName: enName > localName
+        # localName: localName
+
+        zh_name = None
+        en_name = None
+        loc_name = None
+        for name in name_list:
+            if not zh_name and self.is_chn(name):
+                zh_name = name
+            elif not en_name and self.is_eng(name):
+                en_name = name
+            elif not loc_name:
+                loc_name = name
+
+        result = {'locName': loc_name}
+        if zh_name:
+            result['zhName'] = zh_name
+        elif en_name:
+            result['zhName'] = en_name
+        else:
+            result['zhName'] = loc_name
+
+        if en_name:
+            result['enName'] = en_name
+        else:
+            result['enName'] = loc_name
+
         alias = set([])
         for tmp in name_list:
             alias.add(tmp.lower())
