@@ -466,6 +466,32 @@ class MafengwoProcSpider(AizouCrawlSpider):
                 return False
         return True
 
+    def proc_etree(self, body):
+        def f1(node):
+            # 去掉可能的包含有蚂蜂窝字样的元素
+            if node.text and u'蚂蜂窝' in node.text:
+                return True, None
+            else:
+                return False, node
+
+        def f2(node):
+            if node.tag == 'a' and node.get('href') and 'mafengwo' in node.get('href'):
+                return True, parse_etree(node[0], [f1, f2, f3])
+            else:
+                return False, node
+
+        def f3(node):
+            # 去掉不必要的class
+            if node.get('class') and ('m-txt' in node.get('class') or 'm-img' in node.get('class')):
+                del node.attrib['class']
+            return False, node
+
+        from utils import parse_etree
+        from lxml import etree
+
+        node = parse_etree(body, [f1, f2, f3])
+        return etree.tostring(node, encoding='utf-8').decode('utf-8')
+
     def parse_name(self, name):
         term_list = []
 
@@ -631,50 +657,111 @@ class MafengwoProcSpider(AizouCrawlSpider):
             desc = None
             travel_month = None
             time_cost = None
-            details = []
-            traffic_info = []
+
+            def get_plain(body_list):
+                """
+                将body_list中的内容，作为纯文本格式输出
+                """
+                plain_list = []
+                for body in body_list:
+                    tmp = self.proc_etree(body)
+                    if not tmp:
+                        continue
+                    sel = Selector(text=tmp)
+                    plain_list.append('\n'.join(filter(lambda val: val, [tmp.strip() for tmp in sel.xpath(
+                        '//p/descendant-or-self::text()').extract()])))
+                return '\n\n'.join(plain_list) if plain_list else None
+
+            def get_html(body_list):
+                proc_list = []
+                for body in body_list:
+                    tmp = self.proc_etree(body)
+                    if not tmp:
+                        continue
+                    proc_list.append(tmp)
+                if proc_list:
+                    return '<div>%s</div>' % '\n'.join(proc_list) if len(proc_list) > 1 else proc_list[0]
+                else:
+                    return None
+
+            local_traffic = []
+            remote_traffic = []
+            misc_info = []
 
             for info_entry in entry['contents']:
-                # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
-                # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
-
-                txt_list = []
-                if 'details' not in info_entry and 'txt' in info_entry:
-                    info_entry['details'] = [info_entry['txt']]
-                for txt_entry in info_entry['details']:
-                    txt_list.append(
-                        '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
-                            '//p/descendant-or-self::text()').extract()])))
-                proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
-
-                # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
-                # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
-                # info_entry['details']]]))
-
-                if info_entry['title'] == u'简介':
-                    desc = proc_text
-                elif info_entry['title'] == u'最佳旅行时间':
-                    travel_month = proc_text
-                elif info_entry['title'] == u'建议游玩天数':
-                    time_cost = proc_text
+                if info_entry['info_cat'] == u'概况' and info_entry['title'] == u'简介':
+                    desc = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'概况' and info_entry['title'] == u'最佳旅行时间':
+                    travel_month = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'概况' and info_entry['title'] == u'建议游玩天数':
+                    time_cost = get_plain(info_entry['details'])
+                elif info_entry['info_cat'] == u'内部交通':
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        local_traffic.append({'title': info_entry['title'], 'contents': tmp})
                 elif info_entry['info_cat'] == u'外部交通':
-                    traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        remote_traffic.append({'title': info_entry['title'], 'contents': tmp})
                 else:
-                    details.append(u'%s：%s' % (info_entry['title'], proc_text))
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        misc_info.append({'title': info_entry['title'], 'contents': tmp})
 
             if desc:
                 data['desc'] = desc
-            elif details:
-                data['desc'] = '\n\n'.join(details)
-                details = None
             if travel_month:
                 data['travelMonth'] = travel_month
             if time_cost:
                 data['timeCostDesc'] = time_cost
-            if details:
-                data['details'] = '\n\n'.join(details)
-            if traffic_info:
-                data['trafficInfo'] = '\n\n'.join(traffic_info)
+            if local_traffic:
+                data['localTraffic'] = local_traffic
+            if remote_traffic:
+                data['remoteTraffic'] = remote_traffic
+            if misc_info:
+                data['miscInfo'] = misc_info
+
+            # if False:
+            # # raw_text = Selector(text=info_entry['details']).xpath('//p/descendant-or-self::text()').extract()
+            # # proc_text = '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in raw_text]))
+            #
+            # txt_list = []
+            # for txt_entry in info_entry['details']:
+            #         txt_list.append(
+            #             '\n'.join(filter(lambda val: val, [tmp.strip() for tmp in Selector(text=txt_entry).xpath(
+            #                 '//p/descendant-or-self::text()').extract()])))
+            #     proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in txt_list]))
+            #
+            #     # proc_text = '\n\n'.join(filter(lambda val: val, [tmp.strip() for tmp in [
+            #     # Selector(text=txt).xpath('//p/descendant-or-self::text()').extract() for txt in
+            #     # info_entry['details']]]))
+            #
+            #
+            #
+            #     if info_entry['title'] == u'简介':
+            #         desc = proc_text
+            #     elif info_entry['title'] == u'最佳旅行时间':
+            #         travel_month = proc_text
+            #     elif info_entry['title'] == u'建议游玩天数':
+            #         time_cost = proc_text
+            #     elif info_entry['info_cat'] == u'外部交通':
+            #         traffic_info.append(u'%s：%s' % (info_entry['title'], proc_text))
+            #     else:
+            #         details.append(u'%s：%s' % (info_entry['title'], proc_text))
+            #
+            # if desc:
+            #     data['desc'] = desc
+            # elif details:
+            #     data['desc'] = '\n\n'.join(details)
+            #     details = None
+            # if travel_month:
+            #     data['travelMonth'] = travel_month
+            # if time_cost:
+            #     data['timeCostDesc'] = time_cost
+            # if details:
+            #     data['details'] = '\n\n'.join(details)
+            # if traffic_info:
+            #     data['trafficInfo'] = '\n\n'.join(traffic_info)
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
