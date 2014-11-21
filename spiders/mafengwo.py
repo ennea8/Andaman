@@ -861,7 +861,7 @@ class MafengwoProcPipeline(AizouPipeline):
         super(MafengwoProcPipeline, self).__init__(param)
 
         self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
-        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000.0
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
