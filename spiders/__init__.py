@@ -9,30 +9,44 @@ import time
 import sys
 import urlparse
 
-from scrapy import log
-
 from scrapy.contrib.spiders import CrawlSpider
 
 
 class AizouCrawlSpider(CrawlSpider):
-    def __init__(self, *a, **kw):
+    @classmethod
+    def from_crawler(cls, crawler):
+        settings = crawler.settings
+        return cls(settings.get("USER_PARAM"))
+
+    def __init__(self, param, *a, **kw):
         super(CrawlSpider, self).__init__(*a, **kw)
-        self.param = {}
+        self.param = param
 
         # 每个爬虫需要分配一个唯一的爬虫id，用来在日志文件里面作出区分。
         r = long(time.time() * 1000) + random.randint(0, sys.maxint)
         h = hashlib.md5('%d' % r).hexdigest()
-        self.spider_id = h[:16]
-
-    def log(self, message, level=log.DEBUG, **kw):
-        # message前面添加爬虫id
-        message = '[%s] %s' % (self.spider_id, message)
-        super(CrawlSpider, self).log(message, level=level, **kw)
+        self.name = '%s:%s' % (self.name, h[:16])
 
     def build_href(self, url, href):
         c = urlparse.urlparse(href)
         if c.netloc:
             return href
         else:
-            c1 =urlparse.urlparse(url)
+            c1 = urlparse.urlparse(url)
             return urlparse.urlunparse((c1.scheme, c1.netloc, c.path, c.params, c.query, c.fragment))
+
+
+class AizouPipeline(object):
+    spiders = []
+    spiders_uuid = []
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        settings = crawler.settings
+        return cls(settings.get("USER_PARAM"))
+
+    def __init__(self, param):
+        self.param = param
+
+    def is_handler(self, item, spider):
+        return spider.uuid in self.spiders_uuid
