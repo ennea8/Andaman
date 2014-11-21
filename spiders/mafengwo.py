@@ -22,6 +22,7 @@ class MafengwoSpider(AizouCrawlSpider):
     """
 
     name = 'mafengwo-mdd'
+    uuid = '74f9b075-65f3-400d-b093-5bdbdb552e86'
 
     def __init__(self, *a, **kw):
         super(MafengwoSpider, self).__init__(*a, **kw)
@@ -382,13 +383,18 @@ class MafengwoSpider(AizouCrawlSpider):
         self.log('Downloading images failed. Code=%d, url=%s' % (status, failure.request.url), log.WARNING)
 
 
-class MafengwoPipeline(object):
+class MafengwoPipeline(AizouPipeline):
     spiders = [MafengwoSpider.name]
 
-    def __init__(self):
-        self.col_dict = {}
+    spiders_uuid = [MafengwoSpider.uuid]
+
+    def __init__(self, param):
+        super(MafengwoPipeline, self).__init__(param)
 
     def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
         data = item['data']
         item_type = data['type']
 
@@ -407,10 +413,7 @@ class MafengwoPipeline(object):
         else:
             return item
 
-        if col_name not in self.col_dict:
-            self.col_dict[col_name] = utils.get_mongodb('raw_data', col_name, profile='mongodb-crawler')
-        col = self.col_dict[col_name]
-
+        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
         db_data = col.find_one({'id': data['id']})
         if not db_data:
             db_data = {}
@@ -449,7 +452,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
         self.col_dict = {}
 
     def start_requests(self):
-        self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
     def is_chn(self, text):
@@ -560,6 +562,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
     def parse(self, response):
         func_map = {'mdd': self.parse_mdd,
+                    'country': self.parse_country,
                     'vs': self.parse_vs}
 
         for k, v in func_map.items():
@@ -601,6 +604,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
                           headers={'Accept-Language': lang_set}, callback=self.parse_geocode, dont_filter=True,
                           meta={'item': item, 'lang': lang})
 
+    def parse_country(self):
+        col = utils.get_mongodb('raw_data', 'MafengwoCountry', profile='mongodb-crawler')
+
+        for entry in col.find({}, {'id': 1, 'title': 1}):
+            item = MafengwoProcItem()
+            item['data'] = {'zhName': entry['title'], 'id': entry['id']}
+            item['db_name'] = 'geo'
+            item['col_name'] = 'Country'
+
+            yield item
 
     def parse_vs(self):
         col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
@@ -692,7 +705,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             self.col_dict[col_name] = utils.get_mongodb('geo', col_name, profile='mongodb-general')
         col_country = self.col_dict[col_name]
 
-        for entry in col_raw_mdd.find({'type': 'region'}):
+        for entry in col_raw_mdd.find({'type': 'region'}).limit(5):
             data = {}
 
             tmp = self.parse_name(entry['title'])
@@ -847,7 +860,6 @@ class MafengwoProcPipeline(AizouPipeline):
     def __init__(self, param):
         super(MafengwoProcPipeline, self).__init__(param)
 
-        self.col_dict = {}
         self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
         self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000
 
@@ -860,26 +872,27 @@ class MafengwoProcPipeline(AizouPipeline):
             return self.process_mdd(item, spider)
         elif col_name == 'ViewSpot':
             return self.process_vs(item, spider)
+        elif col_name == 'Country':
+            return self.process_country(item, spider)
+
+    def process_country(self, item, spider):
+        data = item['data']
+
+        col = self.fetch_db_col('geo', 'Country', 'mongodb-general')
+        ret = col.find_one({'alias': data['zhName']}, {'_id': 1})
+        if ret:
+            col.update({'_id': ret['_id']}, {'$set': {'source.mafengwo.id': data['id']}})
+
+        return item
 
     def process_mdd(self, item, spider):
         data = item['data']
         col_name = item['col_name']
         db_name = item['db_name']
 
-        sig = '%s.%s' % (db_name, col_name)
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db_name, col_name, profile='mongodb-general')
-        col = self.col_dict[sig]
-
-        sig = 'geo.Destination'
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
-        col_mdd = self.col_dict[sig]
-
-        sig = 'geo.Country'
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
-        col_country = self.col_dict[sig]
+        col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+        col_mdd = self.fetch_db_col('geo', 'Destination', 'mongodb-general')
+        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
         if not entry:
@@ -942,8 +955,9 @@ class MafengwoProcPipeline(AizouPipeline):
         data = item['data']
         col_name = item['col_name']
         db_name = item['db_name']
-        col = utils.get_mongodb(db_name, col_name, profile='mongodb-general')
-        col_mdd = utils.get_mongodb('geo', 'Destination', profile='mongodb-general')
+
+        col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+        col_mdd = self.fetch_db_col('geo', 'Destination', 'mongodb-general')
 
         entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
         if not entry:
