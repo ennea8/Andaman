@@ -45,6 +45,8 @@ class ImageProcSpider(AizouCrawlSpider):
         self.sk = None
         self.min_width = 100
         self.min_height = 100
+        self.col_dict = {}
+        self.col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
@@ -79,8 +81,12 @@ class ImageProcSpider(AizouCrawlSpider):
         list2_name = param['to'][0] if 'to' in param else 'images'
         profile = param['profile'][0] if 'profile' in param else 'mongodb-general'
 
-        col = utils.get_mongodb(db, col_name, profile=profile)
-        col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
+        sig = '%s.%s.%s' % (db, col_name, profile)
+        if sig not in self.col_dict:
+            self.col_dict[sig] = utils.get_mongodb(db, col_name, profile=profile)
+        col = self.col_dict[sig]
+        col_im = self.col_im
+
         for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
@@ -275,7 +281,7 @@ class ImageProcSpider(AizouCrawlSpider):
             for k, v in img_meta.items():
                 if k not in entry:
                     entry[k] = v
-            col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
+            col_im = self.col_im
             col_im.save(entry)
 
             # 修正list
@@ -299,6 +305,9 @@ class ImageProcSpider(AizouCrawlSpider):
 class ImageProcPipeline(object):
     spiders = [ImageProcSpider.name]
 
+    def __init__(self):
+        self.col_dict = {}
+
     def process_item(self, item, spider):
         db = item['db']
         col_name = item['col']
@@ -317,7 +326,11 @@ class ImageProcPipeline(object):
             if url2 not in [tmp['url'] for tmp in list2]:
                 new_list1.append(list1_entry)
 
-        col = utils.get_mongodb(db, col_name, profile='mongodb-general')
+        sig = '%s.%s' % (db, col_name)
+        if sig not in self.col_dict:
+            self.col_dict[sig] = utils.get_mongodb(db, col_name, profile='mongodb-general')
+        col = self.col_dict[sig]
+
         ops = {'$set': {list2_name: list2}}
         if new_list1:
             ops['$set'][list1_name] = new_list1
