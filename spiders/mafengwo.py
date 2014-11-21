@@ -904,7 +904,12 @@ class MafengwoProcPipeline(AizouPipeline):
         for cid in crumb_list:
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if not ret:
-                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                if ret:
+                    # 添加到country字段
+                    data['country'] = {}
+                    for key in ret:
+                        data['country'][key] = ret[key]
             if ret:
                 crumb.append(ret)
                 sa_entry = {'id': ret['_id']}
