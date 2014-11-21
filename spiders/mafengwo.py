@@ -5,7 +5,7 @@ import math
 
 from scrapy import Item, Request, Field, Selector, log
 
-from spiders import AizouCrawlSpider
+from spiders import AizouCrawlSpider, AizouPipeline
 import utils
 
 
@@ -442,10 +442,10 @@ class MafengwoProcSpider(AizouCrawlSpider):
     """
 
     name = 'mafengwo-mdd-proc'
+    uuid = '69d64c68-7602-4cb1-a319-1da2853cda67'
 
-    def __init__(self, *a, **kw):
-        super(MafengwoProcSpider, self).__init__(*a, **kw)
-        self.param = {}
+    def __init__(self, param, *a, **kw):
+        super(MafengwoProcSpider, self).__init__(param, *a, **kw)
         self.col_dict = {}
 
     def start_requests(self):
@@ -934,18 +934,22 @@ class MafengwoProcSpider(AizouCrawlSpider):
             yield item
 
 
-class MafengwoProcPipeline(object):
+class MafengwoProcPipeline(AizouPipeline):
     """
     蚂蜂窝
     """
 
     spiders = [MafengwoProcSpider.name]
 
-    def __init__(self):
+    spiders_uuid = [MafengwoProcSpider.uuid]
+
+    def __init__(self, param):
+        super(MafengwoProcPipeline, self).__init__(param)
+
         self.col_dict = {}
 
     def process_item(self, item, spider):
-        if type(item).__name__ != MafengwoProcItem.__name__:
+        if not self.is_handler(item, spider):
             return item
 
         col_name = item['col_name']
