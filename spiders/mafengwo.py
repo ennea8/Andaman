@@ -782,6 +782,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
+            if 'vs_cnt' in entry and entry['vs_cnt'] is not None:
+                data['visitCnt'] = entry['vs_cnt']
+
             image_list = []
             image_urls = set([])
             for img in entry['imageList']:
@@ -947,6 +950,8 @@ class MafengwoProcPipeline(AizouPipeline):
         super(MafengwoProcPipeline, self).__init__(param)
 
         self.col_dict = {}
+        self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -1024,6 +1029,12 @@ class MafengwoProcPipeline(AizouPipeline):
                     alias_set.add(tmp)
             else:
                 entry[k] = data[k]
+
+        # 将visitCnt转换成hotness信息
+        if 'visitCnt' in entry:
+            entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
+        else:
+            entry['hotness'] = self.def_hot
 
         # entry['className'] = 'models.geo.Locality'
         # entry['_id'] = ObjectId()
