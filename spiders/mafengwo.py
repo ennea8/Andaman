@@ -37,8 +37,6 @@ class MafengwoSpider(AizouCrawlSpider):
         ]
 
     def start_requests(self):
-        self.param = getattr(self, 'param', {})
-
         # 大洲的过滤
         if 'cont' in self.param:
             cont_filter = [int(tmp) for tmp in self.param['cont']]
@@ -62,8 +60,6 @@ class MafengwoSpider(AizouCrawlSpider):
                 yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
 
     def parse(self, response):
-        self.param = getattr(self, 'param', {})
-
         # 地区的过滤
         if 'region' in self.param:
             region_list = [int(tmp) for tmp in self.param['region']]
@@ -150,8 +146,14 @@ class MafengwoSpider(AizouCrawlSpider):
             crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
             match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
             if not match:
-                continue
-            mdd_id = int(match.group(1))
+                # 例外情况：中国
+                if crumb_name == u'中国':
+                    mdd_id = 21536
+                    crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
+                else:
+                    continue
+            else:
+                mdd_id = int(match.group(1))
             # 目标为洲的那些scrumb，不要抓取
             if mdd_id in self.cont_list:
                 continue
@@ -449,7 +451,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
     def __init__(self, param, *a, **kw):
         super(MafengwoProcSpider, self).__init__(param, *a, **kw)
-        self.col_dict = {}
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
@@ -605,7 +606,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
                           meta={'item': item, 'lang': lang})
 
     def parse_country(self):
-        col = utils.get_mongodb('raw_data', 'MafengwoCountry', profile='mongodb-crawler')
+        col = self.fetch_db_col('raw_data', 'MafengwoCountry', 'mongodb-crawler')
 
         for entry in col.find({}, {'id': 1, 'title': 1}):
             item = MafengwoProcItem()
@@ -616,10 +617,10 @@ class MafengwoProcSpider(AizouCrawlSpider):
             yield item
 
     def parse_vs(self):
-        col_raw = utils.get_mongodb('raw_data', 'MafengwoVs', profile='mongodb-crawler')
+        col_raw = self.fetch_db_col('raw_data', 'MafengwoVs', 'mongodb-crawler')
 
         for entry in col_raw.find({}):
-            data = {'abroad': True, 'enabled': True}
+            data = {'enabled': True}
 
             tmp = self.parse_name(entry['title'])
             if not tmp:
@@ -695,15 +696,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
             yield item
 
     def parse_mdd(self):
-        col_name = 'MafengwoMdd'
-        if col_name not in self.col_dict:
-            self.col_dict[col_name] = utils.get_mongodb('raw_data', col_name, profile='mongodb-crawler')
-        col_raw_mdd = self.col_dict[col_name]
-
-        col_name = 'Country'
-        if col_name not in self.col_dict:
-            self.col_dict[col_name] = utils.get_mongodb('geo', col_name, profile='mongodb-general')
-        col_country = self.col_dict[col_name]
+        col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         for entry in col_raw_mdd.find({'type': 'region'}):
             data = {}
@@ -902,6 +896,15 @@ class MafengwoProcPipeline(AizouPipeline):
         crumb = []
         super_adm = []
         for cid in crumb_list:
+            if cid == 21536:
+                # 中国需要额外处理
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                data['country'] = {}
+                for key in ret:
+                    data['country'][key] = ret[key]
+                data['abroad'] = False
+                continue
+
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if not ret:
                 ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
@@ -917,6 +920,9 @@ class MafengwoProcPipeline(AizouPipeline):
                     if tmp in ret:
                         sa_entry[tmp] = ret[tmp]
                 super_adm.append(sa_entry)
+
+        if 'abroad' not in data:
+            data['abroad'] = True
 
         data['locList'] = crumb
         # data['superAdm'] = super_adm
