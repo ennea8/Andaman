@@ -12,8 +12,7 @@ import qiniu.io
 from scrapy import Request, Item, Field, log
 
 import conf
-from spiders import AizouCrawlSpider
-import utils
+from spiders import AizouCrawlSpider, AizouPipeline
 
 
 __author__ = 'zephyre'
@@ -37,6 +36,7 @@ class ImageProcSpider(AizouCrawlSpider):
     将imageList中的内容，上传到七牛，然后更新images列表
     """
     name = 'image-proc'
+    uuid = 'ccef9d95-7b40-441c-a6d0-2c7fb293a4ef'
 
     handle_httpstatus_list = [400, 403, 404]
 
@@ -45,12 +45,9 @@ class ImageProcSpider(AizouCrawlSpider):
         self.sk = None
         self.min_width = 100
         self.min_height = 100
-        self.col_dict = {}
-        self.col_im = utils.get_mongodb('imagestore', 'Images', profile='mongodb-general')
         super(ImageProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        self.param = getattr(self, 'param', {})
         yield Request(url='http://www.baidu.com')
 
     def check_img(self, fname):
@@ -74,18 +71,14 @@ class ImageProcSpider(AizouCrawlSpider):
             return False
 
     def parse(self, response):
-        param = getattr(self, 'param', {})
-        db = param['db'][0]
-        col_name = param['col'][0]
-        list1_name = param['from'][0] if 'from' in param else 'imageList'
-        list2_name = param['to'][0] if 'to' in param else 'images'
-        profile = param['profile'][0] if 'profile' in param else 'mongodb-general'
+        db = self.param['db'][0]
+        col_name = self.param['col'][0]
+        list1_name = self.param['from'][0] if 'from' in self.param else 'imageList'
+        list2_name = self.param['to'][0] if 'to' in self.param else 'images'
+        profile = self.param['profile'][0] if 'profile' in self.param else 'mongodb-general'
 
-        sig = '%s.%s.%s' % (db, col_name, profile)
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col_name, profile=profile)
-        col = self.col_dict[sig]
-        col_im = self.col_im
+        col = self.fetch_db_col(db, col_name, profile)
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
 
         for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
             # 从哪里取原始url？比如：imageList
@@ -281,7 +274,7 @@ class ImageProcSpider(AizouCrawlSpider):
             for k, v in img_meta.items():
                 if k not in entry:
                     entry[k] = v
-            col_im = self.col_im
+            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
             col_im.save(entry)
 
             # 修正list
@@ -302,13 +295,15 @@ class ImageProcSpider(AizouCrawlSpider):
                               headers={'Ref erer': None}, callback=self.parse_img)
 
 
-class ImageProcPipeline(object):
+class ImageProcPipeline(AizouPipeline):
     spiders = [ImageProcSpider.name]
+    spiders_uuid = [ImageProcSpider.uuid]
 
-    def __init__(self):
-        self.col_dict = {}
+    def __init__(self, param):
+        super(ImageProcPipeline, self).__init__(param)
 
     def process_item(self, item, spider):
+
         db = item['db']
         col_name = item['col']
         list1_name = item['list1_name']
@@ -326,10 +321,7 @@ class ImageProcPipeline(object):
             if url2 not in [tmp['url'] for tmp in list2]:
                 new_list1.append(list1_entry)
 
-        sig = '%s.%s' % (db, col_name)
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col_name, profile='mongodb-general')
-        col = self.col_dict[sig]
+        col = self.fetch_db_col(db, col_name, 'mongodb-general')
 
         ops = {'$set': {list2_name: list2}}
         if new_list1:
