@@ -8,13 +8,12 @@ import imp
 import datetime
 import scrapy
 from scrapy import signals
-from scrapy.contrib.spiders import CrawlSpider
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
 import conf
-from spiders import AizouPipeline
+from spiders import AizouPipeline, AizouCrawlSpider
 
 
 __author__ = 'zephyre'
@@ -155,17 +154,13 @@ def reg_spiders(spider_dir=None):
                 for attr_name in dir(mod):
                     try:
                         c = getattr(mod, attr_name)
-                        if issubclass(c, CrawlSpider) and c != CrawlSpider:
+                        if issubclass(c, AizouCrawlSpider) and c != AizouCrawlSpider:
                             name = getattr(c, 'name')
                             if name:
                                 conf.global_conf['spiders'][name] = c
                         elif issubclass(c, AizouPipeline) and c != AizouPipeline:
                             conf.global_conf['pipelines'].append(
                                 [package_path + '.' + c.__module__ + '.' + c.__name__, getattr(c, 'spiders_uuid', [])])
-                            # elif hasattr(c, 'process_item'):
-                            # conf.global_conf['pipelines'].append(
-                            #         [package_path + '.' + c.__module__ + '.' + c.__name__, getattr(c, 'spiders', [])])
-
                     except TypeError:
                         pass
             except ImportError:

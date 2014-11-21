@@ -11,6 +11,8 @@ import urlparse
 
 from scrapy.contrib.spiders import CrawlSpider
 
+import utils
+
 
 class AizouCrawlSpider(CrawlSpider):
     @classmethod
@@ -40,6 +42,12 @@ class AizouPipeline(object):
     spiders = []
     spiders_uuid = []
 
+    def fetch_db_col(self, db, col, profile):
+        sig = '%s.%s.%s' % (db, col, profile)
+        if sig not in self.col_dict:
+            self.col_dict[sig] = utils.get_mongodb(db, col, profile)
+        return self.col_dict[sig]
+
     @classmethod
     def from_crawler(cls, crawler):
         settings = crawler.settings
@@ -47,6 +55,7 @@ class AizouPipeline(object):
 
     def __init__(self, param):
         self.param = param
+        self.col_dict = {}
 
     def is_handler(self, item, spider):
         return spider.uuid in self.spiders_uuid
