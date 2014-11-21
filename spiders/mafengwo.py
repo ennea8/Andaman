@@ -146,8 +146,14 @@ class MafengwoSpider(AizouCrawlSpider):
             crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
             match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
             if not match:
-                continue
-            mdd_id = int(match.group(1))
+                # 例外情况：中国
+                if crumb_name == u'中国':
+                    mdd_id = 21536
+                    crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
+                else:
+                    continue
+            else:
+                mdd_id = int(match.group(1))
             # 目标为洲的那些scrumb，不要抓取
             if mdd_id in self.cont_list:
                 continue
@@ -614,7 +620,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         col_raw = self.fetch_db_col('raw_data', 'MafengwoVs', 'mongodb-crawler')
 
         for entry in col_raw.find({}):
-            data = {'abroad': True, 'enabled': True}
+            data = {'enabled': True}
 
             tmp = self.parse_name(entry['title'])
             if not tmp:
@@ -890,6 +896,15 @@ class MafengwoProcPipeline(AizouPipeline):
         crumb = []
         super_adm = []
         for cid in crumb_list:
+            if cid == 21536:
+                # 中国需要额外处理
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                data['country'] = {}
+                for key in ret:
+                    data['country'][key] = ret[key]
+                data['abroad'] = False
+                continue
+
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if not ret:
                 ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
@@ -905,6 +920,9 @@ class MafengwoProcPipeline(AizouPipeline):
                     if tmp in ret:
                         sa_entry[tmp] = ret[tmp]
                 super_adm.append(sa_entry)
+
+        if 'abroad' not in data:
+            data['abroad'] = True
 
         data['locList'] = crumb
         # data['superAdm'] = super_adm
