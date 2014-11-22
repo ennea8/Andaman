@@ -868,12 +868,16 @@ class BaiduScenePro(AizouCrawlSpider):
     """
 
     name = 'baidu-scene-proc'
+    uuid = '4013C64F-1ECC-7696-D8CC-21BD7010EF77'
 
     def __init__(self, *a, **kw):
         super(BaiduScenePro, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com')
+        col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+
+        for entry in col_raw_scene.find():
+            yield Request(url='http://www.baidu.com', meta={'entry': entry})
 
     # 通过id拼接图片url
     def images_pro(self, urls):
@@ -894,224 +898,228 @@ class BaiduScenePro(AizouCrawlSpider):
             return ''
 
     def parse(self, response):
-        col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        # col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        #
+        # for entry in col_raw_scene.find():
+        entry = response.meta['entry']
+        data = {}
 
-        for entry in col_raw_scene.find():
-            data = {}
+        data['id'] = entry['sid']  # 设置id
 
-            data['id'] = entry['sid']  # 设置id
+        # 国内外字段
+        data['abroad'] = 'true' if entry['is_china'] == '0' else 'false'
 
-            # 国内外字段
-            data['abroad'] = 'true' if entry['is_china'] == '0' else 'false'
+        # 评价次数
+        data['commentCnt'] = entry['rating_count'] if 'rating_count' in entry else None
 
-            # 评价次数
-            data['commentCnt'] = entry['rating_count'] if 'rating_count' in entry else None
+        # 多少人去过该景点
+        data['visitCnt'] = entry['gone_count'] if 'gone_count' in entry else None
 
-            # 多少人去过该景点
-            data['visitCnt'] = entry['gone_count'] if 'gone_count' in entry else None
+        # 收藏次数
+        data['favorCnt'] = int(entry['going_count']) if 'going_count' in entry else None
 
-            # 收藏次数
-            data['favorCnt'] = int(entry['going_count']) if 'going_count' in entry else None
+        # 热门程度
+        data['hotness'] = float(entry['star']) / 5 if 'star' in entry else None
 
-            # 热门程度
-            data['hotness'] = float(entry['star']) / 5 if 'star' in entry else None
+        # 别名
+        alias = set()
+        for key in ['sname', 'ambiguity_sname']:
+            if key in entry:
+                data['zhName'] = entry['sname']  # 中文名
+                alias.add(entry[key])
+            else:
+                continue
 
-            # 别名
-            alias = set()
-            for key in ['sname', 'ambiguity_sname']:
-                if key in entry:
-                    data['zhName'] = entry['sname']  # 中文名
-                    alias.add(entry[key])
-                else:
-                    continue
+        # 源
+        data['source'] = {
+            'name': 'baidulvyou',
+            'url': 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&'
+                   'surl=%s&cid=0&pn=1' % entry['surl'],
+            'id': entry['sid']
+        }
 
-            # 源
-            data['source'] = {
-                'name': 'baidulvyou',
-                'url': 'http://lvyou.baidu.com/destination/ajax/jingdian?format=ajax&'
-                       'surl=%s&cid=0&pn=1' % entry['surl'],
-                'id': entry['sid']
-            }
-
-            # 层级结构
-            if 'scene_path' in entry:
-                length = len(entry['scene_path'])
-                if length > 2:
-                    tmp = entry['scene_path'][1]
-                    data['country'] = {
+        # 层级结构
+        if 'scene_path' in entry:
+            length = len(entry['scene_path'])
+            if length > 2:
+                tmp = entry['scene_path'][1]
+                data['country'] = {
+                    'id': ObjectId(),
+                    'zhName': tmp['sname'],
+                    'enName': ''
+                }
+                locList = list()  # 存放层级列表
+                for key in entry['scene_path'][:-1]:
+                    tmp_loc = {
                         'id': ObjectId(),
-                        'zhName': tmp['sname'],
+                        'zhName': key['sname'],
                         'enName': ''
                     }
-                    locList = list()  # 存放层级列表
-                    for key in entry['scene_path'][:-1]:
-                        tmp_loc = {
-                            'id': ObjectId(),
-                            'zhName': key['sname'],
-                            'enName': ''
-                        }
-                        locList.append(tmp_loc)
-                    data['locList'] = locList
-                else:
-                    # log.WARNING('not a city')
-                    data['country'] = list()
-                    data['locList'] = list()
-
-            data['tags'] = list()
-
-            if 'ext' in entry:
-                tmp = entry['ext']
-                data['desc'] = self.text_pro(tmp['more_desc']) if 'more_desc' in tmp else self.text_pro(tmp['abs_desc'])
-                data['rating'] = float(tmp['avg_remark_score']) / 5 if 'avg_remark_score' in tmp else None
-                data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
+                    locList.append(tmp_loc)
+                data['locList'] = locList
             else:
-                data['desc'] = ''
-                data['rating'] = None
-                data['enName'] = ''
+                # log.WARNING('not a city')
+                data['country'] = list()
+                data['locList'] = list()
 
-            # 设置别名
-            if data['enName'] == '':
-                pass
-            else:
-                alias.add(data['enName'])
-            data['alias'] = alias
+        data['tags'] = list()
 
-            # 字段
-            tmp = dict(entry['content'] if 'content' in entry else '')
+        if 'ext' in entry:
+            tmp = entry['ext']
+            data['desc'] = self.text_pro(tmp['more_desc']) if 'more_desc' in tmp else self.text_pro(tmp['abs_desc'])
+            data['rating'] = float(tmp['avg_remark_score']) / 5 if 'avg_remark_score' in tmp else None
+            data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
+        else:
+            data['desc'] = ''
+            data['rating'] = None
+            data['enName'] = ''
 
-            # 处理图片
-            if 'highlight' in tmp:
-                if 'list' in tmp['highlight']:
-                    data['images'] = [self.images_pro(pic) for pic in tmp['highlight']['list']]
-                else:
-                    data['images'] = list()
+        # 设置别名
+        if data['enName'] == '':
+            pass
+        else:
+            alias.add(data['enName'])
+        data['alias'] = alias
+
+        # 字段
+        tmp = dict(entry['content'] if 'content' in entry else '')
+
+        # 处理图片
+        if 'highlight' in tmp:
+            if 'list' in tmp['highlight']:
+                data['images'] = [self.images_pro(pic) for pic in tmp['highlight']['list']]
             else:
                 data['images'] = list()
+        else:
+            data['images'] = list()
 
-            # 处理交通
-            traffic = list()
-            if 'traffic' in tmp:
-                data['trafficIntro'] = self.text_pro(tmp['traffic']['desc']) if 'desc' in tmp['traffic'] else ''
-                for key in ['remote', 'local']:
-                    if key in tmp['traffic']:
-                        for node in tmp['traffic'][key]:
-                            data = {
-                                'name': node['name'],
-                                'desc': self.text_pro(node['desc'])
-                            }
-                            traffic.append(data)
-                        data[key + 'Traffic'] = traffic
-                    else:
-                        data[key + 'Traffic'] = traffic
-            else:
-                data['remoteTraffic'] = traffic
-                data['localTraffic'] = traffic
-                data['trafficIntro'] = ''
-
-            # 旅行时间
-            if 'besttime' in tmp:
-                data['travelMonth'] = tmp['besttime']['simple_desc'] \
-                    if 'simple_desc' in tmp['besttime'] else ''
-                # TODO 小时
-                tmp_time_cost = tmp['besttime']['recommend_visit_time'] \
-                    if 'recommend_visit_time' in tmp['besttime'] else ''
-                data['timeCost'] = int(re.search('\d', tmp_time_cost).group()) \
-                    if re.search('\d', tmp_time_cost) else None
-                data['timeCostDesc'] = tmp['besttime']['more_desc'] \
-                    if 'more_desc' in tmp['besttime'] else ''
-
-            # 购物
-            goods_list = list()
-            if 'shopping' in tmp:
-                data['shoppingIntro'] = self.text_pro(tmp['shopping']['desc']) if 'desc' in tmp['shopping'] else ''
-                if 'goods' in tmp['shopping']:
-                    for node in tmp['shopping']['goods']:
-                        # 图片
-                        images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
-                        goods_tmp = {
-                            'zhName': node['name'],
-                            'enName': '',
-                            'desc': self.text_pro(node['desc']),
-                            'images': images
+        # 处理交通
+        traffic = list()
+        if 'traffic' in tmp:
+            data['trafficIntro'] = self.text_pro(tmp['traffic']['desc']) if 'desc' in tmp['traffic'] else ''
+            for key in ['remote', 'local']:
+                if key in tmp['traffic']:
+                    for node in tmp['traffic'][key]:
+                        data = {
+                            'name': node['name'],
+                            'desc': self.text_pro(node['desc'])
                         }
-                        goods_list.append(goods_tmp)
-            else:
-                data['shoppingIntro'] = ''
-            data['commodities'] = goods_list
+                        traffic.append(data)
+                    data[key + 'Traffic'] = traffic
+                else:
+                    data[key + 'Traffic'] = traffic
+        else:
+            data['remoteTraffic'] = traffic
+            data['localTraffic'] = traffic
+            data['trafficIntro'] = ''
 
-            # 美食
-            food_list = list()
-            if 'dining' in tmp:
-                data['dinningIntro'] = tmp['dining']['desc'] if 'desc' in tmp['dining'] else ''
-                if 'food' in tmp['dining']:
-                    for node in tmp['dining']['food']:
-                        # 图片
-                        images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
-                        food_tmp = {
-                            'zhName': node['name'],
-                            'enName': '',
-                            'desc': self.text_pro(node['desc']),
-                            'images': images
-                        }
-                        food_list.append(food_tmp)
-            else:
-                data['dinningIntro'] = ''
-            data['cuisine'] = food_list
+        # 旅行时间
+        if 'besttime' in tmp:
+            data['travelMonth'] = tmp['besttime']['simple_desc'] \
+                if 'simple_desc' in tmp['besttime'] else ''
+            # TODO 小时
+            tmp_time_cost = tmp['besttime']['recommend_visit_time'] \
+                if 'recommend_visit_time' in tmp['besttime'] else ''
+            data['timeCost'] = int(re.search('\d', tmp_time_cost).group()) \
+                if re.search('\d', tmp_time_cost) else None
+            data['timeCostDesc'] = tmp['besttime']['more_desc'] \
+                if 'more_desc' in tmp['besttime'] else ''
 
-            # 活动
-            activity_list = list()
-            if 'entertainment' in tmp:
-                data['activityIntro'] = tmp['entertainment']['desc'] if 'desc' in tmp['entertainment'] else ''
-                if 'activity' in tmp['entertainment']:
-                    for node in tmp['entertainment']['activity']:
-                        # 图片
-                        images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
-                        activity_tmp = {
-                            'zhName': node['name'],
-                            'enName': "",
-                            'desc': self.text_pro(node['desc']),
-                            'images': images
-                        }
-                        activity_list.append(activity_tmp)
-            else:
-                data['activityIntro'] = ''
-            data['activities'] = activity_list
+        # 购物
+        goods_list = list()
+        if 'shopping' in tmp:
+            data['shoppingIntro'] = self.text_pro(tmp['shopping']['desc']) if 'desc' in tmp['shopping'] else ''
+            if 'goods' in tmp['shopping']:
+                for node in tmp['shopping']['goods']:
+                    # 图片
+                    images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                    goods_tmp = {
+                        'zhName': node['name'],
+                        'enName': '',
+                        'desc': self.text_pro(node['desc']),
+                        'images': images
+                    }
+                    goods_list.append(goods_tmp)
+        else:
+            data['shoppingIntro'] = ''
+        data['commodities'] = goods_list
 
-            # 小贴士
-            tips_list = list()
-            if 'attention' in tmp:
-                if 'list' in tmp['attention']:
-                    for node in tmp['attention']['list']:
-                        # 图片
-                        images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
-                        tips_tmp = {
-                            'title': node['name'],
-                            'desc': self.text_pro(node['desc']),
-                            'images': images
-                        }
-                        tips_list.append(tips_tmp)
-            data['activities'] = tips_list
+        # 美食
+        food_list = list()
+        if 'dining' in tmp:
+            data['dinningIntro'] = tmp['dining']['desc'] if 'desc' in tmp['dining'] else ''
+            if 'food' in tmp['dining']:
+                for node in tmp['dining']['food']:
+                    # 图片
+                    images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                    food_tmp = {
+                        'zhName': node['name'],
+                        'enName': '',
+                        'desc': self.text_pro(node['desc']),
+                        'images': images
+                    }
+                    food_list.append(food_tmp)
+        else:
+            data['dinningIntro'] = ''
+        data['cuisine'] = food_list
 
-            # 地理文化
-            geo_list = list()
-            if 'geography_history' in tmp:
-                if 'list' in tmp['geography_history']:
-                    for node in tmp['geography_history']['list']:
-                        geo_tmp = {
-                            'title': node['name'],
-                            'desc': self.text_pro(node['desc']),
-                        }
-                        geo_list.append(geo_tmp)
-            data['miscInfo'] = geo_list
+        # 活动
+        activity_list = list()
+        if 'entertainment' in tmp:
+            data['activityIntro'] = tmp['entertainment']['desc'] if 'desc' in tmp['entertainment'] else ''
+            if 'activity' in tmp['entertainment']:
+                for node in tmp['entertainment']['activity']:
+                    # 图片
+                    images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                    activity_tmp = {
+                        'zhName': node['name'],
+                        'enName': "",
+                        'desc': self.text_pro(node['desc']),
+                        'images': images
+                    }
+                    activity_list.append(activity_tmp)
+        else:
+            data['activityIntro'] = ''
+        data['activities'] = activity_list
 
-            item = BaiduSceneProItem()
-            item['data'] = data
-            item['col_name'] = 'BaiduScene'
-            yield item
+        # 小贴士
+        tips_list = list()
+        if 'attention' in tmp:
+            if 'list' in tmp['attention']:
+                for node in tmp['attention']['list']:
+                    # 图片
+                    images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                    tips_tmp = {
+                        'title': node['name'],
+                        'desc': self.text_pro(node['desc']),
+                        'images': images
+                    }
+                    tips_list.append(tips_tmp)
+        data['activities'] = tips_list
+
+        # 地理文化
+        geo_list = list()
+        if 'geography_history' in tmp:
+            if 'list' in tmp['geography_history']:
+                for node in tmp['geography_history']['list']:
+                    geo_tmp = {
+                        'title': node['name'],
+                        'desc': self.text_pro(node['desc']),
+                    }
+                    geo_list.append(geo_tmp)
+        # 杂项信息
+        data['miscInfo'] = geo_list
+
+        item = BaiduSceneProItem()
+        item['data'] = data
+        item['col_name'] = 'BaiduScene'
+
+        return item
 
 
 class BaiduSceneProPipeline(object):
     spiders = [BaiduScenePro.name]
+    spiders_uuid = [BaiduScenePro.uuid]
 
     def process_item(self, item, spider):
         if type(item).__name__ != BaiduSceneItem.__name__:
