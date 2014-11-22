@@ -4,9 +4,7 @@ import os
 import re
 from math import radians, cos, sin, asin, sqrt
 
-import pymongo.errors
-import pymongo
-import time
+from lxml.html import HtmlElement
 
 import conf
 
@@ -31,23 +29,13 @@ def get_mongodb(db_name, col_name, profile=None, host='localhost', port=27017, u
         user = section.get('user', None)
         passwd = section.get('passwd', None)
 
-    col = None
-    retry = 0
-    while True:
-        retry += 1
-        try:
-            mongo_conn = pymongo.Connection(host, port)
-            db = getattr(mongo_conn, db_name)
-            if user and passwd:
-                db.authenticate(name=user, password=passwd)
-            col = getattr(db, col_name)
-            break
-        except pymongo.errors.PyMongoError as e:
-            if retry >= 5:
-                raise e
-            else:
-                time.sleep(2)
-    return col
+    from pymongo import MongoClient
+
+    mongo_conn = MongoClient(host, port)
+    db = mongo_conn[db_name]
+    if user and passwd:
+        db.authenticate(name=user, password=passwd)
+    return db[col_name]
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -126,3 +114,47 @@ def cfg_options(section):
     path = os.path.realpath(os.path.join(d, 'conf/private.cfg'))
     config.read(path)
     return config.options(section)
+
+
+def parse_etree(node, rules):
+    """
+    对HTML节点进行处理
+    :param node: HTML节点。可以是HtmlElement，也可以是字符串
+    :param rules: 处理HTML节点的流水线函数。返回(flag, new_node)。
+                其中，如果flag为True，则立即返回new_node，不再进行后续的流水线动作。
+    :return:
+    """
+    import lxml.html.soupparser as soupparser
+
+    if isinstance(node, HtmlElement):
+        dom = node
+    else:
+        dom = soupparser.fromstring(node)
+
+    def func(node):
+        # 去掉可能的最外层html节点
+        if node.tag == 'html':
+            return func(node[0]) if len(node) == 1 else None
+
+        if node.text:
+            node.text = node.text.strip()
+        if node.tail:
+            node.tail = node.tail.strip()
+
+        for r in rules:
+            should_return, new_node = r(node)
+            if should_return:
+                return new_node
+            else:
+                node = new_node
+
+        for child in node:
+            proc_child = func(child)
+            if proc_child is None:
+                child.getparent().remove(child)
+            elif child != proc_child:
+                child.getparent().replace(child, proc_child)
+
+        return node
+
+    return func(dom)
