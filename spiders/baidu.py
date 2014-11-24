@@ -885,7 +885,7 @@ class BaiduScenePro(AizouCrawlSpider):
         if urls:
             tmp_list = [('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls]
             for tmp in tmp_list:
-                urls_list.append({'url': tmp, 'title': ''})
+                urls_list.append({'url': tmp})
         return urls_list
 
     # 文本格式的处理
@@ -1108,7 +1108,9 @@ class BaiduScenePro(AizouCrawlSpider):
                     }
                     geo_list.append(geo_tmp)
         # 杂项信息
-        data['miscInfo'] = geo_list
+        miscInfo = list()
+        miscInfo.append(geo_list)
+        data['miscInfo'] = miscInfo
 
         item = BaiduSceneProItem()
         item['data'] = data
