@@ -8,12 +8,12 @@ import imp
 import datetime
 import scrapy
 from scrapy import signals
-from scrapy.contrib.spiders import CrawlSpider
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
 import conf
+from spiders import AizouPipeline, AizouCrawlSpider
 
 
 __author__ = 'zephyre'
@@ -80,13 +80,14 @@ def parse_args(args):
     return {'cmd': cmd, 'param': param_dict}
 
 
-def setup_spider(spider_name, param={}):
+def setup_spider(spider_name, param):
     import conf
 
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
 
     settings = crawler.settings
+    settings.set('USER_PARAM', param)
 
     if 'proxy' in param:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
@@ -97,18 +98,20 @@ def setup_spider(spider_name, param={}):
     settings.set('AUTOTHROTTLE_ENABLED', 'fast' not in param)
 
     if spider_name in conf.global_conf['spiders']:
-        spider = conf.global_conf['spiders'][spider_name]()
+        spider_class = conf.global_conf['spiders'][spider_name]
+        spider = spider_class.from_crawler(crawler)
+        spider_uuid = spider.uuid
 
         # DRY_RUN: 只抓取，不调用Pipeline
         if 'dry' not in param:
             # 查找对应的pipeline
             settings.set('ITEM_PIPELINES', {tmp[0]: 100 for tmp in
-                                            filter(lambda p: spider_name in p[1], conf.global_conf['pipelines'])})
+                                            filter(lambda p: spider_uuid in p[1], conf.global_conf['pipelines'])})
 
         crawler.configure()
         crawler.crawl(spider)
         crawler.start()
-        setattr(spider, 'param', param)
+        # setattr(spider, 'param', param)
         return spider
     else:
         return None
@@ -151,14 +154,13 @@ def reg_spiders(spider_dir=None):
                 for attr_name in dir(mod):
                     try:
                         c = getattr(mod, attr_name)
-                        if issubclass(c, CrawlSpider) and c != CrawlSpider:
+                        if issubclass(c, AizouCrawlSpider) and c != AizouCrawlSpider:
                             name = getattr(c, 'name')
                             if name:
                                 conf.global_conf['spiders'][name] = c
-                        elif hasattr(c, 'process_item'):
+                        elif issubclass(c, AizouPipeline) and c != AizouPipeline:
                             conf.global_conf['pipelines'].append(
-                                [package_path + '.' + c.__module__ + '.' + c.__name__, getattr(c, 'spiders', [])])
-
+                                [package_path + '.' + c.__module__ + '.' + c.__name__, getattr(c, 'spiders_uuid', [])])
                     except TypeError:
                         pass
             except ImportError:

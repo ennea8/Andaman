@@ -7,19 +7,20 @@ import copy
 import hashlib
 import urllib2
 import socket
+import time
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
-
-import time
-import conf
-import utils
 import datetime
 import pysolr
-from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem,BaiduNoteKeywordItem
+
+import conf
+from spiders import AizouCrawlSpider
+import utils
+from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
 
 
@@ -131,11 +132,11 @@ class BaiduNoteSpider(CrawlSpider):
             # comments = note['comments']
             # author = note['authorName']
             #
-            #     sel = Selector(response)
+            # sel = Selector(response)
             #
-            #     node_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]')
-            #     for node in node_list:
-            #         ret = node.xpath('./div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
+            # node_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]')
+            # for node in node_list:
+            # ret = node.xpath('./div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
             #         if not ret:
             #             continue
             #         c_node = ret[0]
@@ -551,7 +552,7 @@ class BaiduNoteProcSpider(CrawlSpider):
                 # content=content.replace('%','i')
                 content = content.replace('<div', '<img><div')
                 zz = re.compile(
-                    ur"<(?!img)[\s\S][^>]*>")  #|(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
+                    ur"<(?!img)[\s\S][^>]*>")  # |(http://baike.baidu.com/view/)[0-9]*\.(html|htm)|(http://lvyou.baidu.com/notes/)[0-9a-z]*")
                 content = zz.sub('', content)
                 content_v = re.split('[<>]', content)
                 content_list.extend(content_v)
@@ -635,10 +636,10 @@ class BaiduNoteProcSpider(CrawlSpider):
                     item['days'] = None
 
             if 'departure' in entry:  # 出发地
-                item['fromLoc'] = entry['departure']  #_from string
+                item['fromLoc'] = entry['departure']  # _from string
 
             if 'destinations' in entry:  # 目的地
-                item['toLoc'] = entry['destinations']  #_to string
+                item['toLoc'] = entry['destinations']  # _to string
 
             if 'content' in entry:
                 item['summary'] = entry['content']
@@ -699,6 +700,7 @@ class BaiduNoteProcPipeline(object):
 
         return item
 
+
 class BaiduNoteKeywordSpider(CrawlSpider):
     """
     对百度游记数据提取景点
@@ -715,7 +717,7 @@ class BaiduNoteKeywordSpider(CrawlSpider):
         item = BaiduNoteKeywordItem()
         col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
         part = col.find()
-        i=1
+        i = 1
         for entry in part:
             print i
             keyword = []
@@ -725,8 +727,8 @@ class BaiduNoteKeywordSpider(CrawlSpider):
             if not content_m:
                 continue
             for i in range(len(content_m)):
-                keyword_raw=re.compile(r'>[\s\S][^>]*</a>')
-                contents=keyword_raw.findall(content_m[i])
+                keyword_raw = re.compile(r'>[\s\S][^>]*</a>')
+                contents = keyword_raw.findall(content_m[i])
                 for content in contents:
                     content_v.append(content[1:-4])
                 keyword.extend(content_v)
@@ -738,20 +740,117 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 
             yield item
 
-class BaiduNoteProcPipeline(object):
-    """
-    存到数据库
-    """
-    spiders = [BaiduNoteKeywordSpider.name]
+
+# class BaiduNoteProcPipeline(object):
+# """
+# 存到数据库
+# """
+# spiders = [BaiduNoteKeywordSpider.name]
+#
+#     def process_item(self, item, spider):
+#         if type(item).__name__ != BaiduNoteKeywordItem.__name__:
+#             return item
+#
+#         col = utils.get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
+#         view = {}
+#         view['title'] = item['title']
+#         view['keyword'] = item['keyword']
+#         view['url'] = item['url']
+#         col.save(view)
+#         return item
+
+
+class BaiduSceneItem(Item):
+    def __init__(self, *a, **kw):
+        super(BaiduSceneItem, self).__init__(*a, **kw)
+        self['data'] = {}
+
+    data = Field()
+
+
+class BaiduSceneSpider(AizouCrawlSpider):
+    name = 'baidu-scene'
+
+    def __init__(self, *a, **kw):
+        super(BaiduSceneSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        start_url = 'http://lvyou.baidu.com/scene/'
+        yield Request(url=start_url, callback=self.parse_url)
+
+    def parse_url(self, response):
+        sel = Selector(response)
+        sdata = sel.xpath('//ul[@id="J-head-menu"]/li/textarea/text()').extract()
+        spot_data = (json.loads(tmp) for tmp in sdata)
+        node_list = list()
+        url_list = list()
+        for node in spot_data:
+            node_list.extend(tmp['sub'] for tmp in node)
+        for tmp in node_list:
+            url_list.extend([node['surl'] for node in tmp])
+        for url in url_list[:1]:
+            yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % url,
+                          meta={'surl': url, 'page_idx': 1, 'item': BaiduSceneItem()}, callback=self.parse)
+
+    # 解析每一次请求的数据
+    def parse(self, response):
+        page_idx = response.meta['page_idx']
+        curr_surl = response.meta['surl']
+        item = response.meta['item']
+
+        # 解析body
+        json_data = json.loads(response.body)['data']
+
+        # 抽取字段景点列表
+        scene_list = [tmp['surl'] for tmp in json_data['scene_list']]
+        next_surls = scene_list
+
+        # 是否为第一页
+        if page_idx == 1:
+            # 整合url进行投递
+            for key in ['relate_scene_list', 'around_scene_list', 'scene_path']:
+                if key in json_data:
+                    next_surls.extend([tmp['surl'] for tmp in json_data[key]])
+
+            json_data.pop('scene_list')
+            item['data'] = json_data
+
+        item_data = item['data']
+
+        for surl in next_surls:
+            yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % surl,
+                          meta={'surl': surl, 'page_idx': 1, 'item': BaiduSceneItem()}, callback=self.parse)
+
+        if 'scene_list' not in item_data:
+            item_data['scene_list'] = []
+        item_data['scene_list'].extend(scene_list)
+
+        # 判断到达最后一页
+        if not scene_list:
+            yield item
+        else:
+            page_idx += 1
+            yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=%d' % (
+                curr_surl, page_idx), callback=self.parse, meta={'item': item, 'surl': curr_surl, 'page_idx': page_idx})
+
+
+class BaiduScenePipeline(object):
+    spiders = [BaiduSceneSpider.name]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != BaiduNoteKeywordItem.__name__:
+        if type(item).__name__ != BaiduSceneItem.__name__:
             return item
 
-        col = utils.get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
-        view = {}
-        view['title'] = item['title']
-        view['keyword'] = item['keyword']
-        view['url'] = item['url']
-        col.save(view)
+        data = item['data']
+        if not data:
+            return item
+
+        col = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        ret = col.find_one({'surl': data['surl']})
+        if not ret:
+            ret = {}
+        for key in data:
+            ret[key] = data[key]
+        col.save(ret)
+
         return item
