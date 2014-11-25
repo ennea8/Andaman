@@ -630,6 +630,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['enName'] = tmp['enName']
             data['zhName'] = tmp['zhName']
             data['alias'] = tmp['alias']
+            # data['abroad'] = tmp['abroad']
 
             desc = None
             address = None
@@ -818,7 +819,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             item = MafengwoProcItem()
             item['data'] = data
-            item['col_name'] = 'Destination'
+            item['col_name'] = 'Locality'
             item['db_name'] = 'geo'
 
             # 尝试通过geocode获得目的地别名及其它信息
@@ -862,7 +863,7 @@ class MafengwoProcPipeline(AizouPipeline):
             return item
 
         col_name = item['col_name']
-        if col_name == 'Destination' or col_name == 'Locality':
+        if col_name == 'Locality':
             return self.process_mdd(item, spider)
         elif col_name == 'ViewSpot':
             return self.process_vs(item, spider)
@@ -885,7 +886,7 @@ class MafengwoProcPipeline(AizouPipeline):
         db_name = item['db_name']
 
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
-        col_mdd = self.fetch_db_col('geo', 'Destination', 'mongodb-general')
+        col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
@@ -968,7 +969,7 @@ class MafengwoProcPipeline(AizouPipeline):
         db_name = item['db_name']
 
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
-        col_mdd = self.fetch_db_col('geo', 'Destination', 'mongodb-general')
+        col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
 
         entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
         if not entry:
