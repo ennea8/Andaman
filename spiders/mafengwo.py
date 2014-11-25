@@ -994,6 +994,8 @@ class MafengwoProcPipeline(AizouPipeline):
                 for key in ['zhName', 'enName']:
                     if key in ret:
                         city[key] = ret[key]
+                break
+
         if city:
             entry['city'] = city
 
