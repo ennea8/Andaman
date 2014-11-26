@@ -4,10 +4,9 @@ import re
 
 import datetime
 from scrapy import Item, Field, Request, Selector
-from scrapy.contrib.spiders import CrawlSpider
 
 from middlewares import ProxySwitchMiddleware
-from utils import get_mongodb
+from spiders import AizouCrawlSpider, AizouPipeline
 
 
 __author__ = 'zephyre'
@@ -35,7 +34,7 @@ class ProxyItem(Item):
     verified = Field()
 
 
-class BaseProxySpider(CrawlSpider):
+class BaseProxySpider(AizouCrawlSpider):
     def __init__(self, *a, **kw):
         super(BaseProxySpider, self).__init__(*a, **kw)
 
@@ -112,20 +111,16 @@ class BaseProxySpider(CrawlSpider):
 
 
 class YoudailiProxySpider(BaseProxySpider):
-    name = 'youdaili_proxy'
-
-    def __init__(self, *a, **kw):
-        super(YoudailiProxySpider, self).__init__(*a, **kw)
+    name = 'youdaili-proxy'
+    uuid = '8201b0c5-cbcc-4426-9b05-d24e79619809'
 
     def start_requests(self):
         verifier = []
-        if 'param' in dir(self):
-            param = getattr(self, 'param', {})
-            if 'verify' in param:
-                if 'baidu' in param['verify']:
-                    verifier.append('baidu')
-                if 'googleapis' in param['verify']:
-                    verifier.append('googleapis')
+        if 'verify' in self.param:
+            if 'baidu' in self.param['verify']:
+                verifier.append('baidu')
+            if 'googleapis' in self.param['verify']:
+                verifier.append('googleapis')
 
         if not verifier:
             return
@@ -203,20 +198,17 @@ class YoudailiProxySpider(BaseProxySpider):
 
 
 class DBProxySpider(BaseProxySpider):
-    name = 'db_proxy'
-
-    def __init__(self, *a, **kw):
-        super(DBProxySpider, self).__init__(*a, **kw)
+    name = 'db-proxy'
+    uuid = '039300bb-d4a7-4dfd-9437-03fa5b281627'
 
     def start_requests(self):
         verifier = []
-        if 'param' in dir(self):
-            param = getattr(self, 'param', {})
-            if 'verify' in param:
-                if 'baidu' in param['verify']:
-                    verifier.append('baidu')
-                if 'googleapis' in param['verify']:
-                    verifier.append('googleapis')
+
+        if 'verify' in self.param:
+            if 'baidu' in self.param['verify']:
+                verifier.append('baidu')
+            if 'googleapis' in self.param['verify']:
+                verifier.append('googleapis')
 
         if not verifier:
             return
@@ -230,7 +222,7 @@ class DBProxySpider(BaseProxySpider):
             query = tmp[0]
         else:
             query = {'$or': tmp}
-        for entry in get_mongodb('misc', 'Proxy', profile='mongodb-general').find(query):
+        for entry in self.fetch_db_col('misc', 'Proxy', 'mongodb-general').find(query):
             item = ProxyItem()
             item['host'] = entry['host']
             item['port'] = entry['port']
@@ -249,23 +241,20 @@ class DBProxySpider(BaseProxySpider):
 
 
 class FreeListProxySpider(BaseProxySpider):
-    name = 'freelist_proxy'
-
-    def __init__(self, *a, **kw):
-        super(FreeListProxySpider, self).__init__(*a, **kw)
+    name = 'freelist-proxy'
+    uuid = '61ebc6ae-565c-4f72-ac79-b2b5106ad9ef'
 
     def start_requests(self):
         verifier = []
         path = None
-        if 'param' in dir(self):
-            param = getattr(self, 'param', {})
-            if 'verify' in param:
-                if 'baidu' in param['verify']:
-                    verifier.append('baidu')
-                if 'googleapis' in param['verify']:
-                    verifier.append('googleapis')
-            if 'path' in param and param['path']:
-                path = param['path'][0]
+
+        if 'verify' in self.param:
+            if 'baidu' in self.param['verify']:
+                verifier.append('baidu')
+            if 'googleapis' in self.param['verify']:
+                verifier.append('googleapis')
+        if 'path' in self.param and self.param['path']:
+            path = self.param['path'][0]
 
         if not verifier:
             return
@@ -312,12 +301,17 @@ class FreeListProxySpider(BaseProxySpider):
             yield self.next_req(meta)
 
 
-class ProxyPipeline(object):
+class ProxyPipeline(AizouPipeline):
     # 向pipline注册
     spiders = [YoudailiProxySpider.name, DBProxySpider.name, FreeListProxySpider.name]
 
+    spiders_uuid = [YoudailiProxySpider.uuid, DBProxySpider.uuid, FreeListProxySpider.uuid]
+
     def process_item(self, item, spider):
-        col = get_mongodb('misc', 'Proxy', profile='mongodb-general')
+        if not self.is_handler(item, spider):
+            return item
+
+        col = self.fetch_db_col('misc', 'Proxy', 'mongodb-general')
         data = col.find_one({'host': item['host'], 'port': item['port']})
         if not data:
             data = {}
