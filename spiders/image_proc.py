@@ -49,7 +49,6 @@ class AlbumProcSpider(AizouCrawlSpider):
     def parse(self, response):
         for db_name, col_name in [tmp.split(':') for tmp in self.param['col']]:
             col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
-            cnt = 0
             for entry in col.find({}, {'images': 1}):
                 oid = entry['_id']
                 for image in entry['images']:
@@ -358,13 +357,13 @@ class ImageProcPipeline(AizouPipeline):
         super(ImageProcPipeline, self).__init__(param)
 
     def process_item(self, item, spider):
-
         db = item['db']
         col_name = item['col']
         list1_name = item['list1_name']
         list2_name = item['list2_name']
         list1 = item['list1']
         list2 = item['list2']
+        list2_set = set([tmp['url'] for tmp in list2])
         doc_id = item['doc_id']
 
         # list1中有一些项目，如果已经在list2中存在，则可以删除了
@@ -373,12 +372,44 @@ class ImageProcPipeline(AizouPipeline):
             url = list1_entry['url']
             url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
                 else 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
-            if url2 not in [tmp['url'] for tmp in list2]:
+            if url2 not in list2_set:
                 new_list1.append(list1_entry)
 
-        col = self.fetch_db_col(db, col_name, 'mongodb-general')
+        # 确保key字段
+        for l in [new_list1, list2]:
+            for entry in l:
+                if 'key' not in entry:
+                    entry['key'] = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', entry['url']).group(1)
 
-        ops = {'$set': {list2_name: list2}}
+        # 排序（按照favor_cnt和fSize排序）
+        def img_cmp(x, y):
+            fx = x['favor_cnt'] if 'favor_cnt' in x else 0
+            fy = y['favor_cnt'] if 'favor_cnt' in y else 0
+            if fx != fy:
+                return cmp(fx, fy)
+            else:
+                fsx = x['fSize'] if 'fSize' in x else 0
+                fsy = y['fSize'] if 'fSize' in y else 0
+                return cmp(fsx, fsy)
+
+        list2 = sorted(list2, cmp=img_cmp, reverse=True)
+
+        # Album存储操作
+        col_album = self.fetch_db_col('imagestore', 'Album', 'mongodb-general')
+        for image in list2:
+            key = image['key']
+            entry = col_album.find_one({'image.key': key})
+            if entry:
+                id_set = set(entry['itemIds'])
+                id_set.add(doc_id)
+                entry['itemIds'] = list(id_set)
+            else:
+                entry = {'image': image, 'itemIds': [doc_id]}
+
+            col_album.save(entry)
+
+        col = self.fetch_db_col(db, col_name, 'mongodb-general')
+        ops = {'$set': {list2_name: list2[:10]}}
         if new_list1:
             ops['$set'][list1_name] = new_list1
         else:
