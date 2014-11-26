@@ -29,6 +29,7 @@ class ImageProcItem(Item):
     doc_id = Field()
     stat = Field()
     image_info = Field()
+    is_done = Field()
 
 
 class AlbumProcItem(Item):
@@ -134,7 +135,7 @@ class ImageProcSpider(AizouCrawlSpider):
         col = self.fetch_db_col(db, col_name, profile)
         col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
 
-        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
+        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1, 'isDone': 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
 
@@ -154,6 +155,7 @@ class ImageProcSpider(AizouCrawlSpider):
             item['list1_name'] = list1_name
             item['list2'] = list2
             item['list2_name'] = list2_name
+            item['is_done'] = entry['isDone'] if 'isDone' in entry else False
 
             upload_list = []
             url_set = set([tmp['url'] for tmp in list2])
@@ -365,6 +367,7 @@ class ImageProcPipeline(AizouPipeline):
         list2 = item['list2']
         list2_set = set([tmp['url'] for tmp in list2])
         doc_id = item['doc_id']
+        is_done = item['is_done']
 
         # list1中有一些项目，如果已经在list2中存在，则可以删除了
         new_list1 = []
@@ -401,15 +404,25 @@ class ImageProcPipeline(AizouPipeline):
             entry = col_album.find_one({'image.key': key})
             if entry:
                 id_set = set(entry['itemIds'])
-                id_set.add(doc_id)
-                entry['itemIds'] = list(id_set)
+                if doc_id not in id_set:
+                    id_set.add(doc_id)
+                    entry['itemIds'] = list(id_set)
+                    update_flag = True
+                else:
+                    update_flag = False
             else:
                 entry = {'image': image, 'itemIds': [doc_id]}
+                update_flag = True
 
-            col_album.save(entry)
+            if update_flag:
+                col_album.save(entry)
 
         col = self.fetch_db_col(db, col_name, 'mongodb-general')
-        ops = {'$set': {list2_name: list2[:10]}}
+        # 如果已经尚未经历人工操作，则设置默认的images列表
+        if is_done:
+            ops = {}
+        else:
+            ops = {'$set': {list2_name: list2[:10]}}
         if new_list1:
             ops['$set'][list1_name] = new_list1
         else:
