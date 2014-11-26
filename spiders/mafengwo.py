@@ -73,8 +73,8 @@ class MafengwoSpider(AizouCrawlSpider):
     # sel = Selector(response)
     # self_id = response.meta['id']
     # ctype = response.meta['type']
-    #     for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
-    #         url = self.build_href(response.url, node.xpath('./@href').extract()[0])
+    # for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
+    # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     #         mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
     #         if mdd_id != self_id:
     #             url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
@@ -376,8 +376,10 @@ class MafengwoSpider(AizouCrawlSpider):
         item = response.meta['item']
         data = item['data']
 
-        title = sel.xpath('//div[contains(@class,"m-details")]/div[contains(@class,"title")]//h1/text()').extract()[
-            0].strip()
+        tmp = sel.xpath('//div[contains(@class,"m-details")]/div[contains(@class,"title")]//h1/text()').extract()
+        if not tmp:
+            tmp = sel.xpath('//div[contains(@class,"m-intro")]/dl[contains(@class,"intro-title")]//h1/text()').extract()
+        title = tmp[0].strip()
 
         # pid = int(re.search('mafengwo\.cn/poi/(\d+)\.html', response.url).group(1))
         #
