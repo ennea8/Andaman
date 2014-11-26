@@ -31,6 +31,61 @@ class ImageProcItem(Item):
     image_info = Field()
 
 
+class AlbumProcItem(Item):
+    data = Field()
+
+
+class AlbumProcSpider(AizouCrawlSpider):
+    """
+    将images里面的内容，转换成album
+    调用参数：--col geo:Locality
+    """
+    name = 'album-proc'
+    uuid = '858c163d-8ea0-4a1e-b425-283f7b7f79a5'
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com')
+
+    def parse(self, response):
+        for db_name, col_name in [tmp.split(':') for tmp in self.param['col']]:
+            col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+            cnt = 0
+            for entry in col.find({}, {'images': 1}):
+                oid = entry['_id']
+                for image in entry['images']:
+                    item = AlbumProcItem()
+                    data = {'item_id': oid, 'image': image}
+                    item['data'] = data
+                    yield item
+
+
+class AlbumProcPipeline(AizouPipeline):
+    spiders = [AlbumProcSpider.name]
+    spiders_uuid = [AlbumProcSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return
+
+        col = self.fetch_db_col('imagestore', 'Album', 'mongodb-general')
+        image = item['data']['image']
+        oid = item['data']['item_id']
+
+        if 'key' not in image:
+            match = re.search(r'qiniudn.com/(.+)$', image['url'])
+            image['key'] = match.group(1)
+
+        entry = col.find_one({'image.key': image['key']})
+        if entry:
+            id_set = set(entry['itemIds'])
+            id_set.add(oid)
+            entry['itemIds'] = list(id_set)
+        else:
+            entry = {'image': image, 'itemIds': [oid]}
+
+        col.save(entry)
+
+
 class ImageProcSpider(AizouCrawlSpider):
     """
     将imageList中的内容，上传到七牛，然后更新images列表
