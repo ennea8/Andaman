@@ -76,8 +76,8 @@ class MafengwoSpider(AizouCrawlSpider):
     # for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
     # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    #         if mdd_id != self_id:
-    #             url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
+    # if mdd_id != self_id:
+    # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
     #             yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
 
     # def parse(self, response):
@@ -108,6 +108,8 @@ class MafengwoSpider(AizouCrawlSpider):
         level = response.meta['level'] if 'level' in response.meta else None
         crumb = response.meta['crumb']
         itype = response.meta['iType']
+
+        self.log('Parsing: %s' % response.url, log.INFO)
 
         if ret['mode'] == 1:
             # 进一步抓取目的地
@@ -436,6 +438,7 @@ class MafengwoSpider(AizouCrawlSpider):
         # 最多去50张照片左右
         if not node_list or len(images) > 200:
             # 已经到尽头
+            self.log('Yielding item: title=%s, type=%s, id=%d' % (data['title'], data['type'], data['id']), log.INFO)
             yield item
         else:
             for node in node_list:
