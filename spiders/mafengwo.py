@@ -75,7 +75,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # ctype = response.meta['type']
     # for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
     # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    #         mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
+    # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
     #         if mdd_id != self_id:
     #             url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
     #             yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
@@ -391,8 +391,15 @@ class MafengwoSpider(AizouCrawlSpider):
         #     sel.xpath('//div[@class="txt-l"]/div[@class="score"]/span[@class="score-info"]/em/text()').extract()[0]) / 5
         # comment_cnt = int(
         #     sel.xpath('//div[@class="txt-l"]/div[@class="score"]/p[@class="ranking"]/em/text()').extract()[0])
-        tmp = sel.xpath('//div[@class="pic-r"]/a[@href]/span[@class="pic-num"]/text()').extract()[0]
-        photo_cnt = int(re.search(ur'共(\d+)张', tmp).group(1))
+
+        photo_cnt = 0
+        tmp = sel.xpath('//div[@class="pic-r"]/a[@href]/span[@class="pic-num"]/text()').extract()
+        if tmp:
+            photo_cnt = int(re.search(ur'共(\d+)张', tmp[0]).group(1))
+        else:
+            tmp = sel.xpath('//div[@id="main_pic"]/span/strong[@title]/text()').extract()
+            if tmp:
+                photo_cnt = int(tmp[0])
 
         desc = []
         desc_entry = {}
