@@ -40,17 +40,17 @@ class MafengwoSpider(AizouCrawlSpider):
     def start_requests(self):
         # 大洲的过滤
         if 'cont' in self.param:
-            cont_filter = [int(tmp) for tmp in self.param['cont']]
+            self.cont_filter = [int(tmp) for tmp in self.param['cont']]
         else:
-            cont_filter = None
+            self.cont_filter = None
 
-        if 'region' in self.param:
-            region_list = [int(tmp) for tmp in self.param['region']]
+        if 'country' in self.param:
+            self.country_filter = [int(tmp) for tmp in self.param['country']]
         else:
-            region_list = None
+            self.country_filter = None
 
         for cont_id in self.cont_list:
-            if cont_filter and cont_id not in cont_filter:
+            if self.cont_filter and cont_id not in self.cont_filter:
                 continue
 
             url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % cont_id
@@ -59,9 +59,9 @@ class MafengwoSpider(AizouCrawlSpider):
         # 处理中国数据
         asia_id = 52314
         chn_id = 21536
-        if cont_filter and asia_id not in cont_filter:
+        if self.cont_filter and asia_id not in self.cont_filter:
             return
-        if region_list and chn_id not in region_list:
+        if self.country_filter and chn_id not in self.country_filter:
             return
 
         url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % chn_id
@@ -116,9 +116,8 @@ class MafengwoSpider(AizouCrawlSpider):
             for entry in ret['list']:
                 oid = entry['id']
 
-                if level == 'cont' and 'region' in self.param:
-                    region_list = [int(tmp) for tmp in self.param['region']]
-                    if oid not in region_list:
+                if level == 'cont' and self.country_filter:
+                    if oid not in self.country_filter:
                         continue
 
                 item = MafengwoItem()
