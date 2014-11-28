@@ -78,7 +78,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
     # if mdd_id != self_id:
     # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    #             yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
+    # yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
 
     # def parse(self, response):
     # # 地区的过滤
@@ -92,7 +92,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # for node in Selector(response).xpath('//dd[@id="region_list"]/a[@href]'):
     # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    #         if region_list and mdd_id not in region_list:
+    # if region_list and mdd_id not in region_list:
     #             continue
     #
     #         # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
@@ -799,7 +799,10 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             crumb_ids = []
             for crumb_entry in entry['crumb']:
-                cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
+                if isinstance(crumb_entry, int):
+                    cid = crumb_entry
+                else:
+                    cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
                 if cid not in crumb_ids:
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
@@ -821,7 +824,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        for entry in col_raw_mdd.find({'type': 'region'}):
+        for entry in col_raw_mdd.find({'type': 'region'}).limit(10):
             data = {}
 
             tmp = self.parse_name(entry['title'])
@@ -926,7 +929,10 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             crumb_ids = []
             for crumb_entry in entry['crumb']:
-                cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
+                if isinstance(crumb_entry, int):
+                    cid = crumb_entry
+                else:
+                    cid = int(re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_entry['url']).group(1))
                 if cid not in crumb_ids:
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
@@ -943,25 +949,27 @@ class MafengwoProcSpider(AizouCrawlSpider):
             item['col_name'] = 'Locality'
             item['db_name'] = 'geo'
 
-            # 尝试通过geocode获得目的地别名及其它信息
-            addr = u''
-            for idx in xrange(len(entry['crumb']) - 1, -1, -1):
-                addr += u'%s,' % (entry['crumb'][idx]['name'])
-            idx = addr.rfind(',')
-            addr = addr[:idx] if idx > 0 else addr
+            # if 'skip-geocode' not in self.param:
+            #     # 尝试通过geocode获得目的地别名及其它信息
+            #     addr = u''
+            #     for idx in xrange(len(entry['crumb']) - 1, -1, -1):
+            #         addr += u'%s,' % (entry['crumb'][idx]['name'])
+            #     idx = addr.rfind(',')
+            #     addr = addr[:idx] if idx > 0 else addr
+            #
+            #     if addr and 'location' in data:
+            #         lang = ['en-US']
+            #         yield Request(
+            #             url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+            #             headers={'Accept-Language': 'zh-CN'},
+            #             meta={'item': item, 'lang': lang},
+            #             callback=self.parse_geocode)
+            #     else:
+            #         yield item
+            # else:
+            #     yield item
 
-            if 'skip-geocode' not in self.param:
-                if addr and 'location' in data:
-                    lang = ['en-US']
-                    yield Request(
-                        url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
-                        headers={'Accept-Language': 'zh-CN'},
-                        meta={'item': item, 'lang': lang},
-                        callback=self.parse_geocode)
-                else:
-                    yield item
-            else:
-                yield item
+            yield item
 
 
 class MafengwoProcPipeline(AizouPipeline):
@@ -1014,9 +1022,9 @@ class MafengwoProcPipeline(AizouPipeline):
         if not entry:
             entry = {}
 
-        crumb_list = data.pop('crumbIds')
+        crumb_list = filter(lambda val: val!=data['source']['mafengwo']['id'], data.pop('crumbIds'))
         crumb = []
-        super_adm = []
+        country_flag = False
         for cid in crumb_list:
             if cid == 21536:
                 # 中国需要额外处理
@@ -1028,26 +1036,26 @@ class MafengwoProcPipeline(AizouPipeline):
                 continue
 
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
-            if not ret:
+            if not ret and not country_flag:
                 ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
                 if ret:
                     # 添加到country字段
                     data['country'] = {}
                     for key in ret:
                         data['country'][key] = ret[key]
+                    country_flag = True
             if ret:
                 crumb.append(ret)
                 sa_entry = {'id': ret['_id']}
                 for tmp in ['zhName', 'enName']:
                     if tmp in ret:
                         sa_entry[tmp] = ret[tmp]
-                super_adm.append(sa_entry)
+                data['superAdm'] = sa_entry
 
         if 'abroad' not in data:
             data['abroad'] = True
 
         data['locList'] = crumb
-        # data['superAdm'] = super_adm
 
         # 有几个字段具有天然的追加属性：alias, imageList
         # 其它都是覆盖型
