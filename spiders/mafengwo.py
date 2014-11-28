@@ -573,6 +573,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
     def __init__(self, param, *a, **kw):
         super(MafengwoProcSpider, self).__init__(param, *a, **kw)
 
+        self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000.0
+
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
 
@@ -778,6 +781,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     traffic_info = proc_text
                 else:
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
+
+            # 热门程度
+            hotness = 0
+            for k in ['comment_cnt', 'images_tot']:
+                if k in entry:
+                    hotness += entry[k]
+            data['hotness'] = 1 - math.exp(-hotness / self.denom)
+
+            # 评分
+            data['rating'] = entry['rating']
 
             if desc:
                 data['desc'] = desc
