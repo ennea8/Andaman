@@ -397,25 +397,20 @@ class ImageProcPipeline(AizouPipeline):
 
         list2 = sorted(list2, cmp=img_cmp, reverse=True)
 
-        # Album存储操作
-        col_album = self.fetch_db_col('imagestore', 'Album', 'mongodb-general')
+        # 处理itemIds字段
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
         for image in list2:
             key = image['key']
-            entry = col_album.find_one({'image.key': key})
-            if entry:
-                id_set = set(entry['itemIds'])
-                if doc_id not in id_set:
-                    id_set.add(doc_id)
-                    entry['itemIds'] = list(id_set)
-                    update_flag = True
-                else:
-                    update_flag = False
-            else:
-                entry = {'image': image, 'itemIds': [doc_id]}
+            entry = col_im.find_one({'image.key': key})
+            id_set = set(entry['itemIds']) if 'itemIds' in entry else set([])
+            if doc_id not in id_set:
+                id_set.add(doc_id)
                 update_flag = True
+            else:
+                update_flag = False
 
             if update_flag:
-                col_album.save(entry)
+                col_im.update({'_id': entry['_id']}, {'itemIds': list(id_set)})
 
         col = self.fetch_db_col(db, col_name, 'mongodb-general')
         # 如果已经尚未经历人工操作，则设置默认的images列表
