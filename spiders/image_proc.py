@@ -382,7 +382,9 @@ class ImageProcPipeline(AizouPipeline):
         for l in [new_list1, list2]:
             for entry in l:
                 if 'key' not in entry:
-                    entry['key'] = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', entry['url']).group(1)
+                    match = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', entry['url'])
+                    if match:
+                        entry['key'] = match.group(1)
 
         # 排序（按照favor_cnt和fSize排序）
         def img_cmp(x, y):
@@ -401,7 +403,7 @@ class ImageProcPipeline(AizouPipeline):
         col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
         for image in list2:
             key = image['key']
-            entry = col_im.find_one({'image.key': key})
+            entry = col_im.find_one({'key': key})
             id_set = set(entry['itemIds']) if 'itemIds' in entry else set([])
             if doc_id not in id_set:
                 id_set.add(doc_id)
@@ -410,7 +412,7 @@ class ImageProcPipeline(AizouPipeline):
                 update_flag = False
 
             if update_flag:
-                col_im.update({'_id': entry['_id']}, {'itemIds': list(id_set)})
+                col_im.update({'_id': entry['_id']}, {'$set': {'itemIds': list(id_set)}})
 
         col = self.fetch_db_col(db, col_name, 'mongodb-general')
         # 如果已经尚未经历人工操作，则设置默认的images列表
@@ -419,6 +421,8 @@ class ImageProcPipeline(AizouPipeline):
         else:
             ops = {'$set': {list2_name: list2[:10]}}
         if new_list1:
+            if '$set' not in ops:
+                ops['$set'] = {}
             ops['$set'][list1_name] = new_list1
         else:
             spider.log('Unset %s for document: _id=%s' % (list1_name, doc_id))
