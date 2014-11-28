@@ -97,7 +97,7 @@ class MafengwoSpider(AizouCrawlSpider):
     #
     # # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
     # url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
-    #         yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
+    # yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
 
     def parse_mdd_ajax(self, response):
         """
@@ -237,8 +237,8 @@ class MafengwoSpider(AizouCrawlSpider):
             yield item
 
     # def parse_poi_list(self, response):
-    #     """
-    #     解析页面内的poi列表
+    # """
+    # 解析页面内的poi列表
     #     :param response:
     #     :return:
     #     """
@@ -750,7 +750,11 @@ class MafengwoProcSpider(AizouCrawlSpider):
     def parse_poi(self, col_name):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
-        for entry in col_raw.find({}):
+        cursor = col_raw.find({})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        for entry in cursor:
             data = {'enabled': True}
 
             tmp = self.parse_name(entry['title'])
@@ -836,8 +840,19 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             item = MafengwoProcItem()
             item['data'] = data
-            item['col_name'] = 'ViewSpot'
             item['db_name'] = 'poi'
+
+            if col_name == 'MafengwoVs':
+                item['col_name'] = 'ViewSpot'
+            elif col_name == 'MafengwoGw':
+                item['col_name'] = 'Shopping'
+            elif col_name == 'MafengwoHotel':
+                item['col_name'] = 'Hotel'
+            elif col_name == 'MafengwoCy':
+                item['col_name'] = 'Restaurant'
+            else:
+                return
+
             yield item
 
     def parse_mdd(self):
@@ -973,9 +988,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # # 尝试通过geocode获得目的地别名及其它信息
             # addr = u''
             # for idx in xrange(len(entry['crumb']) - 1, -1, -1):
-            #         addr += u'%s,' % (entry['crumb'][idx]['name'])
-            #     idx = addr.rfind(',')
-            #     addr = addr[:idx] if idx > 0 else addr
+            # addr += u'%s,' % (entry['crumb'][idx]['name'])
+            # idx = addr.rfind(',')
+            # addr = addr[:idx] if idx > 0 else addr
             #
             #     if addr and 'location' in data:
             #         lang = ['en-US']
@@ -1014,8 +1029,8 @@ class MafengwoProcPipeline(AizouPipeline):
         col_name = item['col_name']
         if col_name == 'Locality':
             return self.process_mdd(item, spider)
-        elif col_name == 'ViewSpot':
-            return self.process_vs(item, spider)
+        elif col_name in ['ViewSpot', 'Hotel', 'Shopping', 'Restaurant']:
+            return self.process_poi(item, spider)
         elif col_name == 'Country':
             return self.process_country(item, spider)
 
@@ -1112,7 +1127,7 @@ class MafengwoProcPipeline(AizouPipeline):
 
         return item
 
-    def process_vs(self, item, spider):
+    def process_poi(self, item, spider):
         data = item['data']
         col_name = item['col_name']
         db_name = item['db_name']
@@ -1161,7 +1176,6 @@ class MafengwoProcPipeline(AizouPipeline):
         for k in data:
             entry[k] = data[k]
 
-        entry['className'] = 'models.poi.ViewSpot'
         col.save(entry)
 
         return item
