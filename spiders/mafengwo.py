@@ -1101,15 +1101,25 @@ class MafengwoProcPipeline(AizouPipeline):
 
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
         if not entry:
             entry = {}
 
+        country_flag = False
         crumb_list = data.pop('crumbIds')
         crumb = []
         for cid in crumb_list:
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if not ret and not country_flag:
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                if ret:
+                    # 添加到country字段
+                    data['country'] = {}
+                    for key in ret:
+                        data['country'][key] = ret[key]
+                    country_flag = True
             if ret:
                 crumb.append(ret['_id'])
         entry['targets'] = crumb
@@ -1128,7 +1138,7 @@ class MafengwoProcPipeline(AizouPipeline):
                 break
 
         if city:
-            entry['city'] = city
+            entry['locality'] = city
 
         for k in data:
             entry[k] = data[k]
