@@ -93,7 +93,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
     # if region_list and mdd_id not in region_list:
-    #             continue
+    # continue
     #
     #         # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
     #         url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
@@ -679,6 +679,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
         alias = set([])
         for tmp in name_list:
             alias.add(tmp.lower())
+        alias.add(name.lower().strip())
+        result['zhName'] = name
         result['alias'] = list(alias)
         return result
 
@@ -950,7 +952,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             item['db_name'] = 'geo'
 
             # if 'skip-geocode' not in self.param:
-            #     # 尝试通过geocode获得目的地别名及其它信息
+            # # 尝试通过geocode获得目的地别名及其它信息
             #     addr = u''
             #     for idx in xrange(len(entry['crumb']) - 1, -1, -1):
             #         addr += u'%s,' % (entry['crumb'][idx]['name'])
@@ -1022,7 +1024,7 @@ class MafengwoProcPipeline(AizouPipeline):
         if not entry:
             entry = {}
 
-        crumb_list = filter(lambda val: val!=data['source']['mafengwo']['id'], data.pop('crumbIds'))
+        crumb_list = filter(lambda val: val != data['source']['mafengwo']['id'], data.pop('crumbIds'))
         crumb = []
         country_flag = False
         for cid in crumb_list:
