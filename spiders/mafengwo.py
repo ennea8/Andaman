@@ -824,7 +824,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        for entry in col_raw_mdd.find({'type': 'region'}).limit(10):
+        for entry in col_raw_mdd.find({'type': 'region'}):
             data = {}
 
             tmp = self.parse_name(entry['title'])
