@@ -95,8 +95,8 @@ class MafengwoSpider(AizouCrawlSpider):
     # if region_list and mdd_id not in region_list:
     # continue
     #
-    #         # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    #         url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
+    # # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
+    # url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
     #         yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
 
     def parse_mdd_ajax(self, response):
@@ -687,7 +687,12 @@ class MafengwoProcSpider(AizouCrawlSpider):
     def parse(self, response):
         func_map = {'mdd': self.parse_mdd,
                     'country': self.parse_country,
-                    'vs': self.parse_vs}
+                    'vs': lambda: self.parse_poi('MafengwoVs'),
+                    'gw': lambda: self.parse_poi('MafengwoGw'),
+                    'hotel': lambda: self.parse_poi('MafengwoHotel'),
+                    'yl': lambda: self.parse_poi('MafengwoYl'),
+                    'cy': lambda: self.parse_poi('MafengwoCy')
+        }
 
         for k, v in func_map.items():
             if k in self.param:
@@ -739,8 +744,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             yield item
 
-    def parse_vs(self):
-        col_raw = self.fetch_db_col('raw_data', 'MafengwoVs', 'mongodb-crawler')
+    def parse_poi(self, col_name):
+        col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
         for entry in col_raw.find({}):
             data = {'enabled': True}
@@ -953,8 +958,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             # if 'skip-geocode' not in self.param:
             # # 尝试通过geocode获得目的地别名及其它信息
-            #     addr = u''
-            #     for idx in xrange(len(entry['crumb']) - 1, -1, -1):
+            # addr = u''
+            # for idx in xrange(len(entry['crumb']) - 1, -1, -1):
             #         addr += u'%s,' % (entry['crumb'][idx]['name'])
             #     idx = addr.rfind(',')
             #     addr = addr[:idx] if idx > 0 else addr
