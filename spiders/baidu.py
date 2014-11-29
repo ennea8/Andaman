@@ -19,7 +19,7 @@ import datetime
 import pysolr
 
 import conf
-from spiders import AizouCrawlSpider
+from spiders import AizouCrawlSpider, AizouPipeline
 import utils
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
@@ -762,15 +762,12 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 
 
 class BaiduSceneItem(Item):
-    def __init__(self, *a, **kw):
-        super(BaiduSceneItem, self).__init__(*a, **kw)
-        self['data'] = {}
-
     data = Field()
 
 
 class BaiduSceneSpider(AizouCrawlSpider):
     name = 'baidu-scene'
+    uuid = 'a1cf345b-1f4a-403c-aa01-b7ab81b61b3c'
 
     def __init__(self, *a, **kw):
         super(BaiduSceneSpider, self).__init__(*a, **kw)
@@ -835,18 +832,19 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 curr_surl, page_idx), callback=self.parse, meta={'item': item, 'surl': curr_surl, 'page_idx': page_idx})
 
 
-class BaiduScenePipeline(object):
+class BaiduScenePipeline(AizouPipeline):
     spiders = [BaiduSceneSpider.name]
+    spiders_uuid = [BaiduSceneSpider.uuid]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != BaiduSceneItem.__name__:
+        if not self.is_handler(item, spider):
             return item
 
         data = item['data']
         if not data:
             return item
 
-        col = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        col = self.fetch_db_col('raw_data', 'BaiduScene', 'mongodb-crawler')
         ret = col.find_one({'surl': data['surl']})
         if not ret:
             ret = {}
@@ -862,19 +860,19 @@ class BaiduSceneProItem(Item):
     col_name = Field()
 
 
-class BaiduScenePro(AizouCrawlSpider):
+class BaiduSceneProcSpider(AizouCrawlSpider):
     """
     百度目的地数据的整理
     """
 
     name = 'baidu-scene-proc'
-    uuid = '4013C64F-1ECC-7696-D8CC-21BD7010EF77'
+    uuid = '3d66f9ad-4190-4d7e-a392-e11e29e9b670'
 
     def __init__(self, *a, **kw):
-        super(BaiduScenePro, self).__init__(*a, **kw)
+        super(BaiduSceneProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        col_raw_scene = self.fetch_db_col('raw_data', 'BaiduScene', 'mongodb-crawler')
 
         for entry in col_raw_scene.find():
             yield Request(url='http://www.baidu.com', meta={'entry': entry})
@@ -1117,17 +1115,17 @@ class BaiduScenePro(AizouCrawlSpider):
         return item
 
 
-class BaiduSceneProPipeline(object):
-    spiders = [BaiduScenePro.name]
-    spiders_uuid = [BaiduScenePro.uuid]
+class BaiduSceneProPipeline(AizouPipeline):
+    spiders = [BaiduSceneProcSpider.name]
+    spiders_uuid = [BaiduSceneProcSpider.uuid]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != BaiduSceneItem.__name__:
+        if not self.is_handler(item, spider):
             return item
 
         data = item['data']
         col_name = item['col_name']
-        col = utils.get_mongodb('geo', col_name, profile='mongodb-general')
+        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
 
         entry = col.find_one({'geo.%s.id' % col_name: data['id']})
         if not entry:
