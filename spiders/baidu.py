@@ -840,10 +840,34 @@ class BaiduSceneSpider(AizouCrawlSpider):
         item = response.meta['item']
 
         # 解析原网页，判断是poi还是目的地
-        ret = Selector(response).xpath('//div[contains(@class,"scene-navigation")] | //div[@id="J-sceneViewNav"]')
-        item['data']['type'] = 'locality' if ret else 'poi'
+        sel = Selector(response)
+        nav_list = [tmp.strip() for tmp in sel.xpath('//div[@id="J-sceneViewNav"]/a/span/text()').extract()]
+        if not nav_list:
+            nav_list = [tmp.strip() for tmp in sel.xpath(
+                '//div[contains(@class,"scene-navigation")]//div[contains(@class,"nav-item")]/span/text()').extract()]
 
-        return item
+        item['data']['type'] = 'locality' if u'景点' in nav_list else 'poi'
+
+
+        # TODO http://lvyou.baidu.com/destination/ajax/poi/dining?sid=b935706693d2d06f5707d5da&type=&poi=&order=overall_rating&flag=0&nn=0&rn=10&pn=0
+
+        # TODO 住宿：http://lvyou.baidu.com/bali/zhusu，找到var opiList
+
+        # 查找住宿
+        yield item
+
+        if item['data']['type'] == 'locality':
+            yield Request(url='http://lvyou.baidu.com/%s/zhusu' % item['data']['surl'], callback=self.parse_hotel,
+                          meta={'item': item})
+
+    def parse_hotel(self, response):
+        match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
+        if match:
+            hotel_data = json.loads(match.group(1))
+            for hotel_entry in hotel_data:
+                item = BaiduSceneItem()
+                hotel_entry['type'] = 'hotel'
+                item['data'] = hotel_entry
 
 
 class BaiduScenePipeline(AizouPipeline):
@@ -1119,7 +1143,16 @@ class BaiduSceneProcSpider(AizouCrawlSpider):
 
         item = BaiduSceneProItem()
         item['data'] = data
-        item['col_name'] = 'BaiduScene' if entry['type'] == 'locality' else 'BaiduPoi'
+        if entry['type'] == 'locality':
+            col_name = 'BaiduScene'
+        elif entry['type'] == 'poi':
+            col_name = 'BaiduPoi'
+        elif entry['type'] == 'hotel':
+            col_name = 'BaiduHotel'
+        else:
+            return item
+
+        item['col_name'] = col_name
 
         return item
 
