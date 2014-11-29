@@ -27,6 +27,8 @@ class MafengwoSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         super(MafengwoSpider, self).__init__(*a, **kw)
+        self.cont_filter = None
+        self.region_filter = None
         self.cont_list = [
             52314,  # 亚洲
             10853,  # 南极州
@@ -41,32 +43,21 @@ class MafengwoSpider(AizouCrawlSpider):
         # 大洲的过滤
         if 'cont' in self.param:
             self.cont_filter = [int(tmp) for tmp in self.param['cont']]
+
+        if 'region' in self.param:
+            self.region_filter = [int(tmp) for tmp in self.param['region']]
+
+        if self.region_filter:
+            start_entries = [{'rid': tmp, 'level': 'region'} for tmp in self.region_filter]
         else:
-            self.cont_filter = None
+            start_entries = [{'rid': tmp, 'level': 'cont'} for tmp in
+                             (self.cont_filter if self.cont_filter else self.cont_list)]
 
-        if 'country' in self.param:
-            self.country_filter = [int(tmp) for tmp in self.param['country']]
-        else:
-            self.country_filter = None
-
-        for cont_id in self.cont_list:
-            if self.cont_filter and cont_id not in self.cont_filter:
-                continue
-
-            url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % cont_id
-            yield Request(url=url, meta={'crumb': [cont_id], 'level': 'cont', 'iType': 1}, callback=self.parse_mdd_ajax)
-
-        # 处理中国数据
-        asia_id = 52314
-        chn_id = 21536
-        if self.cont_filter and asia_id not in self.cont_filter:
-            return
-        if self.country_filter and chn_id not in self.country_filter:
-            return
-
-        url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % chn_id
-        yield Request(url=url, meta={'crumb': [asia_id, chn_id], 'level': 'region', 'iType': 1},
-                      callback=self.parse_mdd_ajax)
+        for entry in start_entries:
+            rid = entry['rid']
+            level = entry['level']
+            url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % rid
+            yield Request(url=url, meta={'crumb': [rid], 'level': level, 'iType': 1}, callback=self.parse_mdd_ajax)
 
 
     # def get_region_list(self, response):
@@ -116,8 +107,8 @@ class MafengwoSpider(AizouCrawlSpider):
             for entry in ret['list']:
                 oid = entry['id']
 
-                if level == 'cont' and self.country_filter:
-                    if oid not in self.country_filter:
+                if level == 'cont' and self.region_filter:
+                    if oid not in self.region_filter:
                         continue
 
                 item = MafengwoItem()
@@ -239,7 +230,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # def parse_poi_list(self, response):
     # """
     # 解析页面内的poi列表
-    #     :param response:
+    # :param response:
     #     :return:
     #     """
     #     poi_type = response.meta['poi_type']
@@ -992,7 +983,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # idx = addr.rfind(',')
             # addr = addr[:idx] if idx > 0 else addr
             #
-            #     if addr and 'location' in data:
+            # if addr and 'location' in data:
             #         lang = ['en-US']
             #         yield Request(
             #             url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
