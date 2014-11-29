@@ -9,10 +9,9 @@ from bson import ObjectId
 from bson.errors import InvalidId
 import pymongo
 from scrapy import Item, Field, Request, log
-from scrapy.contrib.spiders import CrawlSpider
 
 import conf
-import utils
+from spiders import AizouCrawlSpider, AizouPipeline
 
 
 __author__ = 'zephyre'
@@ -39,11 +38,12 @@ class PlanItem(Item):
     cover = Field()
 
 
-class PlanImportSpider(CrawlSpider):
+class PlanImportSpider(AizouCrawlSpider):
     """
     抓取到路线以后，我们会经过人工审核，放在MySQL数据库中。该爬虫类的作用，是将这些路线导入MongoDB数据库。
     """
     name = 'plan-import'
+    uuid = '1aa057c0-747d-11e4-b116-123b93f75cba'
 
     def __init__(self, *a, **kw):
         super(PlanImportSpider, self).__init__(*a, **kw)
@@ -70,11 +70,12 @@ class PlanImportSpider(CrawlSpider):
                                   charset='utf8')
         cursor = my_conn.cursor()
         param = getattr(self, 'param', {})
-        stmt = 'SELECT * FROM pre_plan WHERE is_delete=0'
+        stmt = u'SELECT * FROM pre_plan WHERE is_delete=0'
         if 'cond' in param:
-            stmt = '%s AND %s' % (stmt, ' AND '.join(param['cond']))
+            stmt = u'%s AND %s' % (stmt, u' AND '.join(param['cond']))
         if 'limit' in param:
-            stmt = '%s LIMIT %s' % (stmt, param['limit'][0])
+            stmt = u'%s LIMIT %s' % (stmt, param['limit'][0])
+        stmt = stmt.encode('utf-8')
 
         cursor.execute(stmt)
 
@@ -178,7 +179,10 @@ class PlanImportSpider(CrawlSpider):
                         else:
                             day_loc = tmp
 
+                if 'location' not in day_loc:
+                    continue
                 location = day_loc['location']
+
                 # 同一个景点同一天不能访问超过一次
                 visited_vs = set([])
                 for vs_idx, vs_name in enumerate(vs_list):
@@ -212,14 +216,17 @@ class PlanImportSpider(CrawlSpider):
                     # 用该景点的坐标代替location
                     location = vs['location']
 
+                    for t in vs['targets'] if 'targets' in vs else []:
+                        if t not in targets:
+                            targets[t] = {'id': t, '_id': t}
+
                     # 获得景点的城市树
-                    city = self.fetch_loc_id(vs['city']['_id'])
-                    if not city:
-                        continue
-                    if city['_id'] not in self.city_tree:
-                        self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
-                    for tmp in self.city_tree[city['_id']].values():
-                        targets[tmp['_id']] = tmp
+                    if 'city' in vs:
+                        city = self.fetch_loc_id(vs['city']['_id'])
+                        if city['_id'] not in self.city_tree:
+                            self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
+                        for tmp in self.city_tree[city['_id']].values():
+                            targets[tmp['_id']] = tmp
 
                     try:
                         lng, lat = vs['location']['coordinates']
@@ -266,15 +273,16 @@ class PlanImportSpider(CrawlSpider):
             yield item
 
     def fetch_loc_id(self, cid):
-        col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
-        return col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
+        col = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+        ret = col.find_one({'_id': cid}, {'zhName': 1, 'enName': 1})
+        return ret
 
     def fetch_loc(self, name, stype=0):
         """
         获得城市
         :param stype: 0: 精确匹配; 1: 前缀匹配; 2: 模糊匹配
         """
-        col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         loc_list = list(
             col.find({'alias': name}, {'zhName': 1, 'enName': 1, 'location': 1}).sort('level', pymongo.ASCENDING).limit(
                 1))
@@ -289,7 +297,7 @@ class PlanImportSpider(CrawlSpider):
         :param location: （可选）制定一个坐标
         :param proximity: （可选）景点和指定坐标的偏差阈值
         """
-        col = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
+        col = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
         if style == 0:
             query = {'alias': name}
         else:
@@ -302,17 +310,19 @@ class PlanImportSpider(CrawlSpider):
                                            '$minDistance': 0,
                                            '$maxDistance': proximity * 1000}}
         vs_list = list(
-            col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1}).limit(1))
+            col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1,
+                             'targets': 1}).limit(1))
         # 取距离city最近的一个
         return vs_list[0] if vs_list else None
 
     def fetch_vs_id(self, vs_id):
-        col = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
+        col = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
         return col.find_one({'_id': vs_id},
-                            {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1})
+                            {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1,
+                             'targets': 1})
 
     def fetch_loc_tree(self, loc_id):
-        col = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         ret = {}
         while True:
             loc = col.find_one({'_id': loc_id}, {'zhName': 1, 'superAdm': 1})
@@ -326,11 +336,19 @@ class PlanImportSpider(CrawlSpider):
         return ret
 
 
-class PlanImportPipeline(object):
+class PlanImportPipeline(AizouPipeline):
     spiders = [PlanImportSpider.name]
 
+    spiders_uuid = [PlanImportSpider.uuid]
+
+    def __init__(self, param):
+        super(PlanImportPipeline, self).__init__(param)
+
     def process_item(self, item, spider):
-        col = utils.get_mongodb('plan', 'Plan', profile='mongodb-general')
+        if not self.is_handler(item, spider):
+            return item
+
+        col = self.fetch_db_col('plan', 'Plan', 'mongodb-general')
         plan = col.find_one({'planId': item['planId']})
         if not plan:
             plan = {}
