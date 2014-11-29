@@ -29,6 +29,61 @@ class ImageProcItem(Item):
     doc_id = Field()
     stat = Field()
     image_info = Field()
+    is_done = Field()
+
+
+class AlbumProcItem(Item):
+    data = Field()
+
+
+class AlbumProcSpider(AizouCrawlSpider):
+    """
+    将images里面的内容，转换成album
+    调用参数：--col geo:Locality
+    """
+    name = 'album-proc'
+    uuid = '858c163d-8ea0-4a1e-b425-283f7b7f79a5'
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com')
+
+    def parse(self, response):
+        for db_name, col_name in [tmp.split(':') for tmp in self.param['col']]:
+            col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+            for entry in col.find({}, {'images': 1}):
+                oid = entry['_id']
+                for image in entry['images']:
+                    item = AlbumProcItem()
+                    data = {'item_id': oid, 'image': image}
+                    item['data'] = data
+                    yield item
+
+
+class AlbumProcPipeline(AizouPipeline):
+    spiders = [AlbumProcSpider.name]
+    spiders_uuid = [AlbumProcSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return
+
+        col = self.fetch_db_col('imagestore', 'Album', 'mongodb-general')
+        image = item['data']['image']
+        oid = item['data']['item_id']
+
+        if 'key' not in image:
+            match = re.search(r'qiniudn.com/(.+)$', image['url'])
+            image['key'] = match.group(1)
+
+        entry = col.find_one({'image.key': image['key']})
+        if entry:
+            id_set = set(entry['itemIds'])
+            id_set.add(oid)
+            entry['itemIds'] = list(id_set)
+        else:
+            entry = {'image': image, 'itemIds': [oid]}
+
+        col.save(entry)
 
 
 class ImageProcSpider(AizouCrawlSpider):
@@ -80,7 +135,7 @@ class ImageProcSpider(AizouCrawlSpider):
         col = self.fetch_db_col(db, col_name, profile)
         col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
 
-        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1}):
+        for entry in col.find({list1_name: {'$ne': None}}, {list1_name: 1, list2_name: 1, 'isDone': 1}):
             # 从哪里取原始url？比如：imageList
             list1 = entry[list1_name] if list1_name in entry else []
 
@@ -100,6 +155,7 @@ class ImageProcSpider(AizouCrawlSpider):
             item['list1_name'] = list1_name
             item['list2'] = list2
             item['list2_name'] = list2_name
+            item['is_done'] = entry['isDone'] if 'isDone' in entry else False
 
             upload_list = []
             url_set = set([tmp['url'] for tmp in list2])
@@ -303,14 +359,15 @@ class ImageProcPipeline(AizouPipeline):
         super(ImageProcPipeline, self).__init__(param)
 
     def process_item(self, item, spider):
-
         db = item['db']
         col_name = item['col']
         list1_name = item['list1_name']
         list2_name = item['list2_name']
         list1 = item['list1']
         list2 = item['list2']
+        list2_set = set([tmp['url'] for tmp in list2])
         doc_id = item['doc_id']
+        is_done = item['is_done']
 
         # list1中有一些项目，如果已经在list2中存在，则可以删除了
         new_list1 = []
@@ -318,13 +375,54 @@ class ImageProcPipeline(AizouPipeline):
             url = list1_entry['url']
             url2 = url if re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url) \
                 else 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' % hashlib.md5(url).hexdigest()
-            if url2 not in [tmp['url'] for tmp in list2]:
+            if url2 not in list2_set:
                 new_list1.append(list1_entry)
 
-        col = self.fetch_db_col(db, col_name, 'mongodb-general')
+        # 确保key字段
+        for l in [new_list1, list2]:
+            for entry in l:
+                if 'key' not in entry:
+                    match = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', entry['url'])
+                    if match:
+                        entry['key'] = match.group(1)
 
-        ops = {'$set': {list2_name: list2}}
+        # 排序（按照favor_cnt和fSize排序）
+        def img_cmp(x, y):
+            fx = x['favor_cnt'] if 'favor_cnt' in x else 0
+            fy = y['favor_cnt'] if 'favor_cnt' in y else 0
+            if fx != fy:
+                return cmp(fx, fy)
+            else:
+                fsx = x['fSize'] if 'fSize' in x else 0
+                fsy = y['fSize'] if 'fSize' in y else 0
+                return cmp(fsx, fsy)
+
+        list2 = sorted(list2, cmp=img_cmp, reverse=True)
+
+        # 处理itemIds字段
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+        for image in list2:
+            key = image['key']
+            entry = col_im.find_one({'key': key})
+            id_set = set(entry['itemIds']) if 'itemIds' in entry else set([])
+            if doc_id not in id_set:
+                id_set.add(doc_id)
+                update_flag = True
+            else:
+                update_flag = False
+
+            if update_flag:
+                col_im.update({'_id': entry['_id']}, {'$set': {'itemIds': list(id_set)}})
+
+        col = self.fetch_db_col(db, col_name, 'mongodb-general')
+        # 如果已经尚未经历人工操作，则设置默认的images列表
+        if is_done:
+            ops = {}
+        else:
+            ops = {'$set': {list2_name: list2[:10]}}
         if new_list1:
+            if '$set' not in ops:
+                ops['$set'] = {}
             ops['$set'][list1_name] = new_list1
         else:
             spider.log('Unset %s for document: _id=%s' % (list1_name, doc_id))
