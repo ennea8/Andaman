@@ -231,8 +231,8 @@ class MafengwoSpider(AizouCrawlSpider):
     # """
     # 解析页面内的poi列表
     # :param response:
-    #     :return:
-    #     """
+    # :return:
+    # """
     #     poi_type = response.meta['poi_type']
     #     for href in Selector(response).xpath(
     #             '//ul[@class="poi-list"]/li[contains(@class,"item")]/div[@class="title"]//a[@href]/@href').extract():
@@ -782,7 +782,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             for k in ['comment_cnt', 'images_tot']:
                 if k in entry:
                     hotness += entry[k]
-            data['hotness'] = 1 - math.exp(-hotness / self.denom)
+            data['hotness'] = 2 / (1 + math.exp(-hotness)) - 1
 
             # 评分
             data['rating'] = entry['rating']
@@ -941,7 +941,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
             if 'vs_cnt' in entry and entry['vs_cnt'] is not None:
-                data['visitCnt'] = entry['vs_cnt']
+                data['hotness'] = 2 / (1 + math.exp(-entry['vs_cnt'])) - 1
+            else:
+                data['hotness'] = 0
 
             image_list = []
             image_urls = set([])
@@ -984,8 +986,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # addr = addr[:idx] if idx > 0 else addr
             #
             # if addr and 'location' in data:
-            #         lang = ['en-US']
-            #         yield Request(
+            # lang = ['en-US']
+            # yield Request(
             #             url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
             #             headers={'Accept-Language': 'zh-CN'},
             #             meta={'item': item, 'lang': lang},
@@ -1108,11 +1110,11 @@ class MafengwoProcPipeline(AizouPipeline):
             else:
                 entry[k] = data[k]
 
-        # 将visitCnt转换成hotness信息
-        if 'visitCnt' in entry:
-            entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
-        else:
-            entry['hotness'] = self.def_hot
+        # # 将visitCnt转换成hotness信息
+        # if 'visitCnt' in entry:
+        # entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
+        # else:
+        #     entry['hotness'] = self.def_hot
 
         col.save(entry)
 
