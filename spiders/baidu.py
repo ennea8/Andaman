@@ -790,8 +790,12 @@ class BaiduSceneSpider(AizouCrawlSpider):
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % url,
                           meta={'surl': url, 'page_idx': 1, 'item': BaiduSceneItem()}, callback=self.parse)
 
-    # 解析每一次请求的数据
     def parse(self, response):
+        """
+        解析每一次请求的数据
+
+        :param response:
+        """
         page_idx = response.meta['page_idx']
         curr_surl = response.meta['surl']
         item = response.meta['item']
@@ -825,11 +829,21 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 判断到达最后一页
         if not scene_list:
-            yield item
+            yield Request(url='http://lvyou.baidu.com/%s' % item['data']['surl'], callback=self.parse_level,
+                          meta={'item': item})
         else:
             page_idx += 1
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=%d' % (
                 curr_surl, page_idx), callback=self.parse, meta={'item': item, 'surl': curr_surl, 'page_idx': page_idx})
+
+    def parse_level(self, response):
+        item = response.meta['item']
+
+        # 解析原网页，判断是poi还是目的地
+        ret = Selector(response).xpath('//div[contains(@class,"scene-navigation")] | //div[@id="J-sceneViewNav"]')
+        item['data']['type'] = 'locality' if ret else 'poi'
+
+        return item
 
 
 class BaiduScenePipeline(AizouPipeline):
@@ -879,12 +893,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider):
 
     # 通过id拼接图片url
     def images_pro(self, urls):
-        urls_list = list()
-        if urls:
-            tmp_list = [('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls]
-            for tmp in tmp_list:
-                urls_list.append({'url': tmp, 'title': ''})
-        return urls_list
+        return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
 
     # 文本格式的处理
     def text_pro(self, text):
@@ -1110,7 +1119,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider):
 
         item = BaiduSceneProItem()
         item['data'] = data
-        item['col_name'] = 'BaiduScene'
+        item['col_name'] = 'BaiduScene' if entry['type'] == 'locality' else 'BaiduPoi'
 
         return item
 
