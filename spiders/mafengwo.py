@@ -1061,20 +1061,20 @@ class MafengwoProcPipeline(AizouPipeline):
                 for key in ret:
                     data['country'][key] = ret[key]
                 data['abroad'] = False
-                continue
+            else:
+                ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+                if not ret and not country_flag:
+                    ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                    if ret:
+                        # 添加到country字段
+                        data['country'] = {}
+                        for key in ret:
+                            data['country'][key] = ret[key]
+                        country_flag = True
 
-            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
-            if not ret and not country_flag:
-                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
-                if ret:
-                    # 添加到country字段
-                    data['country'] = {}
-                    for key in ret:
-                        data['country'][key] = ret[key]
-                    country_flag = True
             if ret:
                 crumb.append(ret)
-                sa_entry = {'id': ret['_id']}
+                sa_entry = {'_id': ret['_id']}
                 for tmp in ['zhName', 'enName']:
                     if tmp in ret:
                         sa_entry[tmp] = ret[tmp]
