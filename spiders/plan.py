@@ -82,6 +82,8 @@ class PlanImportSpider(AizouCrawlSpider):
         for entry in cursor:
             item = PlanItem()
             item['planId'] = entry['id']
+            self.log('Parsing plan: %d' % entry['id'], log.INFO)
+
             item['title'] = entry['title']
             if entry['tags']:
                 item['tags'] = filter(lambda val: val, [tmp.strip() for tmp in re.split(ur'[,，]', entry['tags'])])
@@ -110,6 +112,10 @@ class PlanImportSpider(AizouCrawlSpider):
                 'aviews'] else []
             vids = filter(lambda val: val, [tmp.strip() for tmp in re.split(ur'[,、，]', entry['vids'])]) if entry[
                 'vids'] else []
+
+            # 由于viewspot发生了重大变化，原有的人工映射不再有效。现在忽略aview和vids这对映射关系
+            aview = []
+            vids = []
             for idx in xrange(min(len(vids), len(aview))):
                 vs_id = vids[idx]
                 if vs_id == '0':
@@ -203,6 +209,8 @@ class PlanImportSpider(AizouCrawlSpider):
                     if vs['_id'] in visited_vs:
                         continue
 
+                    self.log(u'Fetched: %s - %s' % (vs['_id'], vs['zhName']))
+
                     # 获得图像
                     r = vs['rating'] if 'rating' in vs and vs['rating'] else 0.6
                     if 'images' not in vs or not vs['images']:
@@ -221,11 +229,11 @@ class PlanImportSpider(AizouCrawlSpider):
                             targets[t] = {'id': t, '_id': t}
 
                     # 获得景点的城市树
-                    if 'city' in vs:
-                        city = self.fetch_loc_id(vs['city']['_id'])
-                        if city['_id'] not in self.city_tree:
-                            self.city_tree[city['_id']] = self.fetch_loc_tree(city['_id'])
-                        for tmp in self.city_tree[city['_id']].values():
+                    if 'locality' in vs:
+                        vs_loc = self.fetch_loc_id(vs['locality']['_id'])
+                        if vs_loc['_id'] not in self.city_tree:
+                            self.city_tree[vs_loc['_id']] = self.fetch_loc_tree(vs_loc['_id'])
+                        for tmp in self.city_tree[vs_loc['_id']].values():
                             targets[tmp['_id']] = tmp
 
                     try:
@@ -237,10 +245,10 @@ class PlanImportSpider(AizouCrawlSpider):
                     for tmp in ('zhName', 'enName'):
                         if tmp in vs:
                             vs_item[tmp] = vs[tmp]
-                    loc_item = {'id': city['_id'], '_id': city['_id']}
+                    loc_item = {'id': vs_loc['_id'], '_id': vs_loc['_id']}
                     for tmp in ('zhName', 'enName'):
-                        if tmp in city:
-                            loc_item[tmp] = city[tmp]
+                        if tmp in vs_loc:
+                            loc_item[tmp] = vs_loc[tmp]
                     plan_day.append({'item': vs_item, 'loc': loc_item, 'type': 'vs', 'lng': lng, 'lat': lat})
 
                 if plan_day:
@@ -310,7 +318,7 @@ class PlanImportSpider(AizouCrawlSpider):
                                            '$minDistance': 0,
                                            '$maxDistance': proximity * 1000}}
         vs_list = list(
-            col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1,
+            col.find(query, {'zhName': 1, 'enName': 1, 'location': 1, 'locality': 1, 'images': 1, 'rating': 1,
                              'targets': 1}).limit(1))
         # 取距离city最近的一个
         return vs_list[0] if vs_list else None
@@ -318,7 +326,7 @@ class PlanImportSpider(AizouCrawlSpider):
     def fetch_vs_id(self, vs_id):
         col = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
         return col.find_one({'_id': vs_id},
-                            {'zhName': 1, 'enName': 1, 'location': 1, 'city': 1, 'images': 1, 'rating': 1,
+                            {'zhName': 1, 'enName': 1, 'location': 1, 'locality': 1, 'images': 1, 'rating': 1,
                              'targets': 1})
 
     def fetch_loc_tree(self, loc_id):
