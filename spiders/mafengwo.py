@@ -27,6 +27,8 @@ class MafengwoSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         super(MafengwoSpider, self).__init__(*a, **kw)
+        self.cont_filter = None
+        self.region_filter = None
         self.cont_list = [
             52314,  # 亚洲
             10853,  # 南极州
@@ -41,32 +43,21 @@ class MafengwoSpider(AizouCrawlSpider):
         # 大洲的过滤
         if 'cont' in self.param:
             self.cont_filter = [int(tmp) for tmp in self.param['cont']]
+
+        if 'region' in self.param:
+            self.region_filter = [int(tmp) for tmp in self.param['region']]
+
+        if self.region_filter:
+            start_entries = [{'rid': tmp, 'level': 'region'} for tmp in self.region_filter]
         else:
-            self.cont_filter = None
+            start_entries = [{'rid': tmp, 'level': 'cont'} for tmp in
+                             (self.cont_filter if self.cont_filter else self.cont_list)]
 
-        if 'country' in self.param:
-            self.country_filter = [int(tmp) for tmp in self.param['country']]
-        else:
-            self.country_filter = None
-
-        for cont_id in self.cont_list:
-            if self.cont_filter and cont_id not in self.cont_filter:
-                continue
-
-            url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % cont_id
-            yield Request(url=url, meta={'crumb': [cont_id], 'level': 'cont', 'iType': 1}, callback=self.parse_mdd_ajax)
-
-        # 处理中国数据
-        asia_id = 52314
-        chn_id = 21536
-        if self.cont_filter and asia_id not in self.cont_filter:
-            return
-        if self.country_filter and chn_id not in self.country_filter:
-            return
-
-        url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % chn_id
-        yield Request(url=url, meta={'crumb': [asia_id, chn_id], 'level': 'region', 'iType': 1},
-                      callback=self.parse_mdd_ajax)
+        for entry in start_entries:
+            rid = entry['rid']
+            level = entry['level']
+            url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % rid
+            yield Request(url=url, meta={'crumb': [rid], 'level': level, 'iType': 1}, callback=self.parse_mdd_ajax)
 
 
     # def get_region_list(self, response):
@@ -97,7 +88,7 @@ class MafengwoSpider(AizouCrawlSpider):
     #
     # # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
     # url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
-    #         yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
+    # yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
 
     def parse_mdd_ajax(self, response):
         """
@@ -116,8 +107,8 @@ class MafengwoSpider(AizouCrawlSpider):
             for entry in ret['list']:
                 oid = entry['id']
 
-                if level == 'cont' and self.country_filter:
-                    if oid not in self.country_filter:
+                if level == 'cont' and self.region_filter:
+                    if oid not in self.region_filter:
                         continue
 
                 item = MafengwoItem()
@@ -237,11 +228,11 @@ class MafengwoSpider(AizouCrawlSpider):
             yield item
 
     # def parse_poi_list(self, response):
-    #     """
-    #     解析页面内的poi列表
-    #     :param response:
-    #     :return:
-    #     """
+    # """
+    # 解析页面内的poi列表
+    # :param response:
+    # :return:
+    # """
     #     poi_type = response.meta['poi_type']
     #     for href in Selector(response).xpath(
     #             '//ul[@class="poi-list"]/li[contains(@class,"item")]/div[@class="title"]//a[@href]/@href').extract():
@@ -573,6 +564,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
     def __init__(self, param, *a, **kw):
         super(MafengwoProcSpider, self).__init__(param, *a, **kw)
 
+        self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000.0
+
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
 
@@ -747,7 +741,11 @@ class MafengwoProcSpider(AizouCrawlSpider):
     def parse_poi(self, col_name):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
-        for entry in col_raw.find({}):
+        cursor = col_raw.find({})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        for entry in cursor:
             data = {'enabled': True}
 
             tmp = self.parse_name(entry['title'])
@@ -778,6 +776,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     traffic_info = proc_text
                 else:
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
+
+            # 热门程度
+            hotness = 0
+            for k in ['comment_cnt', 'images_tot']:
+                if k in entry:
+                    hotness += entry[k]
+            data['hotness'] = 2 / (1 + math.exp(-hotness)) - 1
+
+            # 评分
+            data['rating'] = entry['rating']
 
             if desc:
                 data['desc'] = desc
@@ -823,8 +831,19 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             item = MafengwoProcItem()
             item['data'] = data
-            item['col_name'] = 'ViewSpot'
             item['db_name'] = 'poi'
+
+            if col_name == 'MafengwoVs':
+                item['col_name'] = 'ViewSpot'
+            elif col_name == 'MafengwoGw':
+                item['col_name'] = 'Shopping'
+            elif col_name == 'MafengwoHotel':
+                item['col_name'] = 'Hotel'
+            elif col_name == 'MafengwoCy':
+                item['col_name'] = 'Restaurant'
+            else:
+                return
+
             yield item
 
     def parse_mdd(self):
@@ -922,7 +941,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
             if 'vs_cnt' in entry and entry['vs_cnt'] is not None:
-                data['visitCnt'] = entry['vs_cnt']
+                data['hotness'] = 2 / (1 + math.exp(-entry['vs_cnt'])) - 1
+            else:
+                data['hotness'] = 0
 
             image_list = []
             image_urls = set([])
@@ -960,13 +981,13 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # # 尝试通过geocode获得目的地别名及其它信息
             # addr = u''
             # for idx in xrange(len(entry['crumb']) - 1, -1, -1):
-            #         addr += u'%s,' % (entry['crumb'][idx]['name'])
-            #     idx = addr.rfind(',')
-            #     addr = addr[:idx] if idx > 0 else addr
+            # addr += u'%s,' % (entry['crumb'][idx]['name'])
+            # idx = addr.rfind(',')
+            # addr = addr[:idx] if idx > 0 else addr
             #
-            #     if addr and 'location' in data:
-            #         lang = ['en-US']
-            #         yield Request(
+            # if addr and 'location' in data:
+            # lang = ['en-US']
+            # yield Request(
             #             url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
             #             headers={'Accept-Language': 'zh-CN'},
             #             meta={'item': item, 'lang': lang},
@@ -1001,8 +1022,8 @@ class MafengwoProcPipeline(AizouPipeline):
         col_name = item['col_name']
         if col_name == 'Locality':
             return self.process_mdd(item, spider)
-        elif col_name == 'ViewSpot':
-            return self.process_vs(item, spider)
+        elif col_name in ['ViewSpot', 'Hotel', 'Shopping', 'Restaurant']:
+            return self.process_poi(item, spider)
         elif col_name == 'Country':
             return self.process_country(item, spider)
 
@@ -1089,17 +1110,17 @@ class MafengwoProcPipeline(AizouPipeline):
             else:
                 entry[k] = data[k]
 
-        # 将visitCnt转换成hotness信息
-        if 'visitCnt' in entry:
-            entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
-        else:
-            entry['hotness'] = self.def_hot
+        # # 将visitCnt转换成hotness信息
+        # if 'visitCnt' in entry:
+        # entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
+        # else:
+        #     entry['hotness'] = self.def_hot
 
         col.save(entry)
 
         return item
 
-    def process_vs(self, item, spider):
+    def process_poi(self, item, spider):
         data = item['data']
         col_name = item['col_name']
         db_name = item['db_name']
@@ -1148,7 +1169,6 @@ class MafengwoProcPipeline(AizouPipeline):
         for k in data:
             entry[k] = data[k]
 
-        entry['className'] = 'models.poi.ViewSpot'
         col.save(entry)
 
         return item
