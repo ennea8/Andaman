@@ -861,7 +861,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
                            'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=1' % sid
 
             rest_item = BaiduSceneItem()
-            rest_data = {'sid': sid, 'sname': sname, 'type': 'restaurant'}
+            rest_data = {'sid': sid, 'sname': sname, 'type': 'restaurant', 'restaurant': []}
             rest_item['data'] = rest_data
             yield Request(url=eatwhere_url, callback=self.parse_restaurant,
                           meta={'sid': sid, 'page_idx': 1, 'item': rest_item})
@@ -891,18 +891,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         tmp_data = item['data']
 
-        # 判断是否到达最后一页
-        if page_idx == 1 and tmp_list:
-            rest_list = list()
-            rest_list.extend(tmp_list)
-            tmp_data['restaurant'] = rest_list
-            item['data'] = tmp_data
-            page_idx += 1
-            yield Request(url='http://lvyou.baidu.com/destination/ajax/poi/dining?' \
-                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=%d' % (sid, page_idx),
-                          callback=self.parse_restaurant, meta={'item': item, 'sid': sid, 'page_idx': page_idx})
         # 没有到达最后一页
-        elif tmp_list:
+        if tmp_list:
             tmp_data['restaurant'].extend(tmp_list)
             item['data'] = tmp_data
             page_idx += 1
@@ -913,18 +903,16 @@ class BaiduSceneSpider(AizouCrawlSpider):
         else:
             yield item
 
-
     # 住宿信息
     def parse_hotel(self, response):
-        match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
         item = response.meta['item']
-        tmp_data = item['data']
+
+        hotel_list = []
+        match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
         if match:
-            hotel_data = json.loads(match.group(1))
-            for hotel_entry in hotel_data:
-                # item = BaiduSceneItem()
-                # hotel_entry['type'] = 'hotel'
-                tmp_data['hotel'] = hotel_entry
+            hotel_list.extend(json.loads(match.group(1)))
+
+        item['data']['hotel'] = hotel_list
         return item
 
 
