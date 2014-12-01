@@ -359,6 +359,9 @@ class ImageProcPipeline(AizouPipeline):
         super(ImageProcPipeline, self).__init__(param)
 
     def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
         db = item['db']
         col_name = item['col']
         list1_name = item['list1_name']

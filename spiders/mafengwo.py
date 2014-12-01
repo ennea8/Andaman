@@ -233,7 +233,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # :param response:
     # :return:
     # """
-    #     poi_type = response.meta['poi_type']
+    # poi_type = response.meta['poi_type']
     #     for href in Selector(response).xpath(
     #             '//ul[@class="poi-list"]/li[contains(@class,"item")]/div[@class="title"]//a[@href]/@href').extract():
     #         yield Request(self.build_href(response.url, href), meta={'poi_type': poi_type}, callback=self.parse_poi)
@@ -565,7 +565,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         super(MafengwoProcSpider, self).__init__(param, *a, **kw)
 
         self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
-        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000.0
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 2000.0
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
@@ -782,10 +782,10 @@ class MafengwoProcSpider(AizouCrawlSpider):
             for k in ['comment_cnt', 'images_tot']:
                 if k in entry:
                     hotness += entry[k]
-            data['hotness'] = 2 / (1 + math.exp(-hotness)) - 1
+            data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
 
             # 评分
-            data['rating'] = entry['rating']
+            data['rating'] = float(entry['rating'])
 
             if desc:
                 data['desc'] = desc
@@ -941,7 +941,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
             if 'vs_cnt' in entry and entry['vs_cnt'] is not None:
-                data['hotness'] = 2 / (1 + math.exp(-entry['vs_cnt'])) - 1
+                data['hotness'] = 2 / (1 + math.exp(-float(entry['vs_cnt']) / self.denom)) - 1
             else:
                 data['hotness'] = 0
 
@@ -988,7 +988,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # if addr and 'location' in data:
             # lang = ['en-US']
             # yield Request(
-            #             url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
+            # url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
             #             headers={'Accept-Language': 'zh-CN'},
             #             meta={'item': item, 'lang': lang},
             #             callback=self.parse_geocode)
@@ -1013,7 +1013,7 @@ class MafengwoProcPipeline(AizouPipeline):
         super(MafengwoProcPipeline, self).__init__(param)
 
         self.def_hot = float(self.param['def-hot'][0]) if 'def-hot' in self.param else 0.3
-        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 1000.0
+        self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 2000.0
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -1061,20 +1061,20 @@ class MafengwoProcPipeline(AizouPipeline):
                 for key in ret:
                     data['country'][key] = ret[key]
                 data['abroad'] = False
-                continue
+            else:
+                ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+                if not ret and not country_flag:
+                    ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                    if ret:
+                        # 添加到country字段
+                        data['country'] = {}
+                        for key in ret:
+                            data['country'][key] = ret[key]
+                        country_flag = True
 
-            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
-            if not ret and not country_flag:
-                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
-                if ret:
-                    # 添加到country字段
-                    data['country'] = {}
-                    for key in ret:
-                        data['country'][key] = ret[key]
-                    country_flag = True
             if ret:
                 crumb.append(ret)
-                sa_entry = {'id': ret['_id']}
+                sa_entry = {'_id': ret['_id']}
                 for tmp in ['zhName', 'enName']:
                     if tmp in ret:
                         sa_entry[tmp] = ret[tmp]
@@ -1114,7 +1114,7 @@ class MafengwoProcPipeline(AizouPipeline):
         # if 'visitCnt' in entry:
         # entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
         # else:
-        #     entry['hotness'] = self.def_hot
+        # entry['hotness'] = self.def_hot
 
         col.save(entry)
 
