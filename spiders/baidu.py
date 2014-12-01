@@ -19,7 +19,7 @@ import datetime
 import pysolr
 
 import conf
-from spiders import AizouCrawlSpider
+from spiders import AizouCrawlSpider, AizouPipeline
 import utils
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
@@ -762,15 +762,12 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 
 
 class BaiduSceneItem(Item):
-    def __init__(self, *a, **kw):
-        super(BaiduSceneItem, self).__init__(*a, **kw)
-        self['data'] = {}
-
     data = Field()
 
 
 class BaiduSceneSpider(AizouCrawlSpider):
     name = 'baidu-scene'
+    uuid = 'a1cf345b-1f4a-403c-aa01-b7ab81b61b3c'
 
     def __init__(self, *a, **kw):
         super(BaiduSceneSpider, self).__init__(*a, **kw)
@@ -793,8 +790,12 @@ class BaiduSceneSpider(AizouCrawlSpider):
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % url,
                           meta={'surl': url, 'page_idx': 1, 'item': BaiduSceneItem()}, callback=self.parse)
 
-    # 解析每一次请求的数据
     def parse(self, response):
+        """
+        解析每一次请求的数据
+
+        :param response:
+        """
         page_idx = response.meta['page_idx']
         curr_surl = response.meta['surl']
         item = response.meta['item']
@@ -828,25 +829,60 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 判断到达最后一页
         if not scene_list:
-            yield item
+            yield Request(url='http://lvyou.baidu.com/%s' % item['data']['surl'], callback=self.parse_level,
+                          meta={'item': item})
         else:
             page_idx += 1
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=%d' % (
                 curr_surl, page_idx), callback=self.parse, meta={'item': item, 'surl': curr_surl, 'page_idx': page_idx})
 
+    def parse_level(self, response):
+        item = response.meta['item']
 
-class BaiduScenePipeline(object):
+        # 解析原网页，判断是poi还是目的地
+        sel = Selector(response)
+        nav_list = [tmp.strip() for tmp in sel.xpath('//div[@id="J-sceneViewNav"]/a/span/text()').extract()]
+        if not nav_list:
+            nav_list = [tmp.strip() for tmp in sel.xpath(
+                '//div[contains(@class,"scene-navigation")]//div[contains(@class,"nav-item")]/span/text()').extract()]
+
+        item['data']['type'] = 'locality' if u'景点' in nav_list else 'poi'
+
+
+        # TODO http://lvyou.baidu.com/destination/ajax/poi/dining?sid=b935706693d2d06f5707d5da&type=&poi=&order=overall_rating&flag=0&nn=0&rn=10&pn=0
+
+        # TODO 住宿：http://lvyou.baidu.com/bali/zhusu，找到var opiList
+
+        # 查找住宿
+        yield item
+
+        if item['data']['type'] == 'locality':
+            yield Request(url='http://lvyou.baidu.com/%s/zhusu' % item['data']['surl'], callback=self.parse_hotel,
+                          meta={'item': item})
+
+    def parse_hotel(self, response):
+        match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
+        if match:
+            hotel_data = json.loads(match.group(1))
+            for hotel_entry in hotel_data:
+                item = BaiduSceneItem()
+                hotel_entry['type'] = 'hotel'
+                item['data'] = hotel_entry
+
+
+class BaiduScenePipeline(AizouPipeline):
     spiders = [BaiduSceneSpider.name]
+    spiders_uuid = [BaiduSceneSpider.uuid]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != BaiduSceneItem.__name__:
+        if not self.is_handler(item, spider):
             return item
 
         data = item['data']
         if not data:
             return item
 
-        col = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        col = self.fetch_db_col('raw_data', 'BaiduScene', 'mongodb-crawler')
         ret = col.find_one({'surl': data['surl']})
         if not ret:
             ret = {}
@@ -862,31 +898,35 @@ class BaiduSceneProItem(Item):
     col_name = Field()
 
 
-class BaiduScenePro(AizouCrawlSpider):
+class BaiduSceneProcSpider(AizouCrawlSpider):
     """
     百度目的地数据的整理
     """
 
     name = 'baidu-scene-proc'
-    uuid = '4013C64F-1ECC-7696-D8CC-21BD7010EF77'
+    uuid = '3d66f9ad-4190-4d7e-a392-e11e29e9b670'
 
     def __init__(self, *a, **kw):
-        super(BaiduScenePro, self).__init__(*a, **kw)
+        super(BaiduSceneProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        col_raw_scene = utils.get_mongodb('raw_data', 'BaiduScene', profile='mongodb-crawler')
+        col_raw_scene = self.fetch_db_col('raw_data', 'BaiduScene', 'mongodb-crawler')
 
         for entry in col_raw_scene.find():
             yield Request(url='http://www.baidu.com', meta={'entry': entry})
 
     # 通过id拼接图片url
     def images_pro(self, urls):
+<<<<<<< HEAD
         urls_list = list()
         if urls:
             tmp_list = [('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls]
             for tmp in tmp_list:
                 urls_list.append({'url': tmp})
         return urls_list
+=======
+        return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
+>>>>>>> origin/baidu_spider_pro
 
     # 文本格式的处理
     def text_pro(self, text):
@@ -1114,22 +1154,31 @@ class BaiduScenePro(AizouCrawlSpider):
 
         item = BaiduSceneProItem()
         item['data'] = data
-        item['col_name'] = 'BaiduScene'
+        if entry['type'] == 'locality':
+            col_name = 'BaiduScene'
+        elif entry['type'] == 'poi':
+            col_name = 'BaiduPoi'
+        elif entry['type'] == 'hotel':
+            col_name = 'BaiduHotel'
+        else:
+            return item
+
+        item['col_name'] = col_name
 
         return item
 
 
-class BaiduSceneProPipeline(object):
-    spiders = [BaiduScenePro.name]
-    spiders_uuid = [BaiduScenePro.uuid]
+class BaiduSceneProPipeline(AizouPipeline):
+    spiders = [BaiduSceneProcSpider.name]
+    spiders_uuid = [BaiduSceneProcSpider.uuid]
 
     def process_item(self, item, spider):
-        if type(item).__name__ != BaiduSceneItem.__name__:
+        if not self.is_handler(item, spider):
             return item
 
         data = item['data']
         col_name = item['col_name']
-        col = utils.get_mongodb('geo', col_name, profile='mongodb-general')
+        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
 
         entry = col.find_one({'geo.%s.id' % col_name: data['id']})
         if not entry:
