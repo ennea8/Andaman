@@ -841,6 +841,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 解析原网页，判断是poi还是目的地
         sel = Selector(response)
+
         nav_list = [tmp.strip() for tmp in sel.xpath('//div[@id="J-sceneViewNav"]/a/span/text()').extract()]
         if not nav_list:
             nav_list = [tmp.strip() for tmp in sel.xpath(
@@ -848,26 +849,73 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         item['data']['type'] = 'locality' if u'景点' in nav_list else 'poi'
 
+        sid = item['data']['sid']
 
-        # TODO http://lvyou.baidu.com/destination/ajax/poi/dining?sid=b935706693d2d06f5707d5da&type=&poi=&order=overall_rating&flag=0&nn=0&rn=10&pn=0
+        # 抓取去哪吃的信息
+        eatwhere_url = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
+                       'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=1' % sid
+        # locality存在去哪吃
+        if item['data']['type'] == 'locality':
+            yield Request(url=eatwhere_url, callback=self.parse_restaurant,
+                          meta={'sid': sid, 'page_idx': 1, 'item': item})
 
         # TODO 住宿：http://lvyou.baidu.com/bali/zhusu，找到var opiList
 
         # 查找住宿
-        yield item
+        # yield item
 
         if item['data']['type'] == 'locality':
             yield Request(url='http://lvyou.baidu.com/%s/zhusu' % item['data']['surl'], callback=self.parse_hotel,
                           meta={'item': item})
 
+    # 解析去哪里吃
+    def parse_restaurant(self, response):
+
+        item = response.meta['item']
+
+        sid = response.meta['sid']
+
+        page_idx = response.meta['page_idx']
+
+        rest_data = json.loads(response.body)['data']
+
+        tmp_list = rest_data['restaurant']['list']
+
+        dining = item['data']['dining']
+
+        # 判断是否到达最后一页
+        if page_idx == 1 and tmp_list:
+            rest_list = list()
+            rest_list.extend(tmp_list)
+            dining['restaurant'] = rest_list
+            item['data']['dining'] = dining
+            page_idx += 1
+            yield Request(url='http://lvyou.baidu.com/destination/ajax/poi/dining?' \
+                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=&d' % (sid, page_idx),
+                          callback=self.parse_restaurant, meta={'item': item, 'sid': sid, 'page_idx': page_idx})
+        # 没有到达最后一页
+        elif tmp_list:
+            dining['restaurant'].extend(tmp_list)
+            item['data']['dining'] = dining
+            page_idx += 1
+            yield Request(url='http://lvyou.baidu.com/destination/ajax/poi/dining?' \
+                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=&d' % (sid, page_idx),
+                          callback=self.parse_restaurant, meta={'item': item, 'sid': sid, 'page_idx': page_idx})
+        # 到达最后一页或者没有信息
+        else:
+            yield item
+
+    # 住宿信息
     def parse_hotel(self, response):
         match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
+        item = response.meta['item']
         if match:
             hotel_data = json.loads(match.group(1))
             for hotel_entry in hotel_data:
-                item = BaiduSceneItem()
+                # item = BaiduSceneItem()
                 hotel_entry['type'] = 'hotel'
                 item['data'] = hotel_entry
+        return item
 
 
 class BaiduScenePipeline(AizouPipeline):
@@ -917,16 +965,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider):
 
     # 通过id拼接图片url
     def images_pro(self, urls):
-<<<<<<< HEAD
-        urls_list = list()
-        if urls:
-            tmp_list = [('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp) for tmp in urls]
-            for tmp in tmp_list:
-                urls_list.append({'url': tmp})
-        return urls_list
-=======
         return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
->>>>>>> origin/baidu_spider_pro
 
     # 文本格式的处理
     def text_pro(self, text):
