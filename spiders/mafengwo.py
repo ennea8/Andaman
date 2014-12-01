@@ -785,7 +785,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
 
             # 评分
-            data['rating'] = entry['rating']
+            data['rating'] = float(entry['rating'])
 
             if desc:
                 data['desc'] = desc
