@@ -849,28 +849,36 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         item['data']['type'] = 'locality' if u'景点' in nav_list else 'poi'
 
+        yield item
+
         sid = item['data']['sid']
+        sname = item['data']['sname']
 
-        # 抓取去哪吃的信息
-        eatwhere_url = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
-                       'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=1' % sid
-        # locality存在去哪吃
+        # 去哪吃item
         if item['data']['type'] == 'locality':
+            # 抓取去哪吃的信息
+            eatwhere_url = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
+                           'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=1' % sid
+
+            rest_item = BaiduSceneItem()
+            rest_data = {'sid': sid, 'sname': sname, 'type': 'restaurant'}
+            rest_item['data'] = rest_data
             yield Request(url=eatwhere_url, callback=self.parse_restaurant,
-                          meta={'sid': sid, 'page_idx': 1, 'item': item})
+                          meta={'sid': sid, 'page_idx': 1, 'item': rest_item})
 
-        # TODO 住宿：http://lvyou.baidu.com/bali/zhusu，找到var opiList
+            # TODO 住宿：http://lvyou.baidu.com/bali/zhusu，找到var opiList
 
-        # 查找住宿
-        # yield item
+            # 住宿item
+            hotel_item = BaiduSceneItem()
+            hotel_data = {'sid': sid, 'sname': sname, 'type': 'hotel'}
+            hotel_item['data'] = hotel_data
 
-        if item['data']['type'] == 'locality':
             yield Request(url='http://lvyou.baidu.com/%s/zhusu' % item['data']['surl'], callback=self.parse_hotel,
-                          meta={'item': item})
+                          meta={'item': hotel_item})
+
 
     # 解析去哪里吃
     def parse_restaurant(self, response):
-
         item = response.meta['item']
 
         sid = response.meta['sid']
@@ -881,40 +889,42 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         tmp_list = rest_data['restaurant']['list']
 
-        dining = item['data']['dining']
+        tmp_data = item['data']
 
         # 判断是否到达最后一页
         if page_idx == 1 and tmp_list:
             rest_list = list()
             rest_list.extend(tmp_list)
-            dining['restaurant'] = rest_list
-            item['data']['dining'] = dining
+            tmp_data['restaurant'] = rest_list
+            item['data'] = tmp_data
             page_idx += 1
             yield Request(url='http://lvyou.baidu.com/destination/ajax/poi/dining?' \
-                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=&d' % (sid, page_idx),
+                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=%d' % (sid, page_idx),
                           callback=self.parse_restaurant, meta={'item': item, 'sid': sid, 'page_idx': page_idx})
         # 没有到达最后一页
         elif tmp_list:
-            dining['restaurant'].extend(tmp_list)
-            item['data']['dining'] = dining
+            tmp_data['restaurant'].extend(tmp_list)
+            item['data'] = tmp_data
             page_idx += 1
             yield Request(url='http://lvyou.baidu.com/destination/ajax/poi/dining?' \
-                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=&d' % (sid, page_idx),
+                              'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=%d' % (sid, page_idx),
                           callback=self.parse_restaurant, meta={'item': item, 'sid': sid, 'page_idx': page_idx})
         # 到达最后一页或者没有信息
         else:
             yield item
 
+
     # 住宿信息
     def parse_hotel(self, response):
         match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
         item = response.meta['item']
+        tmp_data = item['data']
         if match:
             hotel_data = json.loads(match.group(1))
             for hotel_entry in hotel_data:
                 # item = BaiduSceneItem()
-                hotel_entry['type'] = 'hotel'
-                item['data'] = hotel_entry
+                # hotel_entry['type'] = 'hotel'
+                tmp_data['hotel'] = hotel_entry
         return item
 
 
@@ -927,11 +937,21 @@ class BaiduScenePipeline(AizouPipeline):
             return item
 
         data = item['data']
+        type = data['type']
         if not data:
             return item
 
-        col = self.fetch_db_col('raw_data', 'BaiduScene', 'mongodb-crawler')
-        ret = col.find_one({'surl': data['surl']})
+        if type == 'locality':
+            colname = 'BaiduLocality'
+        if type == 'poi':
+            colname = 'BaiduPoi'
+        if type == 'restaurant':
+            colname = 'BaiduRestaurant'
+        if type == 'hotel':
+            colname = 'BaiduHotel'
+
+        col = self.fetch_db_col('raw_data', colname, 'mongodb-crawler')
+        ret = col.find_one({'sid': data['sid']})
         if not ret:
             ret = {}
         for key in data:
