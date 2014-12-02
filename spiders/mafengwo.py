@@ -275,9 +275,9 @@ class MafengwoSpider(AizouCrawlSpider):
     # match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
     # if not match:
     # # 例外情况：中国
-    #             if crumb_name == u'中国':
-    #                 mdd_id = 21536
-    #                 crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
+    # if crumb_name == u'中国':
+    # mdd_id = 21536
+    # crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
     #             else:
     #                 continue
     #         else:
@@ -793,16 +793,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['tags'] = []  # list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
-            image_list = []
-            image_urls = set([])
-            for img in entry['imageList']:
-                url = img['url']
-                if url in image_urls:
-                    continue
-                image_list.append({'url': url})
-                image_urls.add(url)
-            data['imageList'] = image_list
-
             crumb_ids = []
             for crumb_entry in entry['crumb']:
                 if isinstance(crumb_entry, int):
@@ -813,9 +803,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
 
-            data['source'] = {'mafengwo':
-                                  {'url': 'http://www.mafengwo.cn/poi/%d.html' % entry['id'],
-                                   'id': entry['id']}}
+            data['source'] = {'mafengwo': {'id': entry['id']}}
 
             if 'lat' in entry and 'lng' in entry:
                 data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
@@ -835,10 +823,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
             else:
                 return
 
+            # 获得对应的图像
+            sig = '%s-%d' % (col_name, data['source']['mafengwo']['id'])
+            col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+            data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
+
             yield item
 
     def parse_mdd(self):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         for entry in col_raw_mdd.find({'type': 'region'}):
@@ -936,16 +930,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
             else:
                 data['hotness'] = 0
 
-            image_list = []
-            image_urls = set([])
-            for img in entry['imageList']:
-                url = img['url']
-                if url in image_urls:
-                    continue
-                image_list.append({'url': url})
-                image_urls.add(url)
-            data['imageList'] = image_list
-
             crumb_ids = []
             for crumb_entry in entry['crumb']:
                 if isinstance(crumb_entry, int):
@@ -956,12 +940,14 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
 
-            data['source'] = {'mafengwo':
-                                  {'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
-                                   'id': entry['id']}}
+            data['source'] = {'mafengwo': {'id': entry['id']}}
 
             if 'lat' in entry and 'lng' in entry:
                 data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
+
+            # 获得对应的图像
+            sig = 'MafengwoMdd-%d' % data['source']['mafengwo']['id']
+            data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
 
             item = MafengwoProcItem()
             item['data'] = data
@@ -1037,10 +1023,6 @@ class MafengwoProcPipeline(AizouPipeline):
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
-        if not entry:
-            entry = {}
-
         crumb_list = filter(lambda val: val != data['source']['mafengwo']['id'], data.pop('crumbIds'))
         crumb = []
         country_flag = False
@@ -1077,38 +1059,23 @@ class MafengwoProcPipeline(AizouPipeline):
 
         data['locList'] = crumb
 
-        # 有几个字段具有天然的追加属性：alias, imageList
-        # 其它都是覆盖型
-        image_set = set([tmp['url'] for tmp in entry['imageList']]) if 'imageList' in entry else set([])
-        alias_set = set(entry['alias']) if 'alias' in entry else set([])
-        for k in data:
-            if k == 'imageList':
-                if k not in entry:
-                    entry[k] = []
-                for tmp in data[k]:
-                    if tmp['url'] in image_set:
-                        continue
-                    entry[k].append(tmp)
-                    image_set.add(tmp['url'])
+        src = data.pop('source')
+        alias = data.pop('alias')
+        image_list = data.pop('imageList')
 
-            elif k == 'alias':
-                if k not in entry:
-                    entry[k] = []
-                for tmp in data[k]:
-                    if tmp in alias_set:
-                        continue
-                    entry[k].append(tmp)
-                    alias_set.add(tmp)
-            else:
-                entry[k] = data[k]
+        ops = {'$set': data}
+        ops['$set']['source.mafengwo'] = src['mafengwo']
+        ops['$addToSet'] = {'alias': {'$each': alias}}
 
-        # # 将visitCnt转换成hotness信息
-        # if 'visitCnt' in entry:
-        # entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
-        # else:
-        # entry['hotness'] = self.def_hot
-
-        col.save(entry)
+        mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
+                                  fields={'_id': 1})
+        if image_list:
+            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+            for img in image_list:
+                new_img = {key: img[key] for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']}
+                col_im.update({'url_hash': img['url_hash']},
+                              {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
+                              upsert=True)
 
         return item
 
@@ -1120,10 +1087,6 @@ class MafengwoProcPipeline(AizouPipeline):
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
-
-        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
-        if not entry:
-            entry = {}
 
         country_flag = False
         crumb_list = data.pop('crumbIds')
@@ -1140,8 +1103,7 @@ class MafengwoProcPipeline(AizouPipeline):
                     country_flag = True
             if ret:
                 crumb.append(ret['_id'])
-        entry['targets'] = crumb
-        entry['name'] = data['zhName']
+        data['targets'] = crumb
 
         # 从crumb的最后开始查找。第一个目的地即为city
         city = None
@@ -1149,18 +1111,32 @@ class MafengwoProcPipeline(AizouPipeline):
             cid = crumb_list[idx]
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if ret:
-                city = {'id': ret['_id'], '_id': ret['_id']}
+                city = {'_id': ret['_id']}
                 for key in ['zhName', 'enName']:
                     if key in ret:
                         city[key] = ret[key]
                 break
 
+        src = data.pop('source')
+        alias = data.pop('alias')
+        image_list = data.pop('imageList')
+
+        ops = {'$set': data}
+        ops['$set']['source.mafengwo'] = src['mafengwo']
         if city:
-            entry['locality'] = city
+            ops['$set']['locality'] = city
+        else:
+            ops['$unset'] = {'locality': 1}
+        ops['$addToSet'] = {'alias': {'$each': alias}}
 
-        for k in data:
-            entry[k] = data[k]
-
-        col.save(entry)
+        mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
+                                  fields={'_id': 1})
+        if image_list:
+            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+            for img in image_list:
+                new_img = {key: img[key] for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']}
+                col_im.update({'url_hash': img['url_hash']},
+                              {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
+                              upsert=True)
 
         return item
