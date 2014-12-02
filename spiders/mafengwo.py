@@ -170,6 +170,10 @@ class MafengwoSpider(AizouCrawlSpider):
                 elif itype == 6:
                     data['type'] = 'trans'
 
+                # 跳过某些POI类型
+                if 'skip' in self.param and data['type'] in self.param['skip']:
+                    continue
+
                 yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
                               meta={'id': oid, 'item': item},
                               callback=self.parse_poi)
@@ -270,7 +274,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     # match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
     # if not match:
-    #             # 例外情况：中国
+    # # 例外情况：中国
     #             if crumb_name == u'中国':
     #                 mdd_id = 21536
     #                 crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
