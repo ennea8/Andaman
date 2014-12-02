@@ -269,7 +269,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # crumb_name = node.xpath('./text()').extract()[0].strip()
     # crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
     # match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
-    #         if not match:
+    # if not match:
     #             # 例外情况：中国
     #             if crumb_name == u'中国':
     #                 mdd_id = 21536
@@ -517,23 +517,20 @@ class MafengwoPipeline(AizouPipeline):
         else:
             return item
 
-        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
-        db_data = col.find_one({'id': data['id']})
-        if not db_data:
-            db_data = {}
+        # 存储原始图像
+        col_img = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+        if 'imageList' not in data:
+            data['imageList'] = []
+        image_list = data.pop('imageList')
+        for tmp in image_list:
+            tmp['url_hash'] = hashlib.md5(tmp['url']).hexdigest()
+            sig = '%s-%d' % (col_name, data['id'])
+            col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
-        if 'imageList' not in db_data:
-            db_data['imageList'] = []
-        images_set = set([tmp['url'] for tmp in db_data['imageList']])
-        for key in data.keys():
-            if key == 'imageList':
-                for image_entry in data[key]:
-                    if image_entry['url'] not in images_set:
-                        images_set.add(image_entry['url'])
-                        db_data['imageList'].append(image_entry)
-            else:
-                db_data[key] = data[key]
-        col.save(db_data)
+        # 存储item本身
+        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        col.update({'id': data['id']}, {'$set': data}, upsert=True)
+
         return item
 
 
