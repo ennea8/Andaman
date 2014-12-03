@@ -984,7 +984,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
             return ''
 
     def parse(self, response):
-        for col_name in ['BaiduPoi', 'BaiduLocality']:
+        for col_name in ['BaiduLocality', 'BaiduPoi']:
             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             for entry in col_raw_scene.find():
 
@@ -992,7 +992,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     data = {}
 
                     # sid
-                    data['id'] = entry['sid']  # 设置id
+                    #data['id'] = entry['sid']  # 设置id
 
                     # 国内外字段
                     data['abroad'] = 'true' if entry['is_china'] == '0' else 'false'
@@ -1077,7 +1077,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 处理图片
                     if 'highlight' in tmp:
                         if 'list' in tmp['highlight']:
-                            data['images'] = [self.images_pro(pic) for pic in tmp['highlight']['list']]
+                            data['images'] = self.images_pro(tmp['highlight']['list'])
                         else:
                             data['images'] = []
                     else:
@@ -1122,7 +1122,12 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if 'goods' in tmp['shopping']:
                             for node in tmp['shopping']['goods']:
                                 # 图片
-                                images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                                image = []
+                                if 'pic_url' in node:
+                                    image.append(node['pic_url'])
+                                    images = self.images_pro(image)
+                                else:
+                                    images = []
                                 goods_tmp = {
                                     'zhName': node['name'],
                                     'enName': '',
@@ -1141,7 +1146,12 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if 'food' in tmp['dining']:
                             for node in tmp['dining']['food']:
                                 # 图片
-                                images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                                image = []
+                                if 'pic_url' in node:
+                                    image.append(node['pic_url'])
+                                    images = self.images_pro(image)
+                                else:
+                                    images = []
                                 food_tmp = {
                                     'zhName': node['name'],
                                     'enName': '',
@@ -1160,7 +1170,12 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if 'activity' in tmp['entertainment']:
                             for node in tmp['entertainment']['activity']:
                                 # 图片
-                                images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                                image = []
+                                if 'pic_url' in node:
+                                    image.append(node['pic_url'])
+                                    images = self.images_pro(image)
+                                else:
+                                    images = []
                                 activity_tmp = {
                                     'zhName': node['name'],
                                     'enName': "",
@@ -1178,7 +1193,12 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if 'list' in tmp['attention']:
                             for node in tmp['attention']['list']:
                                 # 图片
-                                images = self.images_pro(list(node['pic_url'])) if 'pic_url' in node else list()
+                                image = []
+                                if 'pic_url' in node:
+                                    image.append(node['pic_url'])
+                                    images = self.images_pro(image)
+                                else:
+                                    images = []
                                 tips_tmp = {
                                     'title': node['name'],
                                     'desc': self.text_pro(node['desc']),
@@ -1292,7 +1312,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 处理图片
                     if 'highlight' in tmp:
                         if 'list' in tmp['highlight']:
-                            data['images'] = [self.images_pro(pic) for pic in tmp['highlight']['list']]
+                            data['images'] = self.images_pro(tmp['highlight']['list'])
                         else:
                             data['images'] = []
                     else:
