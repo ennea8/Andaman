@@ -117,25 +117,36 @@ class ImageProcSpider(AizouCrawlSpider):
             return False
 
     def parse(self, response):
-        db = self.param['db'][0]
-        col_name = self.param['col'][0]
+        db = self.param['db'][0] if 'db' in self.param else None
+        col_name = self.param['col'][0] if 'col' in self.param else None
         profile = self.param['profile'][0] if 'profile' in self.param else 'mongodb-general'
-
-        col = self.fetch_db_col(db, col_name, profile)
-        col_im_c = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
-        cursor = col.find(query, {'_id': 1})
 
-        if 'limit' in self.param:
-            cursor.limit(int(self.param['limit'][0]))
+        col_im_c = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        if db and col_name:
+            col = self.fetch_db_col(db, col_name, profile)
+            cursor = col.find(query, {'_id': 1}, snapshot=True)
+            if 'limit' in self.param:
+                cursor.limit(int(self.param['limit'][0]))
 
-        for entry in cursor:
-            for img in col_im_c.find({'itemIds': entry['_id']}):
+            for entry in cursor:
+                for img in col_im_c.find({'itemIds': entry['_id']}, snapshot=True):
+                    item = ImageProcItem()
+                    item['image'] = img
+                    url = img['url']
+                    yield Request(url=url, meta={'item': item}, headers={'Referer': None}, callback=self.parse_img)
+        else:
+            cursor = col_im_c.find(query, snapshot=True)
+            if 'limit' in self.param:
+                cursor.limit(int(self.param['limit'][0]))
+
+            self.log('Estiname: %d images to process...' % cursor.count(), log.INFO)
+            for img in cursor:
                 item = ImageProcItem()
                 item['image'] = img
                 url = img['url']
                 yield Request(url=url, meta={'item': item}, headers={'Referer': None}, callback=self.parse_img)
+
 
     def get_upload_token(self, key, bucket='lvxingpai-img-store', overwrite=True):
         """
