@@ -103,6 +103,15 @@ class MafengwoSpider(AizouCrawlSpider):
 
         self.log('Parsing: %s' % response.url, log.INFO)
 
+        type_mapping = {
+            1: 'cy',
+            2: 'hotel',
+            3: 'vs',
+            4: 'gw',
+            5: 'yl',
+            6: 'trans'
+        }
+
         if ret['mode'] == 1:
             # 进一步抓取目的地
             for entry in ret['list']:
@@ -138,48 +147,37 @@ class MafengwoSpider(AizouCrawlSpider):
                               meta={'crumb': copy.deepcopy(crumb_1), 'iType': 1},
                               callback=self.parse_mdd_ajax)
         elif ret['mode'] == 2:
-            # 抓取poi
-            for entry in ret['list']:
-                item = MafengwoItem()
-                data = {}
-                item['data'] = data
+            if not ('skip' in self.param and type_mapping[itype] in self.param['skip']):
+                # 跳过某些POI类型，抓取poi
+                for entry in ret['list']:
+                    item = MafengwoItem()
+                    data = {}
+                    item['data'] = data
 
-                oid = entry['id']
-                data['id'] = oid
-                data['title'] = entry['name']
-                data['lat'] = entry['lat']
-                data['lng'] = entry['lng']
-                data['rating'] = entry['rank']
-                data['comment_cnt'] = entry['num_comment']
-                img = entry['img_link']
-                img = re.sub(r'rbook_comment\.w\d+\.', '', img)
-                data['cover'] = img
-                crumb_1 = copy.deepcopy(crumb)
-                data['crumb'] = crumb_1
+                    data['type'] = type_mapping[itype]
 
-                if itype == 1:
-                    data['type'] = 'cy'
-                elif itype == 2:
-                    data['type'] = 'hotel'
-                elif itype == 3:
-                    data['type'] = 'vs'
-                elif itype == 4:
-                    data['type'] = 'gw'
-                elif itype == 5:
-                    data['type'] = 'yl'
-                elif itype == 6:
-                    data['type'] = 'trans'
+                    oid = entry['id']
+                    data['id'] = oid
+                    data['title'] = entry['name']
+                    data['lat'] = entry['lat']
+                    data['lng'] = entry['lng']
+                    data['rating'] = entry['rank']
+                    data['comment_cnt'] = entry['num_comment']
+                    img = entry['img_link']
+                    img = re.sub(r'rbook_comment\.w\d+\.', '', img)
+                    data['cover'] = img
+                    crumb_1 = copy.deepcopy(crumb)
+                    data['crumb'] = crumb_1
 
-                # 跳过某些POI类型
-                if 'skip' in self.param and data['type'] in self.param['skip']:
+                    yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
+                                  meta={'id': oid, 'item': item},
+                                  callback=self.parse_poi)
+            new_t = itype
+            while new_t < 6:
+                new_t += 1
+                if 'skip' in self.param and type_mapping[new_t] in self.param['skip']:
                     continue
 
-                yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
-                              meta={'id': oid, 'item': item},
-                              callback=self.parse_poi)
-
-            new_t = itype + 1
-            if new_t <= 6:
                 match = re.search(r'iMddid=(\d+)', response.url)
                 yield Request(
                     url='http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=%d' % (
@@ -279,9 +277,9 @@ class MafengwoSpider(AizouCrawlSpider):
     # mdd_id = 21536
     # crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
     # else:
-    #                 continue
-    #         else:
-    #             mdd_id = int(match.group(1))
+    # continue
+    # else:
+    # mdd_id = int(match.group(1))
     #         # 目标为洲的那些scrumb，不要抓取
     #         if mdd_id in self.cont_list:
     #             continue
