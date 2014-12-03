@@ -746,8 +746,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['enName'] = tmp['enName']
             data['zhName'] = tmp['zhName']
+            data['name'] = data['zhName'] if data['zhName'] else data['enName']
             data['alias'] = tmp['alias']
-            # data['abroad'] = tmp['abroad']
 
             desc = None
             address = None
