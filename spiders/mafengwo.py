@@ -835,7 +835,11 @@ class MafengwoProcSpider(AizouCrawlSpider):
         col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        for entry in col_raw_mdd.find({'type': 'region'}):
+        cursor = col_raw_mdd.find({'type': 'region'})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        for entry in cursor:
             data = {}
 
             tmp = self.parse_name(entry['title'])
@@ -1072,7 +1076,11 @@ class MafengwoProcPipeline(AizouPipeline):
         if image_list:
             col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
             for img in image_list:
-                new_img = {key: img[key] for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']}
+                new_img = {}
+                for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']:
+                    if key in img:
+                        new_img[key] = img[key]
+                new_img['key'] = 'assets/images/%s' % new_img['url_hash']
                 col_im.update({'url_hash': img['url_hash']},
                               {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
                               upsert=True)
@@ -1134,7 +1142,11 @@ class MafengwoProcPipeline(AizouPipeline):
         if image_list:
             col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
             for img in image_list:
-                new_img = {key: img[key] for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']}
+                new_img = {}
+                for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']:
+                    if key in img:
+                        new_img[key] = img[key]
+                new_img['key'] = 'assets/images/%s' % new_img['url_hash']
                 col_im.update({'url_hash': img['url_hash']},
                               {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
                               upsert=True)
