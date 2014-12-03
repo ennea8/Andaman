@@ -1036,7 +1036,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                                 'zhName': tmp['sname'],
                                 'enName': ''
                             }
-                            locList = list()  # 存放层级列表
+                            locList = []  # 存放层级列表
                             for key in entry['scene_path'][:-1]:
                                 tmp_loc = {
                                     'id': ObjectId(),
@@ -1050,13 +1050,14 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                             data['country'] = []
                             data['locList'] = []
 
-                    data['tags'] = list()
+                    data['tags'] = []
 
                     if 'ext' in entry:
                         tmp = entry['ext']
-                        data['desc'] = self.text_pro(tmp['more_desc']) if 'more_desc' in tmp else self.text_pro(
-                            tmp['abs_desc'])
-                        data['rating'] = float(tmp['avg_remark_score']) / 5 if 'avg_remark_score' in tmp else None
+                        data['desc'] = self.text_pro(tmp['more_desc']) \
+                            if 'more_desc' in tmp else self.text_pro(tmp['abs_desc'])
+                        data['rating'] = float(tmp['avg_remark_score']) / 5 \
+                            if 'avg_remark_score' in tmp else None
                         data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
                     else:
                         data['desc'] = ''
@@ -1106,11 +1107,10 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     if 'besttime' in tmp:
                         data['travelMonth'] = tmp['besttime']['simple_desc'] \
                             if 'simple_desc' in tmp['besttime'] else ''
-                        # TODO 小时
+
                         tmp_time_cost = tmp['besttime']['recommend_visit_time'] \
                             if 'recommend_visit_time' in tmp['besttime'] else ''
-                        data['timeCost'] = int(re.search('\d', tmp_time_cost).group()) \
-                            if re.search('\d', tmp_time_cost) else None
+                        data['timeCost'] = tmp_time_cost
                         data['timeCostDesc'] = tmp['besttime']['more_desc'] \
                             if 'more_desc' in tmp['besttime'] else ''
 
@@ -1239,7 +1239,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                                 'zhName': tmp['sname'],
                                 'enName': ''
                             }
-                            locList = list()  # 存放层级列表
+                            locList = []  # 存放层级列表
                             for key in entry['scene_path'][:-1]:
                                 tmp_loc = {
                                     'id': ObjectId(),
@@ -1250,8 +1250,8 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                             data['locList'] = locList
                         else:
                             # log.WARNING('not a city')
-                            data['country'] = list()
-                            data['locList'] = list()
+                            data['country'] = []
+                            data['locList'] = []
 
                     data['tags'] = []
 
@@ -1261,10 +1261,23 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                             tmp['abs_desc'])
                         data['rating'] = float(tmp['avg_remark_score']) / 5 if 'avg_remark_score' in tmp else None
                         data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
+                        # 位置信息
+                        if 'map_info' in tmp:
+                            map_info = filter(lambda node: node != '', tmp['map_info'].split(','))
+                            try:
+                                coord = [float(node) for node in map_info]
+                            except:
+                                print 2
+                        else:
+                            coord = []
+                        data['location'] = {'type': 'Point', 'coordinates': coord}
+
+
                     else:
                         data['desc'] = ''
                         data['rating'] = None
                         data['enName'] = ''
+                        data['location'] = None
 
                     # 设置别名
                     if data['enName'] == '':
@@ -1292,8 +1305,9 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         # TODO 小时
                         tmp_time_cost = tmp['besttime']['recommend_visit_time'] \
                             if 'recommend_visit_time' in tmp['besttime'] else ''
-                        data['timeCost'] = int(re.search('\d', tmp_time_cost).group()) \
-                            if re.search('\d', tmp_time_cost) else None
+                        data['timeCost'] = tmp_time_cost
+                        # int(re.search('\d', tmp_time_cost).group()) \
+                        # if re.search('\d', tmp_time_cost) else None
                         data['timeCostDesc'] = tmp['besttime']['more_desc'] \
                             if 'more_desc' in tmp['besttime'] else ''
 
@@ -1408,7 +1422,8 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                     if restaurants_info:
                         for node in restaurants_info:
                             try:
-                                data['tags'] = node['tag'].split(',')[1:-1] if 'tag' in node and node['tag'] is not None else []
+                                data['tags'] = node['tag'].split(',')[1:-1] \
+                                    if 'tag' in node and node['tag'] is not None else []
                             except:
                                 data['tags']
                             data['address'] = node['addr'] if 'addr' in node else ''
@@ -1509,8 +1524,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                                 data['address'] = ext_text['address']
                                 data['desc'] = ext_text['rec_reason']
                                 data['telephone'] = ext_text['phone']
-                                # TODO 处理标签
-                                data['tags'] = ext_text['rec_tag']
+                                data['tags'] = []
                                 images = {'url': ext_text['pic_url']}
                                 data['images'] = [images]
                                 if 'map_x' in node:
@@ -1555,6 +1569,3 @@ class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
         for k in data:
             entry[k] = data[k]
         col.save(entry)
-
-
-
