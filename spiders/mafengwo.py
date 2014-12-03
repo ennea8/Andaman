@@ -278,7 +278,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # if crumb_name == u'中国':
     # mdd_id = 21536
     # crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
-    #             else:
+    # else:
     #                 continue
     #         else:
     #             mdd_id = int(match.group(1))
@@ -1018,6 +1018,19 @@ class MafengwoProcPipeline(AizouPipeline):
 
         return item
 
+    def process_image_list(self, image_list, item_id):
+        col_im = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        for img in image_list:
+            new_img = {}
+            for key in img:
+                if key in ['itemIds']:
+                    continue
+                new_img[key] = img[key]
+            new_img['key'] = 'assets/images/%s' % new_img['url_hash']
+            col_im.update({'url_hash': img['url_hash']},
+                          {'$setOnInsert': new_img, '$addToSet': {'itemIds': item_id}},
+                          upsert=True)
+
     def process_mdd(self, item, spider):
         data = item['data']
         col_name = item['col_name']
@@ -1073,17 +1086,7 @@ class MafengwoProcPipeline(AizouPipeline):
 
         mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
                                   fields={'_id': 1})
-        if image_list:
-            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
-            for img in image_list:
-                new_img = {}
-                for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']:
-                    if key in img:
-                        new_img[key] = img[key]
-                new_img['key'] = 'assets/images/%s' % new_img['url_hash']
-                col_im.update({'url_hash': img['url_hash']},
-                              {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
-                              upsert=True)
+        self.process_image_list(image_list, mdd['_id'])
 
         return item
 
@@ -1137,18 +1140,8 @@ class MafengwoProcPipeline(AizouPipeline):
             ops['$unset'] = {'locality': 1}
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
-        mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
+        poi = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
                                   fields={'_id': 1})
-        if image_list:
-            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
-            for img in image_list:
-                new_img = {}
-                for key in ['url', 'url_hash', 'user_id', 'user_name', 'favor_cnt']:
-                    if key in img:
-                        new_img[key] = img[key]
-                new_img['key'] = 'assets/images/%s' % new_img['url_hash']
-                col_im.update({'url_hash': img['url_hash']},
-                              {'$setOnInsert': new_img, '$addToSet': {'itemIds': mdd['_id']}},
-                              upsert=True)
+        self.process_image_list(image_list, poi['_id'])
 
         return item
