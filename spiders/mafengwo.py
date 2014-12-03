@@ -1,5 +1,6 @@
 # coding=utf-8
 import copy
+import hashlib
 import json
 import re
 import math
@@ -102,6 +103,15 @@ class MafengwoSpider(AizouCrawlSpider):
 
         self.log('Parsing: %s' % response.url, log.INFO)
 
+        type_mapping = {
+            1: 'cy',
+            2: 'hotel',
+            3: 'vs',
+            4: 'gw',
+            5: 'yl',
+            6: 'trans'
+        }
+
         if ret['mode'] == 1:
             # 进一步抓取目的地
             for entry in ret['list']:
@@ -136,46 +146,38 @@ class MafengwoSpider(AizouCrawlSpider):
                 yield Request(url='http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % oid,
                               meta={'crumb': copy.deepcopy(crumb_1), 'iType': 1},
                               callback=self.parse_mdd_ajax)
-
         elif ret['mode'] == 2:
-            # 抓取poi
-            for entry in ret['list']:
-                item = MafengwoItem()
-                data = {}
-                item['data'] = data
+            if not ('skip' in self.param and type_mapping[itype] in self.param['skip']):
+                # 跳过某些POI类型，抓取poi
+                for entry in ret['list']:
+                    item = MafengwoItem()
+                    data = {}
+                    item['data'] = data
 
-                oid = entry['id']
-                data['id'] = oid
-                data['title'] = entry['name']
-                data['lat'] = entry['lat']
-                data['lng'] = entry['lng']
-                data['rating'] = entry['rank']
-                data['comment_cnt'] = entry['num_comment']
-                img = entry['img_link']
-                img = re.sub(r'rbook_comment\.w\d+\.', '', img)
-                data['cover'] = img
-                crumb_1 = copy.deepcopy(crumb)
-                data['crumb'] = crumb_1
+                    data['type'] = type_mapping[itype]
 
-                if itype == 1:
-                    data['type'] = 'cy'
-                elif itype == 2:
-                    data['type'] = 'hotel'
-                elif itype == 3:
-                    data['type'] = 'vs'
-                elif itype == 4:
-                    data['type'] = 'gw'
-                elif itype == 5:
-                    data['type'] = 'yl'
-                elif itype == 6:
-                    data['type'] = 'trans'
+                    oid = entry['id']
+                    data['id'] = oid
+                    data['title'] = entry['name']
+                    data['lat'] = entry['lat']
+                    data['lng'] = entry['lng']
+                    data['rating'] = entry['rank']
+                    data['comment_cnt'] = entry['num_comment']
+                    img = entry['img_link']
+                    img = re.sub(r'rbook_comment\.w\d+\.', '', img)
+                    data['cover'] = img
+                    crumb_1 = copy.deepcopy(crumb)
+                    data['crumb'] = crumb_1
 
-                yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
-                              meta={'id': oid, 'item': item},
-                              callback=self.parse_poi)
+                    yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
+                                  meta={'id': oid, 'item': item},
+                                  callback=self.parse_poi)
+            new_t = itype
+            while new_t < 6:
+                new_t += 1
+                if 'skip' in self.param and type_mapping[new_t] in self.param['skip']:
+                    continue
 
-            new_t = itype + 1
-            if new_t <= 6:
                 match = re.search(r'iMddid=(\d+)', response.url)
                 yield Request(
                     url='http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=%d' % (
@@ -227,98 +229,82 @@ class MafengwoSpider(AizouCrawlSpider):
         else:
             yield item
 
-    # def parse_poi_list(self, response):
-    # """
-    # 解析页面内的poi列表
-    # :param response:
-    # :return:
-    # """
-    # poi_type = response.meta['poi_type']
-    #     for href in Selector(response).xpath(
-    #             '//ul[@class="poi-list"]/li[contains(@class,"item")]/div[@class="title"]//a[@href]/@href').extract():
-    #         yield Request(self.build_href(response.url, href), meta={'poi_type': poi_type}, callback=self.parse_poi)
+        # 从目的地页面出发，解析POI
+        yield Request(url='http://www.mafengwo.cn/jd/%d/gonglve.html' % data['id'],
+                      meta={'type': 'region', 'crumb': data['crumb']},
+                      callback=self.parse_jd)
+
+    def parse_poi_list(self, response):
+        """
+        解析页面内的poi列表
+        :param response:
+        :return:
+        """
+        poi_type = response.meta['poi_type']
+        crumb = response.meta['crumb']
+
+        for node in Selector(response).xpath(
+                '//ul[@class="poi-list"]/li[contains(@class,"item")]'):
+            try:
+                item = MafengwoItem()
+                data = {}
+                item['data'] = data
+                href = node.xpath('./div[@class="title"]//a[@href]/@href').extract()[0]
+                data['id'] = int(re.search(r'/poi/(\d+)\.html', href).group(1))
+                data['rating'] = float(node.xpath('./div[@class="grade"]/em/text()').extract()[0])
+                data['comment_cnt'] = int(
+                    node.xpath('./div[@class="grade"]/p[@class="rev-num"]/em/text()').extract()[0])
+                data['title'] = node.xpath('./div[@class="title"]//a[@href]/text()').extract()[0]
+                data['crumb'] = copy.deepcopy(crumb)
+                data['type'] = poi_type
+
+                yield Request(self.build_href(response.url, href), meta={'id': data['id'], 'item': item},
+                              callback=self.parse_poi)
+            except (KeyError, IndexError):
+                pass
 
     # def get_crumb(self, response):
-    #     # 获得crumb
-    #     crumb = []
-    #     for node in Selector(response).xpath(
-    #             '//div[@class="crumb"]/div[contains(@class,"item")]/div[@class="drop"]/span[@class="hd"]/a[@href]'):
-    #         crumb_name = node.xpath('./text()').extract()[0].strip()
-    #         crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    #         match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
-    #         if not match:
-    #             # 例外情况：中国
-    #             if crumb_name == u'中国':
-    #                 mdd_id = 21536
-    #                 crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
-    #             else:
-    #                 continue
-    #         else:
-    #             mdd_id = int(match.group(1))
+    # # 获得crumb
+    # crumb = []
+    # for node in Selector(response).xpath(
+    # '//div[@class="crumb"]/div[contains(@class,"item")]/div[@class="drop"]/span[@class="hd"]/a[@href]'):
+    # crumb_name = node.xpath('./text()').extract()[0].strip()
+    # crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
+    # match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
+    # if not match:
+    # # 例外情况：中国
+    # if crumb_name == u'中国':
+    # mdd_id = 21536
+    # crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
+    # else:
+    # continue
+    # else:
+    # mdd_id = int(match.group(1))
     #         # 目标为洲的那些scrumb，不要抓取
     #         if mdd_id in self.cont_list:
     #             continue
     #         crumb.append({'name': crumb_name, 'url': crumb_url})
     #     return crumb
 
-    # def parse_jd(self, response):
-    #     sel = Selector(response)
-    #
-    #     ctype = response.meta['type']
-    #     # 如果是目的地页面，其下的所有poi都为景点类型。否则，poi_type和ctype一致，比如都为gw, cy等
-    #     poi_type = 'vs' if ctype == 'region' else ctype
-    #     response.meta['poi_type'] = poi_type
-    #
-    #     # 抓取景点页面中的
-    #     results = self.parse_poi_list(response)
-    #     if results:
-    #         for entry in results:
-    #             yield entry
-    #
-    #     # poi列表的翻页
-    #     for href in sel.xpath('//div[@class="page-hotel"]/a[@href]/@href').extract():
-    #         yield Request(self.build_href(response.url, href), callback=self.parse_poi_list,
-    #                       meta={'poi_type': poi_type})
-    #
-    #     if ctype == 'region':
-    #         # 抓取下级的region
-    #         region_list = self.get_region_list(response)
-    #         if region_list:
-    #             for entry in region_list:
-    #                 yield entry
-    #
-    #         # 处理当前region
-    #         item = response.meta['item']
-    #         data = item['data']
-    #
-    #         col_list = []
-    #         for node in sel.xpath('//ul[@class="nav-box"]/li[contains(@class,"nav-item")]/a[@href]'):
-    #             info_title = node.xpath('./text()').extract()[0]
-    #             next_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    #             # 根据是否出现国家攻略来判断是否为国家
-    #             if info_title == u'国家概况' or info_title == u'城市概况':
-    #                 for info_node in node.xpath('..//dl/dt/a[@href]'):
-    #                     info_url = self.build_href(response.url, info_node.xpath('./@href').extract()[0])
-    #                     info_cat = info_node.xpath('./text()').extract()[0].strip()
-    #                     col_list.append([info_url, self.parse_info, {'info_cat': info_cat}])
-    #
-    #                 if info_title == u'国家概况':
-    #                     data['type'] = 'country'
-    #                 else:
-    #                     data['type'] = 'region'
-    #             elif info_title == u'购物':
-    #                 yield Request(url=next_url, callback=self.parse_jd, meta={'type': 'gw'})
-    #             elif info_title == u'娱乐':
-    #                 yield Request(url=next_url, callback=self.parse_jd, meta={'type': 'yl'})
-    #             elif info_title == u'美食':
-    #                 yield Request(url=next_url, callback=self.parse_jd, meta={'type': 'cy'})
-    #
-    #         if col_list:
-    #             col_url, cb, meta = col_list[0]
-    #             col_list = col_list[1:]
-    #             meta['col_list'] = col_list
-    #             meta['item'] = item
-    #             yield Request(url=col_url, callback=cb, meta=meta)
+    def parse_jd(self, response):
+        sel = Selector(response)
+
+        ctype = response.meta['type']
+        # 如果是目的地页面，其下的所有poi都为景点类型。否则，poi_type和ctype一致，比如都为gw, cy等
+        poi_type = 'vs' if ctype == 'region' else ctype
+        response.meta['poi_type'] = poi_type
+        crumb = copy.deepcopy(response.meta['crumb'])
+
+        # 抓取景点页面中的
+        results = self.parse_poi_list(response)
+        if results:
+            for entry in results:
+                yield entry
+
+        # poi列表的翻页
+        for href in sel.xpath('//div[@class="page-hotel"]/a[@href]/@href').extract():
+            yield Request(self.build_href(response.url, href), callback=self.parse_poi_list,
+                          meta={'poi_type': poi_type, 'crumb': copy.deepcopy(crumb)})
 
     def parse_info(self, response):
         sel = Selector(response)
@@ -367,6 +353,12 @@ class MafengwoSpider(AizouCrawlSpider):
         sel = Selector(response)
         item = response.meta['item']
         data = item['data']
+
+        # 如果通过页面进来而不是接口，此时还没有坐标信息。需要抓取
+        if not ('lat' in data and 'lng' in data):
+            loc_data = json.loads('{%s}' % re.search(r'window\.Env\s*=\s*\{(.+?)\}\s*;', response.body).group(1))
+            data['lat'] = loc_data['lat']
+            data['lng'] = loc_data['lng']
 
         tmp = sel.xpath('//div[contains(@class,"m-details")]/div[contains(@class,"title")]//h1/text()').extract()
         if not tmp:
@@ -527,23 +519,20 @@ class MafengwoPipeline(AizouPipeline):
         else:
             return item
 
-        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
-        db_data = col.find_one({'id': data['id']})
-        if not db_data:
-            db_data = {}
+        # 存储原始图像
+        col_img = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+        if 'imageList' not in data:
+            data['imageList'] = []
+        image_list = data.pop('imageList')
+        for tmp in image_list:
+            tmp['url_hash'] = hashlib.md5(tmp['url']).hexdigest()
+            sig = '%s-%d' % (col_name, data['id'])
+            col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
-        if 'imageList' not in db_data:
-            db_data['imageList'] = []
-        images_set = set([tmp['url'] for tmp in db_data['imageList']])
-        for key in data.keys():
-            if key == 'imageList':
-                for image_entry in data[key]:
-                    if image_entry['url'] not in images_set:
-                        images_set.add(image_entry['url'])
-                        db_data['imageList'].append(image_entry)
-            else:
-                db_data[key] = data[key]
-        col.save(db_data)
+        # 存储item本身
+        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        col.update({'id': data['id']}, {'$set': data}, upsert=True)
+
         return item
 
 
@@ -755,8 +744,8 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['enName'] = tmp['enName']
             data['zhName'] = tmp['zhName']
+            data['name'] = data['zhName'] if data['zhName'] else data['enName']
             data['alias'] = tmp['alias']
-            # data['abroad'] = tmp['abroad']
 
             desc = None
             address = None
@@ -802,16 +791,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             data['tags'] = []  # list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
-            image_list = []
-            image_urls = set([])
-            for img in entry['imageList']:
-                url = img['url']
-                if url in image_urls:
-                    continue
-                image_list.append({'url': url})
-                image_urls.add(url)
-            data['imageList'] = image_list
-
             crumb_ids = []
             for crumb_entry in entry['crumb']:
                 if isinstance(crumb_entry, int):
@@ -822,9 +801,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
 
-            data['source'] = {'mafengwo':
-                                  {'url': 'http://www.mafengwo.cn/poi/%d.html' % entry['id'],
-                                   'id': entry['id']}}
+            data['source'] = {'mafengwo': {'id': entry['id']}}
 
             if 'lat' in entry and 'lng' in entry:
                 data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
@@ -844,13 +821,23 @@ class MafengwoProcSpider(AizouCrawlSpider):
             else:
                 return
 
+            # 获得对应的图像
+            sig = '%s-%d' % (col_name, data['source']['mafengwo']['id'])
+            col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+            data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
+
             yield item
 
     def parse_mdd(self):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        for entry in col_raw_mdd.find({'type': 'region'}):
+        cursor = col_raw_mdd.find({'type': 'region'})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        for entry in cursor:
             data = {}
 
             tmp = self.parse_name(entry['title'])
@@ -945,16 +932,6 @@ class MafengwoProcSpider(AizouCrawlSpider):
             else:
                 data['hotness'] = 0
 
-            image_list = []
-            image_urls = set([])
-            for img in entry['imageList']:
-                url = img['url']
-                if url in image_urls:
-                    continue
-                image_list.append({'url': url})
-                image_urls.add(url)
-            data['imageList'] = image_list
-
             crumb_ids = []
             for crumb_entry in entry['crumb']:
                 if isinstance(crumb_entry, int):
@@ -965,12 +942,14 @@ class MafengwoProcSpider(AizouCrawlSpider):
                     crumb_ids.append(cid)
             data['crumbIds'] = crumb_ids
 
-            data['source'] = {'mafengwo':
-                                  {'url': 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % entry['id'],
-                                   'id': entry['id']}}
+            data['source'] = {'mafengwo': {'id': entry['id']}}
 
             if 'lat' in entry and 'lng' in entry:
                 data['location'] = {'type': 'Point', 'coordinates': [entry['lng'], entry['lat']]}
+
+            # 获得对应的图像
+            sig = 'MafengwoMdd-%d' % data['source']['mafengwo']['id']
+            data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
 
             item = MafengwoProcItem()
             item['data'] = data
@@ -989,13 +968,13 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # lang = ['en-US']
             # yield Request(
             # url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
-            #             headers={'Accept-Language': 'zh-CN'},
-            #             meta={'item': item, 'lang': lang},
-            #             callback=self.parse_geocode)
-            #     else:
-            #         yield item
+            # headers={'Accept-Language': 'zh-CN'},
+            # meta={'item': item, 'lang': lang},
+            # callback=self.parse_geocode)
             # else:
-            #     yield item
+            # yield item
+            # else:
+            # yield item
 
             yield item
 
@@ -1037,6 +1016,19 @@ class MafengwoProcPipeline(AizouPipeline):
 
         return item
 
+    def process_image_list(self, image_list, item_id):
+        col_im = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        for img in image_list:
+            new_img = {}
+            for key in img:
+                if key in ['itemIds']:
+                    continue
+                new_img[key] = img[key]
+            new_img['key'] = 'assets/images/%s' % new_img['url_hash']
+            col_im.update({'url_hash': img['url_hash']},
+                          {'$setOnInsert': new_img, '$addToSet': {'itemIds': item_id}},
+                          upsert=True)
+
     def process_mdd(self, item, spider):
         data = item['data']
         col_name = item['col_name']
@@ -1045,10 +1037,6 @@ class MafengwoProcPipeline(AizouPipeline):
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
-
-        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
-        if not entry:
-            entry = {}
 
         crumb_list = filter(lambda val: val != data['source']['mafengwo']['id'], data.pop('crumbIds'))
         crumb = []
@@ -1064,7 +1052,8 @@ class MafengwoProcPipeline(AizouPipeline):
             else:
                 ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
                 if not ret and not country_flag:
-                    ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                    ret = col_country.find_one({'source.mafengwo.id': cid},
+                                               {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
                     if ret:
                         # 添加到country字段
                         data['country'] = {}
@@ -1085,38 +1074,17 @@ class MafengwoProcPipeline(AizouPipeline):
 
         data['locList'] = crumb
 
-        # 有几个字段具有天然的追加属性：alias, imageList
-        # 其它都是覆盖型
-        image_set = set([tmp['url'] for tmp in entry['imageList']]) if 'imageList' in entry else set([])
-        alias_set = set(entry['alias']) if 'alias' in entry else set([])
-        for k in data:
-            if k == 'imageList':
-                if k not in entry:
-                    entry[k] = []
-                for tmp in data[k]:
-                    if tmp['url'] in image_set:
-                        continue
-                    entry[k].append(tmp)
-                    image_set.add(tmp['url'])
+        src = data.pop('source')
+        alias = data.pop('alias')
+        image_list = data.pop('imageList')
 
-            elif k == 'alias':
-                if k not in entry:
-                    entry[k] = []
-                for tmp in data[k]:
-                    if tmp in alias_set:
-                        continue
-                    entry[k].append(tmp)
-                    alias_set.add(tmp)
-            else:
-                entry[k] = data[k]
+        ops = {'$set': data}
+        ops['$set']['source.mafengwo'] = src['mafengwo']
+        ops['$addToSet'] = {'alias': {'$each': alias}}
 
-        # # 将visitCnt转换成hotness信息
-        # if 'visitCnt' in entry:
-        # entry['hotness'] = 1 - math.exp(-entry['visitCnt'] / self.denom)
-        # else:
-        # entry['hotness'] = self.def_hot
-
-        col.save(entry)
+        mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
+                                  fields={'_id': 1})
+        self.process_image_list(image_list, mdd['_id'])
 
         return item
 
@@ -1128,10 +1096,6 @@ class MafengwoProcPipeline(AizouPipeline):
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
-
-        entry = col.find_one({'source.mafengwo.id': data['source']['mafengwo']['id']})
-        if not entry:
-            entry = {}
 
         country_flag = False
         crumb_list = data.pop('crumbIds')
@@ -1148,8 +1112,7 @@ class MafengwoProcPipeline(AizouPipeline):
                     country_flag = True
             if ret:
                 crumb.append(ret['_id'])
-        entry['targets'] = crumb
-        entry['name'] = data['zhName']
+        data['targets'] = crumb
 
         # 从crumb的最后开始查找。第一个目的地即为city
         city = None
@@ -1157,18 +1120,26 @@ class MafengwoProcPipeline(AizouPipeline):
             cid = crumb_list[idx]
             ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
             if ret:
-                city = {'id': ret['_id'], '_id': ret['_id']}
+                city = {'_id': ret['_id']}
                 for key in ['zhName', 'enName']:
                     if key in ret:
                         city[key] = ret[key]
                 break
 
+        src = data.pop('source')
+        alias = data.pop('alias')
+        image_list = data.pop('imageList')
+
+        ops = {'$set': data}
+        ops['$set']['source.mafengwo'] = src['mafengwo']
         if city:
-            entry['locality'] = city
+            ops['$set']['locality'] = city
+        else:
+            ops['$unset'] = {'locality': 1}
+        ops['$addToSet'] = {'alias': {'$each': alias}}
 
-        for k in data:
-            entry[k] = data[k]
-
-        col.save(entry)
+        poi = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
+                                  fields={'_id': 1})
+        self.process_image_list(image_list, poi['_id'])
 
         return item
