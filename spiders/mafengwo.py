@@ -557,7 +557,17 @@ class MafengwoProcSpider(AizouCrawlSpider):
         self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 2000.0
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com')
+        def f(val):
+            head = hex(val)[2:]
+            if len(head) == 1:
+                head = '0' + head
+            return head
+
+        for i in xrange(255):
+            # 按照ObjectId进行划分
+            head = f(i)
+            tail = f(i + 1)
+            yield Request(url='http://www.baidu.com', meta={'lower': head, 'upper': tail}, dont_filter=True)
 
     def is_chn(self, text):
         """
@@ -668,13 +678,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
         return result
 
     def parse(self, response):
-        func_map = {'mdd': self.parse_mdd,
+        lower = response.meta['lower']
+        upper = response.meta['upper']
+
+        func_map = {'mdd': self.parse_mdd([lower, upper]),
                     'country': self.parse_country,
-                    'vs': lambda: self.parse_poi('MafengwoVs'),
-                    'gw': lambda: self.parse_poi('MafengwoGw'),
-                    'hotel': lambda: self.parse_poi('MafengwoHotel'),
-                    'yl': lambda: self.parse_poi('MafengwoYl'),
-                    'cy': lambda: self.parse_poi('MafengwoCy')
+                    'vs': lambda: self.parse_poi('MafengwoVs', [lower, upper]),
+                    'gw': lambda: self.parse_poi('MafengwoGw', [lower, upper]),
+                    'hotel': lambda: self.parse_poi('MafengwoHotel', [lower, upper]),
+                    'yl': lambda: self.parse_poi('MafengwoYl', [lower, upper]),
+                    'cy': lambda: self.parse_poi('MafengwoCy', [lower, upper])
         }
 
         for k, v in func_map.items():
@@ -727,14 +740,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             yield item
 
-    def parse_poi(self, col_name):
+    def parse_poi(self, col_name, bound):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
         cursor = col_raw.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
 
+        self.log('Between %s and %s, %d records to be processed.' % (bound[0], bound[1], cursor.count()), log.INFO)
         for entry in cursor:
             data = {'enabled': True}
 
@@ -829,17 +844,19 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             yield item
 
-    def parse_mdd(self):
+    def parse_mdd(self, bound):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
         col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
         query['type'] = 'region'
+        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
         cursor = col_raw_mdd.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
 
+        self.log('Between %s and %s, %d records to be processed.' % (bound[0], bound[1], cursor.count()), log.INFO)
         for entry in cursor:
             data = {}
 
