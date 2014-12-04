@@ -280,7 +280,7 @@ class MafengwoSpider(AizouCrawlSpider):
     # continue
     # else:
     # mdd_id = int(match.group(1))
-    #         # 目标为洲的那些scrumb，不要抓取
+    # # 目标为洲的那些scrumb，不要抓取
     #         if mdd_id in self.cont_list:
     #             continue
     #         crumb.append({'name': crumb_name, 'url': crumb_url})

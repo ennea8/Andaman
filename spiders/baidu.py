@@ -853,6 +853,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         sid = item['data']['sid']
         sname = item['data']['sname']
+        surl = item['data']['surl']
 
         # 去哪吃item
         if item['data']['type'] == 'locality':
@@ -861,7 +862,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
                            'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=1' % sid
 
             rest_item = BaiduSceneItem()
-            rest_data = {'sid': sid, 'sname': sname, 'type': 'restaurant', 'restaurant': []}
+            rest_data = {'sid': sid, 'sname': sname, 'surl': surl, 'type': 'restaurant', 'restaurant': []}
             rest_item['data'] = rest_data
             yield Request(url=eatwhere_url, callback=self.parse_restaurant,
                           meta={'sid': sid, 'page_idx': 1, 'item': rest_item})
@@ -992,7 +993,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     data = {}
 
                     # sid
-                    #data['id'] = entry['sid']  # 设置id
+                    # data['id'] = entry['sid']  # 设置id
 
                     # 国内外字段
                     data['abroad'] = 'true' if entry['is_china'] == '0' else 'false'
