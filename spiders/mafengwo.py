@@ -1152,7 +1152,7 @@ class MafengwoProcPipeline(AizouPipeline):
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
         mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
-                                  fields={'_id': 1})
+                                  fields={'_id': 1, 'isDone': 1})
         images_formal = self.process_image_list(image_list, mdd['_id'])
         if ('isDone' not in mdd or not mdd['isDone']) and images_formal:
             col.update({'_id': mdd['_id']}, {'$set': {'images': images_formal[:10]}})
