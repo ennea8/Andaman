@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import math
+import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
 
@@ -525,7 +526,13 @@ class MafengwoPipeline(AizouPipeline):
             data['imageList'] = []
         image_list = data.pop('imageList')
         for tmp in image_list:
-            tmp['url_hash'] = hashlib.md5(tmp['url']).hexdigest()
+            url = tmp['url']
+            # 判断链接的有效性。1：必须是有效url，2：不能使形如http://www.mafengwo.cn之类的url
+            components = urlparse.urlparse(url)
+            if not components.scheme or not components.netloc or not components.path:
+                continue
+
+            tmp['url_hash'] = hashlib.md5(url).hexdigest()
             sig = '%s-%d' % (col_name, data['id'])
             col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
