@@ -1411,7 +1411,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                     # 取得locality的id,根据id获得locality的相应字段
                     data['sid'] = entry['sid']  # 'sid'为保存的locality的sid
 
-                    # TODO 从清洗后的数据中找
+                    #  从清洗后的数据中找
                     doc = self.fetch_db_col('geo', 'BaiduDestination', 'mongodb-general').find_one(
                         {'sid': data['sid']})
                     # if 'scene_path' in doc:
@@ -1510,7 +1510,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                     # 取得locality的id,根据id获得locality的相应字段
                     data['sid'] = entry['sid']
 
-                    # TODO 从清洗后的数据中找
+                    # 从清洗后的数据中找
                     doc = self.fetch_db_col('geo', 'BaiduDestination', 'mongodb-general').find_one(
                         {'sid': data['sid']})
                     if not doc:
@@ -1708,7 +1708,7 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
             # sid = entry['sid']
             # surl = entry['surl']
             # sname = entry['sname']
-            # TODO 被评论项目的id,从上面的原始数据中拿到
+            # 被评论项目的id,从上面的原始数据中拿到
             data = {'_id': entry['_id'], 'itemId': entry['itemId']}
 
             if 'comment_list' in entry:
@@ -1817,6 +1817,7 @@ class BaiduRestaurantCommentSpider(AizouCrawlSpider):
                                       '%Y-%m-%d %H:%M')))
                 data['mTime'] = data['cTime']
                 data['miscInfo'] = {}
+                data['prikey'] = data['userName'] + str(data['cTime'])
                 item = BaiduCommentItem()
                 item['data'] = data
                 return item
@@ -1837,7 +1838,7 @@ class BaiduRestaurantCommentSpiderPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('raw_data', 'BaiduRestComment', 'mongodb-crawler')
-        ret = col.find_one({'sid': data['sid']})
+        ret = col.find_one({'prikey': data['prikey']})
         if not ret:
             ret = {}
         for key in data:
@@ -1845,9 +1846,3 @@ class BaiduRestaurantCommentSpiderPipeline(AizouPipeline):
         col.save(ret)
 
         return item
-
-
-
-
-
-
