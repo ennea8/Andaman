@@ -26,7 +26,7 @@ def setup_spider():
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.BreadtripPipeline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ZailushangPipeline': 400})
 
-    crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiYoujiPipline': 300})
+    # crawler.settings.set('ITEM_PIPELINES', {'pipelines.ChanyoujiYoujiPipline': 300})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.MofengwoPipeline': 100})
     # crawler.settings.set('ITEM_PIPELINES', {'pipelines.YiqiquPipeline': 200})
 
@@ -63,7 +63,7 @@ def setup_spider():
 
 def main():
     # if len(sys.argv) == 3:
-    #    start = int(sys.argv[1])
+    # start = int(sys.argv[1])
     #    count = int(sys.argv[2])
     #else:
     #    start, count = 0, 0
