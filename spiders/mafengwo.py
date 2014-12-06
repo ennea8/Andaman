@@ -188,10 +188,11 @@ class MafengwoSpider(AizouCrawlSpider):
                     callback=self.parse_mdd_ajax)
 
         # 尝试抓取自身
-        self_oid = response.meta['id']
-        yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
-                      meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
-                      callback=self.parse_mdd_home, dont_filter=True)
+        if 'inc-self' in self.param:
+            self_oid = response.meta['id']
+            yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
+                          meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
+                          callback=self.parse_mdd_home, dont_filter=True)
 
     def parse_mdd_home(self, response):
         if 'item' not in response.meta:
