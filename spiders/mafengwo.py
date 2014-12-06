@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import math
+import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
 
@@ -525,7 +526,13 @@ class MafengwoPipeline(AizouPipeline):
             data['imageList'] = []
         image_list = data.pop('imageList')
         for tmp in image_list:
-            tmp['url_hash'] = hashlib.md5(tmp['url']).hexdigest()
+            url = tmp['url']
+            # 判断链接的有效性。1：必须是有效url，2：不能使形如http://www.mafengwo.cn之类的url
+            components = urlparse.urlparse(url)
+            if not components.scheme or not components.netloc or not components.path:
+                continue
+
+            tmp['url_hash'] = hashlib.md5(url).hexdigest()
             sig = '%s-%d' % (col_name, data['id'])
             col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
@@ -558,16 +565,26 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
     def start_requests(self):
         def f(val):
+            if val > 255:
+                val = 255
             head = hex(val)[2:]
             if len(head) == 1:
                 head = '0' + head
             return head
 
-        for i in xrange(255):
-            # 按照ObjectId进行划分
+        lower = int(self.param['lower'][0] if 'lower' in self.param else 0)
+        upper = int(self.param['upper'][0] if 'upper' in self.param else 255)
+
+        i = lower
+        step = int(self.param['slice'][0]) if 'slice' in self.param else 8
+        while True:
             head = f(i)
-            tail = f(i + 1)
+            tail = f(i + step)
             yield Request(url='http://www.baidu.com', meta={'lower': head, 'upper': tail}, dont_filter=True)
+
+            i += step
+            if i > upper:
+                break
 
     def is_chn(self, text):
         """
@@ -1081,17 +1098,38 @@ class MafengwoProcPipeline(AizouPipeline):
             new_img['url'] = 'http://lvxingpai-img-store.qiniudn.com/%s' % new_img['key']
             images_formal.append(new_img)
 
+        # 先一次性把item_id在Images和ImageCandidates中对应的图像查找出来
+        im_map = {tmp['key']: tmp for tmp in col_im.find({'itemIds': item_id})}
+        imc_map = {tmp['key']: tmp for tmp in col_im_c.find({'itemIds': item_id})}
+
         for img in image_list:
             url = img['url']
             qiniu_flag, key = is_qiniu(url)
+
             if qiniu_flag:
-                append_image(fetch_qiniu_pic(key, item_id))
+                # 如果已经是七牛格式，说明按理说应该已经存在于库里
+                if key in im_map:
+                    ret = im_map[key]
+                else:
+                    ret = fetch_qiniu_pic(key, item_id)
+                append_image(ret)
             else:
-                ret = fetch_qiniu_pic(key, item_id)
-                if ret:
+                if key in im_map:
+                    ret = im_map[key]
+                    src = 'im'
+                elif key in imc_map:
+                    ret = imc_map[key]
+                    src = 'imc'
+                else:
+                    # 既不存在于Images中，也不存在与ImageCandidates中
+                    ret = fetch_qiniu_pic(key, item_id)
+                    src = 'im'
+
+                if ret and src == 'im':
                     # 已经存在于数据库中，直接添加到images_formal
                     append_image(ret)
-                else:
+
+                if not ret:
                     # 尚不存在，添加到ImageCandidates
                     new_img = {}
                     for tmp in img:
