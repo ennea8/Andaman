@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import math
+import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
 
@@ -58,7 +59,8 @@ class MafengwoSpider(AizouCrawlSpider):
             rid = entry['rid']
             level = entry['level']
             url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % rid
-            yield Request(url=url, meta={'crumb': [rid], 'level': level, 'iType': 1}, callback=self.parse_mdd_ajax)
+            yield Request(url=url, meta={'id': rid, 'crumb': [rid], 'level': level, 'iType': 1},
+                          callback=self.parse_mdd_ajax)
 
 
     # def get_region_list(self, response):
@@ -140,7 +142,7 @@ class MafengwoSpider(AizouCrawlSpider):
                 data['type'] = 'country' if level == 'cont' else 'region'
 
                 yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % oid,
-                              meta={'id': oid, 'item': item},
+                              meta={'id': oid, 'item': item}, dont_filter=True,
                               callback=self.parse_mdd_home)
 
                 yield Request(url='http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % oid,
@@ -185,7 +187,22 @@ class MafengwoSpider(AizouCrawlSpider):
                     meta={'crumb': copy.deepcopy(crumb), 'iType': new_t},
                     callback=self.parse_mdd_ajax)
 
+        # 尝试抓取自身
+        if 'inc-self' in self.param:
+            self_oid = response.meta['id']
+            yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
+                          meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
+                          callback=self.parse_mdd_home, dont_filter=True)
+
     def parse_mdd_home(self, response):
+        if 'item' not in response.meta:
+            # 仅仅尝试获得下面的景点
+            # 从目的地页面出发，解析POI
+            yield Request(url='http://www.mafengwo.cn/jd/%d/gonglve.html' % response.meta['id'],
+                          meta={'type': 'region', 'crumb': response.meta['crumb']},
+                          callback=self.parse_jd)
+            return
+
         item = response.meta['item']
         data = item['data']
 
@@ -281,10 +298,10 @@ class MafengwoSpider(AizouCrawlSpider):
     # else:
     # mdd_id = int(match.group(1))
     # # 目标为洲的那些scrumb，不要抓取
-    #         if mdd_id in self.cont_list:
-    #             continue
-    #         crumb.append({'name': crumb_name, 'url': crumb_url})
-    #     return crumb
+    # if mdd_id in self.cont_list:
+    # continue
+    # crumb.append({'name': crumb_name, 'url': crumb_url})
+    # return crumb
 
     def parse_jd(self, response):
         sel = Selector(response)
@@ -372,9 +389,9 @@ class MafengwoSpider(AizouCrawlSpider):
         # lng = loc_data['lng']
 
         # score = float(
-        #     sel.xpath('//div[@class="txt-l"]/div[@class="score"]/span[@class="score-info"]/em/text()').extract()[0]) / 5
+        # sel.xpath('//div[@class="txt-l"]/div[@class="score"]/span[@class="score-info"]/em/text()').extract()[0]) / 5
         # comment_cnt = int(
-        #     sel.xpath('//div[@class="txt-l"]/div[@class="score"]/p[@class="ranking"]/em/text()').extract()[0])
+        # sel.xpath('//div[@class="txt-l"]/div[@class="score"]/p[@class="ranking"]/em/text()').extract()[0])
 
         photo_cnt = 0
         tmp = sel.xpath('//div[@class="pic-r"]/a[@href]/span[@class="pic-num"]/text()').extract()
@@ -525,7 +542,13 @@ class MafengwoPipeline(AizouPipeline):
             data['imageList'] = []
         image_list = data.pop('imageList')
         for tmp in image_list:
-            tmp['url_hash'] = hashlib.md5(tmp['url']).hexdigest()
+            url = tmp['url']
+            # 判断链接的有效性。1：必须是有效url，2：不能使形如http://www.mafengwo.cn之类的url
+            components = urlparse.urlparse(url)
+            if not components.scheme or not components.netloc or not components.path:
+                continue
+
+            tmp['url_hash'] = hashlib.md5(url).hexdigest()
             sig = '%s-%d' % (col_name, data['id'])
             col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
@@ -547,7 +570,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
     马蜂窝目的地的清洗
     """
 
-    name = 'mafengwo-mdd-proc'
+    name = 'mafengwo-proc'
     uuid = '69d64c68-7602-4cb1-a319-1da2853cda67'
 
     def __init__(self, param, *a, **kw):
@@ -557,7 +580,27 @@ class MafengwoProcSpider(AizouCrawlSpider):
         self.denom = float(self.param['denom'][0]) if 'denom' in self.param else 2000.0
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com')
+        def f(val):
+            if val > 255:
+                val = 255
+            head = hex(val)[2:]
+            if len(head) == 1:
+                head = '0' + head
+            return head
+
+        lower = int(self.param['lower'][0] if 'lower' in self.param else 0)
+        upper = int(self.param['upper'][0] if 'upper' in self.param else 255)
+
+        i = lower
+        step = int(self.param['slice'][0]) if 'slice' in self.param else 8
+        while True:
+            head = f(i)
+            tail = f(i + step)
+            yield Request(url='http://www.baidu.com', meta={'lower': head, 'upper': tail}, dont_filter=True)
+
+            i += step
+            if i > upper:
+                break
 
     def is_chn(self, text):
         """
@@ -668,13 +711,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
         return result
 
     def parse(self, response):
-        func_map = {'mdd': self.parse_mdd,
+        lower = response.meta['lower']
+        upper = response.meta['upper']
+
+        func_map = {'mdd': self.parse_mdd([lower, upper]),
                     'country': self.parse_country,
-                    'vs': lambda: self.parse_poi('MafengwoVs'),
-                    'gw': lambda: self.parse_poi('MafengwoGw'),
-                    'hotel': lambda: self.parse_poi('MafengwoHotel'),
-                    'yl': lambda: self.parse_poi('MafengwoYl'),
-                    'cy': lambda: self.parse_poi('MafengwoCy')
+                    'vs': lambda: self.parse_poi('MafengwoVs', [lower, upper]),
+                    'gw': lambda: self.parse_poi('MafengwoGw', [lower, upper]),
+                    'hotel': lambda: self.parse_poi('MafengwoHotel', [lower, upper]),
+                    'yl': lambda: self.parse_poi('MafengwoYl', [lower, upper]),
+                    'cy': lambda: self.parse_poi('MafengwoCy', [lower, upper])
         }
 
         for k, v in func_map.items():
@@ -727,13 +773,16 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             yield item
 
-    def parse_poi(self, col_name):
+    def parse_poi(self, col_name, bound):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
-        cursor = col_raw.find({})
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
+        cursor = col_raw.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
 
+        self.log('Between %s and %s, %d records to be processed.' % (bound[0], bound[1], cursor.count()), log.INFO)
         for entry in cursor:
             data = {'enabled': True}
 
@@ -828,15 +877,19 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
             yield item
 
-    def parse_mdd(self):
+    def parse_mdd(self, bound):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
         col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
-        cursor = col_raw_mdd.find({'type': 'region'})
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        query['type'] = 'region'
+        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
+        cursor = col_raw_mdd.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
 
+        self.log('Between %s and %s, %d records to be processed.' % (bound[0], bound[1], cursor.count()), log.INFO)
         for entry in cursor:
             data = {}
 
@@ -1017,17 +1070,104 @@ class MafengwoProcPipeline(AizouPipeline):
         return item
 
     def process_image_list(self, image_list, item_id):
-        col_im = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-        for img in image_list:
+        col_im_c = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+        # 正式的，供POI、目的地等使用的images字段
+        images_formal = []
+
+        def is_qiniu(url):
+            """
+            判断是否为存储在七牛上的照片，同时返回key
+            :param url:
+            """
+            match = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url)
+            if match:
+                return True, match.group(1)
+            else:
+                return False, 'assets/images/%s' % img['url_hash']
+
+        def fetch_qiniu_pic(key, item_id):
+            """
+            通过key在Images中查找相应的记录，同时登记item_id
+            :param key:
+            :param item_id:
+            :return:
+            """
+            return col_im.find_and_modify({'key': key}, {'$addToSet': {'itemIds': item_id}}, new=True)
+
+        def append_image(img):
+            """
+            往images_formal中添加一个项目
+            :param img:
+            """
+            if not img:
+                return
+
+            img_set = set([tmp['key'] for tmp in images_formal])
+            if img['key'] in img_set:
+                return
+
             new_img = {}
-            for key in img:
-                if key in ['itemIds']:
-                    continue
-                new_img[key] = img[key]
-            new_img['key'] = 'assets/images/%s' % new_img['url_hash']
-            col_im.update({'url_hash': img['url_hash']},
-                          {'$setOnInsert': new_img, '$addToSet': {'itemIds': item_id}},
-                          upsert=True)
+            for key in ['key', 'w', 'h', 'size', 'title', 'user_name', 'favor_cnt']:
+                if key in img:
+                    new_img[key] = img[key]
+            new_img['url'] = 'http://lvxingpai-img-store.qiniudn.com/%s' % new_img['key']
+            images_formal.append(new_img)
+
+        # 先一次性把item_id在Images和ImageCandidates中对应的图像查找出来
+        im_map = {tmp['key']: tmp for tmp in col_im.find({'itemIds': item_id})}
+        imc_map = {tmp['key']: tmp for tmp in col_im_c.find({'itemIds': item_id})}
+
+        for img in image_list:
+            url = img['url']
+            qiniu_flag, key = is_qiniu(url)
+
+            if qiniu_flag:
+                # 如果已经是七牛格式，说明按理说应该已经存在于库里
+                if key in im_map:
+                    ret = im_map[key]
+                else:
+                    ret = fetch_qiniu_pic(key, item_id)
+                append_image(ret)
+            else:
+                if key in im_map:
+                    ret = im_map[key]
+                    src = 'im'
+                elif key in imc_map:
+                    ret = imc_map[key]
+                    src = 'imc'
+                else:
+                    # 既不存在于Images中，也不存在与ImageCandidates中
+                    ret = fetch_qiniu_pic(key, item_id)
+                    src = 'im'
+
+                if ret and src == 'im':
+                    # 已经存在于数据库中，直接添加到images_formal
+                    append_image(ret)
+
+                if not ret:
+                    # 尚不存在，添加到ImageCandidates
+                    new_img = {}
+                    for tmp in img:
+                        if tmp in ['itemIds', '_id']:
+                            continue
+                        new_img[tmp] = img[tmp]
+                    new_img['key'] = key
+                    col_im_c.update({'url_hash': img['url_hash']},
+                                    {'$setOnInsert': new_img, '$addToSet': {'itemIds': item_id}}, upsert=True)
+
+        def images_cmp(img1, img2):
+            f1 = img1['favor_cnt'] if 'favor_cnt' in img1 else 0
+            f2 = img2['favor_cnt'] if 'favor_cnt' in img2 else 0
+
+            if f1 != f2:
+                return f1 - f2
+            else:
+                s1 = img1['size'] if 'size' in img1 else 0
+                s2 = img2['size'] if 'size' in img2 else 0
+                return s1 - s2
+
+        return sorted(images_formal, cmp=images_cmp, reverse=True)
 
     def process_mdd(self, item, spider):
         data = item['data']
@@ -1083,8 +1223,10 @@ class MafengwoProcPipeline(AizouPipeline):
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
         mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
-                                  fields={'_id': 1})
-        self.process_image_list(image_list, mdd['_id'])
+                                  fields={'_id': 1, 'isDone': 1})
+        images_formal = self.process_image_list(image_list, mdd['_id'])
+        if ('isDone' not in mdd or not mdd['isDone']) and images_formal:
+            col.update({'_id': mdd['_id']}, {'$set': {'images': images_formal[:10]}})
 
         return item
 
@@ -1139,7 +1281,9 @@ class MafengwoProcPipeline(AizouPipeline):
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
         poi = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
-                                  fields={'_id': 1})
-        self.process_image_list(image_list, poi['_id'])
+                                  fields={'_id': 1, 'isDone': 1})
+        images_formal = self.process_image_list(image_list, poi['_id'])
+        if ('isDone' not in poi or not poi['isDone']) and images_formal:
+            col.update({'_id': poi['_id']}, {'$set': {'images': images_formal[:10]}})
 
         return item
