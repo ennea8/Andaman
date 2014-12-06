@@ -59,7 +59,8 @@ class MafengwoSpider(AizouCrawlSpider):
             rid = entry['rid']
             level = entry['level']
             url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % rid
-            yield Request(url=url, meta={'crumb': [rid], 'level': level, 'iType': 1}, callback=self.parse_mdd_ajax)
+            yield Request(url=url, meta={'id': rid, 'crumb': [rid], 'level': level, 'iType': 1},
+                          callback=self.parse_mdd_ajax)
 
 
     # def get_region_list(self, response):
@@ -141,7 +142,7 @@ class MafengwoSpider(AizouCrawlSpider):
                 data['type'] = 'country' if level == 'cont' else 'region'
 
                 yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % oid,
-                              meta={'id': oid, 'item': item},
+                              meta={'id': oid, 'item': item}, dont_filter=True,
                               callback=self.parse_mdd_home)
 
                 yield Request(url='http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=1' % oid,
@@ -186,7 +187,21 @@ class MafengwoSpider(AizouCrawlSpider):
                     meta={'crumb': copy.deepcopy(crumb), 'iType': new_t},
                     callback=self.parse_mdd_ajax)
 
+        # 尝试抓取自身
+        self_oid = response.meta['id']
+        yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
+                      meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
+                      callback=self.parse_mdd_home, dont_filter=True)
+
     def parse_mdd_home(self, response):
+        if 'item' not in response.meta:
+            # 仅仅尝试获得下面的景点
+            # 从目的地页面出发，解析POI
+            yield Request(url='http://www.mafengwo.cn/jd/%d/gonglve.html' % response.meta['id'],
+                          meta={'type': 'region', 'crumb': response.meta['crumb']},
+                          callback=self.parse_jd)
+            return
+
         item = response.meta['item']
         data = item['data']
 
