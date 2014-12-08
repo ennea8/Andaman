@@ -715,7 +715,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         lower = response.meta['lower']
         upper = response.meta['upper']
 
-        func_map = {'mdd': self.parse_mdd([lower, upper]),
+        func_map = {'mdd': lambda: self.parse_mdd([lower, upper]),
                     'country': self.parse_country,
                     'vs': lambda: self.parse_poi('MafengwoVs', [lower, upper]),
                     'gw': lambda: self.parse_poi('MafengwoGw', [lower, upper]),
