@@ -1229,7 +1229,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 杂项信息
                     miscInfo = []
                     if geo_list:
-                        miscInfo.append(geo_list)
+                        miscInfo.extend(geo_list)
                     data['miscInfo'] = miscInfo
 
                     # 返回item
