@@ -650,6 +650,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         return etree.tostring(node, encoding='utf-8').decode('utf-8')
 
     def parse_name(self, name):
+        name = name.strip()
         term_list = []
 
         # 处理括号
@@ -681,13 +682,14 @@ class MafengwoProcSpider(AizouCrawlSpider):
         zh_name = None
         en_name = None
         loc_name = None
-        for name in name_list:
-            if not zh_name and self.is_chn(name):
-                zh_name = name
-            elif not en_name and self.is_eng(name):
-                en_name = name
+        for tmp in name_list:
+            tmp = tmp.strip()
+            if not zh_name and self.is_chn(tmp):
+                zh_name = tmp
+            elif not en_name and self.is_eng(tmp):
+                en_name = tmp
             elif not loc_name:
-                loc_name = name
+                loc_name = tmp
 
         result = {'locName': loc_name}
         if zh_name:
@@ -702,10 +704,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
         else:
             result['enName'] = loc_name
 
-        alias = set([])
+        alias = {name.lower()}
         for tmp in name_list:
             alias.add(tmp.lower())
-        alias.add(name.lower().strip())
         result['zhName'] = name
         result['alias'] = list(alias)
         return result
