@@ -216,8 +216,8 @@ class PlanImportSpider(AizouCrawlSpider):
                     if 'images' not in vs or not vs['images']:
                         vs['images'] = []
                     for tmp in vs['images']:
-                        imagestore.append({'url': tmp['url'], 'fSize': tmp['fSize'], 'w': tmp['w'], 'h': tmp['h'],
-                                           'weight': tmp['fSize'] * math.pow(r, 2.5)})
+                        imagestore.append({'url': tmp['url'], 'size': tmp['size'], 'w': tmp['w'], 'h': tmp['h'],
+                                           'weight': tmp['size'] * math.pow(r, 2.5)})
 
                     visited_vs.add(vs['_id'])
                     plan_visited_vs.add(vs['_id'])
