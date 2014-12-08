@@ -955,7 +955,7 @@ class BaiduSceneProItem(Item):
 
 class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
     """
-    百度目的地数据的整理
+    百度目的地、景点数据的整理
     """
 
     name = 'baidu-locality-proc'
@@ -978,10 +978,10 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
     # 文本格式的处理
     def text_pro(self, text):
         if text:
-            # text = re.split(r'\n+', text)
-            # text = ['<p>%s</p>' % tmp.strip for tmp in text]
-            # return '<div> %s </div>' % ('\n'.join(text))
-            return text
+            text = re.split(r'\n+', text)
+            tmp_text = ['<p>%s</p>' % tmp.strip() for tmp in text]
+            return '<div> %s </div>' % ('\n'.join(tmp_text))
+            # return text
         else:
             return ''
 
@@ -1267,14 +1267,14 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if length > 2:
                             tmp = entry['scene_path'][1]
                             data['country'] = {
-                                'id': ObjectId(),
+                                '_id': ObjectId(),
                                 'zhName': tmp['sname'],
                                 'enName': ''
                             }
                             locList = []  # 存放层级列表
                             for key in entry['scene_path'][:-1]:
                                 tmp_loc = {
-                                    'id': ObjectId(),
+                                    '_id': ObjectId(),
                                     'zhName': key['sname'],
                                     'enName': ''
                                 }
@@ -1363,14 +1363,25 @@ class BaiduSceneLocalityProcSpiderPipeline(AizouPipeline):
 
         data = item['data']
         col_name = item['col_name']
-        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
+        if col_name == 'BaiduDestination':
+            col = self.fetch_db_col('geo', col_name, 'mongodb-general')
 
-        entry = col.find_one({'sid': data['sid']})
-        if not entry:
-            entry = {}
-        for k in data:
-            entry[k] = data[k]
-        col.save(entry)
+            entry = col.find_one({'sid': data['sid']})
+            if not entry:
+                entry = {}
+            for k in data:
+                entry[k] = data[k]
+            col.save(entry)
+
+        if col_name == 'BaiduPoi':
+            col = self.fetch_db_col('poi', col_name, 'mongodb-general')
+
+            entry = col.find_one({'sid': data['sid']})
+            if not entry:
+                entry = {}
+            for k in data:
+                entry[k] = data[k]
+            col.save(entry)
 
 
 class BaiduRestaurantProcSpider(AizouCrawlSpider):
@@ -1411,7 +1422,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                     # 取得locality的id,根据id获得locality的相应字段
                     data['sid'] = entry['sid']  # 'sid'为保存的locality的sid
 
-                    #  从清洗后的数据中找
+                    # 从清洗后的数据中找
                     doc = self.fetch_db_col('geo', 'BaiduDestination', 'mongodb-general').find_one(
                         {'sid': data['sid']})
                     # if 'scene_path' in doc:
