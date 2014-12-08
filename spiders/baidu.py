@@ -1368,7 +1368,7 @@ class BaiduSceneLocalityProcSpiderPipeline(AizouPipeline):
                 entry = {}
             for k in data:
                 entry[k] = data[k]
-            col.save(entry)
+            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
 
         if col_name == 'BaiduPoi':
             col = self.fetch_db_col('poi', col_name, 'mongodb-general')
@@ -1378,7 +1378,7 @@ class BaiduSceneLocalityProcSpiderPipeline(AizouPipeline):
                 entry = {}
             for k in data:
                 entry[k] = data[k]
-            col.save(entry)
+            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
 
 
 class BaiduRestaurantProcSpider(AizouCrawlSpider):
@@ -1613,7 +1613,7 @@ class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
             entry = {}
         for k in data:
             entry[k] = data[k]
-        col.save(entry)
+        col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
 
 
 class BaiduCommentItem(Item):
