@@ -930,20 +930,17 @@ class BaiduScenePipeline(AizouPipeline):
 
         if type == 'locality':
             colname = 'BaiduLocality'
-        if type == 'poi':
+        elif type == 'poi':
             colname = 'BaiduPoi'
-        if type == 'restaurant':
+        elif type == 'restaurant':
             colname = 'BaiduRestaurant'
-        if type == 'hotel':
+        elif type == 'hotel':
             colname = 'BaiduHotel'
+        else:
+            return item
 
         col = self.fetch_db_col('raw_data', colname, 'mongodb-crawler')
-        ret = col.find_one({'sid': data['sid']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'sid': data['sid']}, {'$set': data}, upsert=True)
 
         return item
 
