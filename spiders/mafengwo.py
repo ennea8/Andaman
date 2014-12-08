@@ -163,7 +163,7 @@ class MafengwoSpider(AizouCrawlSpider):
                     data['title'] = entry['name']
                     data['lat'] = entry['lat']
                     data['lng'] = entry['lng']
-                    data['rating'] = entry['rank']
+                    data['rating'] = float(entry['rank']) / 5
                     data['comment_cnt'] = entry['num_comment']
                     img = entry['img_link']
                     img = re.sub(r'rbook_comment\.w\d+\.', '', img)
@@ -268,7 +268,7 @@ class MafengwoSpider(AizouCrawlSpider):
                 item['data'] = data
                 href = node.xpath('./div[@class="title"]//a[@href]/@href').extract()[0]
                 data['id'] = int(re.search(r'/poi/(\d+)\.html', href).group(1))
-                data['rating'] = float(node.xpath('./div[@class="grade"]/em/text()').extract()[0])
+                data['rating'] = float(node.xpath('./div[@class="grade"]/em/text()').extract()[0]) / 5
                 data['comment_cnt'] = int(
                     node.xpath('./div[@class="grade"]/p[@class="rev-num"]/em/text()').extract()[0])
                 data['title'] = node.xpath('./div[@class="title"]//a[@href]/text()').extract()[0]
@@ -824,7 +824,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
             data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
 
             # 评分
-            data['rating'] = float(entry['rating'])
+            data['rating'] = float(entry['rating']) / 5
 
             if desc:
                 data['desc'] = desc
