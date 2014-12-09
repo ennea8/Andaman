@@ -1653,7 +1653,10 @@ class BaiduCommentSpider(AizouCrawlSpider):
     def parse_comment(self, response):
         col_name = response.meta['col_name']
         data = response.meta['data']
-        json_data = json.loads(response.body)['data']
+        try:
+            json_data = json.loads(response.body)['data']
+        except:
+            log.WARNING('No JSON object could be decoded')
         comment_list = json_data['list']
         tmp_comment = []
         for node in comment_list:
