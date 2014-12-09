@@ -1386,7 +1386,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
     百度餐厅、酒店数据的整理
     """
 
-    name = 'baidu-rest-hotel-proc'
+    name = 'baidu-rh-proc'
     uuid = 'D061397C-6615-D85D-E2B2-C7253E9BED42'
 
     # 墨卡托坐标转换
@@ -1492,7 +1492,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                             except:
                                 node['map_x']
                             data['location'] = {'type': 'Point', 'coordinates': coord}
-
+                            data['prikey'] = data['telephone'] + data['address']
                             miscInfo = [{'title': 'rec_reason',
                                          'contents': node['rec_reason'] if 'rec_reason' in node else ''},
                                         {'title': 'special_dishes',
@@ -1580,14 +1580,15 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                                 else:
                                     coord = []
                                 data['location'] = {'type': 'Point', 'coordinates': coord}
-
+                                data['prikey'] = data['telephone'] + data['address']
                                 miscInfo = [{'title': 'traffic',
                                              'contents': ext_text['traffic'] if 'traffic' in node else ''},
                                             {'title': 'open_time',
                                              'contents': ext_text[
                                                  'open_time'] if 'open_time' in node else ''}]
                                 data['miscInfo'] = miscInfo
-
+                            else:
+                                continue
                             item = BaiduSceneProItem()
                             item['data'] = data
                             item['col_name'] = 'BaiduHotel'
@@ -1606,14 +1607,14 @@ class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
 
         data = item['data']
         col_name = item['col_name']
-        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
+        col = self.fetch_db_col('poi', col_name, 'mongodb-general')
 
-        entry = col.find_one({'sid': data['sid']})
+        entry = col.find_one({'prikey': data['prikey']})
         if not entry:
             entry = {}
         for k in data:
             entry[k] = data[k]
-        col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
+        col.update({'prikey': data['prikey']}, {'$set': entry}, upsert=True)
 
 
 class BaiduCommentItem(Item):
