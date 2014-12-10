@@ -588,19 +588,22 @@ class MafengwoProcSpider(AizouCrawlSpider):
                 head = '0' + head
             return head
 
-        lower = int(self.param['lower'][0] if 'lower' in self.param else 0)
-        upper = int(self.param['upper'][0] if 'upper' in self.param else 255)
+        lower = int(self.param['lower'][0]) if 'lower' in self.param else None
+        upper = int(self.param['upper'][0]) if 'upper' in self.param else None
 
-        i = lower
-        step = int(self.param['slice'][0]) if 'slice' in self.param else 8
-        while True:
-            head = f(i)
-            tail = f(i + step)
-            yield Request(url='http://www.baidu.com', meta={'lower': head, 'upper': tail}, dont_filter=True)
+        if lower and upper:
+            i = lower
+            step = int(self.param['slice'][0]) if 'slice' in self.param else 8
+            while True:
+                head = f(i)
+                tail = f(i + step)
+                yield Request(url='http://www.baidu.com', meta={'lower': head, 'upper': tail}, dont_filter=True)
 
-            i += step
-            if i > upper:
-                break
+                i += step
+                if i > upper:
+                    break
+        else:
+            yield Request(url='http://www.baidu.com', meta={'lower': None, 'upper': None}, dont_filter=True)
 
     def is_chn(self, text):
         """
@@ -778,7 +781,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
-        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
+        if bound[0] is not None and bound[1] is not None:
+            query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (
+                bound[0], bound[1])
         cursor = col_raw.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
@@ -885,7 +890,9 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
         query['type'] = 'region'
-        query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (bound[0], bound[1])
+        if bound[0] is not None and bound[1] is not None:
+            query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (
+                bound[0], bound[1])
         cursor = col_raw_mdd.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
