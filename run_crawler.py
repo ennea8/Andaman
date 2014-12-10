@@ -4,10 +4,11 @@ import os
 import re
 import sys
 import imp
+from time import time
 
 import datetime
 import scrapy
-from scrapy import signals, Request, Item
+from scrapy import signals, Request, Item, log
 from scrapy.crawler import Crawler
 from scrapy.http import Response
 from scrapy.settings import Settings
@@ -176,7 +177,13 @@ def pipeline_proc(pipeline_list, item, spider):
             break
 
 
+item_cnt = 0
+item_checkout_cnt = 0
+ts_checkpoint = None
+
+
 def request_proc(req, spider):
+    global item_cnt, ts_checkpoint, item_checkout_cnt
     if isinstance(req, Request):
         callback = req.callback
         if not callback:
@@ -189,10 +196,19 @@ def request_proc(req, spider):
         else:
             request_proc(ret, spider)
     elif isinstance(req, Item):
+        item_cnt += 1
         pipeline_proc(spider.pipeline_list, req, spider)
+        ts_now = time()
+        if ts_now - ts_checkpoint >= 60:
+            rate = int((item_cnt - item_checkout_cnt) / (ts_now - ts_checkpoint) * 60)
+            ts_checkpoint = ts_now
+            item_checkout_cnt = item_cnt
+
+            spider.log('Scraped %d items (at %d items/min)' % (item_cnt, rate), log.INFO)
 
 
 def main():
+    global ts_checkpoint
     ret = parse_args(sys.argv)
     if not ret:
         return
@@ -211,6 +227,7 @@ def main():
         s.log(msg, scrapy.log.INFO)
 
         if 'no-scrapy' in param:
+            ts_checkpoint = time()
             s.pipeline_list = s.crawler.engine.scraper.itemproc.middlewares
 
             for ret in s.start_requests():
