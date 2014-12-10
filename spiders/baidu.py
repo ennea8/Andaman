@@ -952,7 +952,7 @@ class BaiduSceneProItem(Item):
 
 class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
     """
-    百度目的地数据的整理
+    百度目的地、景点数据的整理
     """
 
     name = 'baidu-locality-proc'
@@ -975,10 +975,10 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
     # 文本格式的处理
     def text_pro(self, text):
         if text:
-            # text = re.split(r'\n+', text)
-            # text = ['<p>%s</p>' % tmp.strip for tmp in text]
-            # return '<div> %s </div>' % ('\n'.join(text))
-            return text
+            text = re.split(r'\n+', text)
+            tmp_text = ['<p>%s</p>' % tmp.strip() for tmp in text]
+            return '<div> %s </div>' % ('\n'.join(tmp_text))
+            # return text
         else:
             return ''
 
@@ -1051,8 +1051,8 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
 
                     if 'ext' in entry:
                         tmp = entry['ext']
-                        data['desc'] = self.text_pro(tmp['more_desc']) \
-                            if 'more_desc' in tmp else self.text_pro(tmp['abs_desc'])
+                        data['desc'] = tmp['more_desc'] \
+                            if 'more_desc' in tmp else tmp['abs_desc']
                         data['rating'] = float(tmp['avg_remark_score']) / 5 \
                             if 'avg_remark_score' in tmp else None
                         data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
@@ -1229,7 +1229,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 杂项信息
                     miscInfo = []
                     if geo_list:
-                        miscInfo.append(geo_list)
+                        miscInfo.extend(geo_list)
                     data['miscInfo'] = miscInfo
 
                     # 返回item
@@ -1264,14 +1264,14 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         if length > 2:
                             tmp = entry['scene_path'][1]
                             data['country'] = {
-                                'id': ObjectId(),
+                                '_id': ObjectId(),
                                 'zhName': tmp['sname'],
                                 'enName': ''
                             }
                             locList = []  # 存放层级列表
                             for key in entry['scene_path'][:-1]:
                                 tmp_loc = {
-                                    'id': ObjectId(),
+                                    '_id': ObjectId(),
                                     'zhName': key['sname'],
                                     'enName': ''
                                 }
@@ -1286,8 +1286,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
 
                     if 'ext' in entry:
                         tmp = entry['ext']
-                        data['desc'] = self.text_pro(tmp['more_desc']) if 'more_desc' in tmp else self.text_pro(
-                            tmp['abs_desc'])
+                        data['desc'] = tmp['more_desc'] if 'more_desc' in tmp else tmp['abs_desc']
                         data['rating'] = float(tmp['avg_remark_score']) / 5 if 'avg_remark_score' in tmp else None
                         data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
                         # 位置信息
@@ -1360,14 +1359,25 @@ class BaiduSceneLocalityProcSpiderPipeline(AizouPipeline):
 
         data = item['data']
         col_name = item['col_name']
-        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
+        if col_name == 'BaiduDestination':
+            col = self.fetch_db_col('geo', col_name, 'mongodb-general')
 
-        entry = col.find_one({'sid': data['sid']})
-        if not entry:
-            entry = {}
-        for k in data:
-            entry[k] = data[k]
-        col.save(entry)
+            entry = col.find_one({'sid': data['sid']})
+            if not entry:
+                entry = {}
+            for k in data:
+                entry[k] = data[k]
+            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
+
+        if col_name == 'BaiduPoi':
+            col = self.fetch_db_col('poi', col_name, 'mongodb-general')
+
+            entry = col.find_one({'sid': data['sid']})
+            if not entry:
+                entry = {}
+            for k in data:
+                entry[k] = data[k]
+            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
 
 
 class BaiduRestaurantProcSpider(AizouCrawlSpider):
@@ -1375,7 +1385,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
     百度餐厅、酒店数据的整理
     """
 
-    name = 'baidu-rest-hotel-proc'
+    name = 'baidu-rh-proc'
     uuid = 'D061397C-6615-D85D-E2B2-C7253E9BED42'
 
     # 墨卡托坐标转换
@@ -1397,18 +1407,19 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
     def parse(self, response):
         for col_name in ['BaiduRestaurant', 'BaiduHotel']:
             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
-            for entry in col_raw_scene.find():
-
+            for entry in col_raw_scene.find({'sid': re.compile(r'[0]+')}):
                 if entry['type'] == 'restaurant':
                     if 'restaurant' in entry:
                         restaurants_info = entry['restaurant']
+                        if not restaurants_info:
+                            continue
                     else:
                         continue
                     data = {}
                     # 取得locality的id,根据id获得locality的相应字段
                     data['sid'] = entry['sid']  # 'sid'为保存的locality的sid
 
-                    #  从清洗后的数据中找
+                    # 从清洗后的数据中找
                     doc = self.fetch_db_col('geo', 'BaiduDestination', 'mongodb-general').find_one(
                         {'sid': data['sid']})
                     # if 'scene_path' in doc:
@@ -1471,7 +1482,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                             data['images'] = [images]
 
                             try:
-                                if 'map_x' in node and 'map_x' is not None:
+                                if 'map_x' in node and node['map_x']:
                                     lng = float(node['map_x'])
                                     lat = float(node['map_y'])
                                     coord = self.coord_trans(lng, lat)
@@ -1481,7 +1492,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                             except:
                                 node['map_x']
                             data['location'] = {'type': 'Point', 'coordinates': coord}
-
+                            data['prikey'] = ObjectId()
                             miscInfo = [{'title': 'rec_reason',
                                          'contents': node['rec_reason'] if 'rec_reason' in node else ''},
                                         {'title': 'special_dishes',
@@ -1500,6 +1511,8 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                 if entry['type'] == 'hotel':
                     if 'hotel' in entry:
                         hotels_info = entry['hotel']
+                        if not hotels_info:
+                            continue
                     else:
                         continue
                     data = {}
@@ -1561,7 +1574,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                                 data['tags'] = []
                                 images = {'url': ext_text['pic_url']}
                                 data['images'] = [images]
-                                if 'map_x' in node:
+                                if 'map_x' in node and node['map_x']:
                                     lng = float(node['map_x'])
                                     lat = float(node['map_y'])
                                     coord = self.coord_trans(lng, lat)
@@ -1569,14 +1582,15 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                                 else:
                                     coord = []
                                 data['location'] = {'type': 'Point', 'coordinates': coord}
-
+                                data['prikey'] = ObjectId()
                                 miscInfo = [{'title': 'traffic',
                                              'contents': ext_text['traffic'] if 'traffic' in node else ''},
                                             {'title': 'open_time',
                                              'contents': ext_text[
                                                  'open_time'] if 'open_time' in node else ''}]
                                 data['miscInfo'] = miscInfo
-
+                            else:
+                                continue
                             item = BaiduSceneProItem()
                             item['data'] = data
                             item['col_name'] = 'BaiduHotel'
@@ -1595,14 +1609,15 @@ class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
 
         data = item['data']
         col_name = item['col_name']
-        col = self.fetch_db_col('geo', col_name, 'mongodb-general')
+        col = self.fetch_db_col('poi', col_name, 'mongodb-general')
 
-        entry = col.find_one({'sid': data['sid']})
+        entry = col.find_one({'prikey': data['prikey']})
         if not entry:
             entry = {}
         for k in data:
             entry[k] = data[k]
-        col.save(entry)
+        col.update({'prikey': data['prikey']}, {'$set': entry}, upsert=True)
+        return item
 
 
 class BaiduCommentItem(Item):
@@ -1641,7 +1656,10 @@ class BaiduCommentSpider(AizouCrawlSpider):
     def parse_comment(self, response):
         col_name = response.meta['col_name']
         data = response.meta['data']
-        json_data = json.loads(response.body)['data']
+        try:
+            json_data = json.loads(response.body)['data']
+        except:
+            log.WARNING('No JSON object could be decoded')
         comment_list = json_data['list']
         tmp_comment = []
         for node in comment_list:
@@ -1693,6 +1711,16 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
     name = 'baidu-comment-proc'
     uuid = '87FF4575-EA3F-959C-7CCD-4E6392AF7A8B'
 
+    # 文本格式的处理
+    def text_pro(self, text):
+        if text:
+            text = re.split(r'\n+', text)
+            tmp_text = ['<p>%s</p>' % tmp.strip() for tmp in text]
+            return '<div> %s </div>' % ('\n'.join(tmp_text))
+            # return text
+        else:
+            return ''
+
     def __init__(self, *a, **kw):
         super(BaiduCommentProcSpider, self).__init__(*a, **kw)
 
@@ -1711,24 +1739,34 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
             if 'comment_list' in entry:
                 comment_list = entry['comment_list']
                 for node in comment_list:
-                    data['mTime'] = node['update_time'] if 'update_time' in node else None
-                    data['cTime'] = node['create_time'] if 'create_time' in node else None
-                    data['contents'] = node['content'] if 'content' in node else ''
-                    data['rating'] = node['score'] / 5.0
-                    data['useId'] = None
-                    miscInfo = {'commentCount': node['comment_count'] if 'comment_count' in node else 0}
-                    data['miscInfo'] = miscInfo
-                    if 'pics' in node and node['pics']:
-                        data['images'] = [{'url': tmp} for tmp in node['pics']['full_url']]
                     if 'user' in node:
                         data['userAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % node['user'][
                             'avatar_large']
                         data['userName'] = node['user']['nickname']
                     else:
                         continue
+                    data['mTime'] = node['update_time'] if 'update_time' in node else None
+                    data['cTime'] = node['create_time'] if 'create_time' in node else None
+                    data['contents'] = self.text_pro(node['content'] if 'content' in node else '')
+                    data['rating'] = node['score'] / 5.0
+                    data['useId'] = None
+                    data['remarkId'] = node['remark_id'] if 'remark_id' in node else ''
+                    miscInfo = {'commentCount': node['comment_count'] if 'comment_count' in node else 0}
+                    data['miscInfo'] = miscInfo
+                    if 'pics' in node and node['pics']:
+                        try:
+                            image = {'url': node['pics']['full_url'] if 'full_url' in node['pics'] else ''}
+                            # data['images'] = [{'url': tmp} for tmp in node['pics']['full_url']]
+                            images = [image]
+                            data['images'] = images
+                        except:
+                            log.WARNING('full)url is list')
+                    else:
+                        data['images'] = {'url': ''}
+
                     item = BaiduCommentItem()
                     item['data'] = data
-                    return item
+                    yield item
             else:
                 continue
 
@@ -1745,13 +1783,13 @@ class BaiduCommentProcSpiderPipeline(AizouPipeline):
         if not data:
             return item
 
-        col = self.fetch_db_col('misc', 'Comment', 'mongodb-general')
-        ret = col.find_one({'_id': data['_id']})
+        col = self.fetch_db_col('misc', 'BaiduComment', 'mongodb-general')
+        ret = col.find_one({'remarkId': data['remarkId']})
         if not ret:
             ret = {}
         for key in data:
             ret[key] = data[key]
-        col.save(ret)
+        col.update({'remarkId': data['remarkId']}, {'$set': ret}, upsert=True)
 
         return item
 
@@ -1775,7 +1813,7 @@ class BaiduRestaurantCommentSpider(AizouCrawlSpider):
             data = {}
             surl = entry['surl']
             sid = entry['sid']
-            doc = self.fetch_db_col('geo', 'BaiduDestination', 'mongodb-general').find_one(
+            doc = self.fetch_db_col('poi', 'BaiduRestaurant', 'mongodb-general').find_one(
                 {'sid': sid})
             if doc:
                 data['itemId'] = doc['_id']  # 拿到评论项目的id
@@ -1814,7 +1852,7 @@ class BaiduRestaurantCommentSpider(AizouCrawlSpider):
                                       '%Y-%m-%d %H:%M')))
                 data['mTime'] = data['cTime']
                 data['miscInfo'] = {}
-                data['prikey'] = data['userName'] + str(data['cTime'])
+                data['prikey'] = ObjectId()
                 item = BaiduCommentItem()
                 item['data'] = data
                 return item
@@ -1834,12 +1872,12 @@ class BaiduRestaurantCommentSpiderPipeline(AizouPipeline):
         if not data:
             return item
 
-        col = self.fetch_db_col('raw_data', 'BaiduRestComment', 'mongodb-crawler')
+        col = self.fetch_db_col('raw_data', 'BaiduRestaurantComment', 'mongodb-crawler')
         ret = col.find_one({'prikey': data['prikey']})
         if not ret:
             ret = {}
         for key in data:
             ret[key] = data[key]
-        col.save(ret)
+        col.update({'prikey': data['prikey']}, {'$set': ret}, upsert=True)
 
         return item
