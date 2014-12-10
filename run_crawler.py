@@ -7,8 +7,9 @@ import imp
 
 import datetime
 import scrapy
-from scrapy import signals
+from scrapy import signals, Request, Item
 from scrapy.crawler import Crawler
+from scrapy.http import Response
 from scrapy.settings import Settings
 from twisted.internet import reactor
 
@@ -168,6 +169,29 @@ def reg_spiders(spider_dir=None):
                 raise
 
 
+def pipeline_proc(pipeline_list, item, spider):
+    for p in pipeline_list:
+        item = p.process_item(item, spider)
+        if not item:
+            break
+
+
+def request_proc(req, spider):
+    if isinstance(req, Request):
+        callback = req.callback
+        if not callback:
+            callback = spider.parse
+        response = Response('http://www.baidu.com', request=req)
+        ret = callback(response)
+        if hasattr(ret, '__iter__'):
+            for entry in ret:
+                request_proc(entry, spider)
+        else:
+            request_proc(ret, spider)
+    elif isinstance(req, Item):
+        pipeline_proc(spider.pipeline_list, req, spider)
+
+
 def main():
     ret = parse_args(sys.argv)
     if not ret:
@@ -185,7 +209,14 @@ def main():
             logfile = './logs/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
-        reactor.run()  # the script will block here until the spider_closed signal was sent
+
+        if 'no-scrapy' in param:
+            s.pipeline_list = s.crawler.engine.scraper.itemproc.middlewares
+
+            for ret in s.start_requests():
+                request_proc(ret, s)
+        else:
+            reactor.run()  # the script will block here until the spider_closed signal was sent
     else:
         if 'verbose' in param:
             logfile = None
