@@ -1712,7 +1712,7 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
     def text_pro(self, text):
         if text:
             text = re.split(r'\n+', text)
-            tmp_text = ['<p>%s</p>' % tmp.strip() for tmp in text]
+            tmp_text = filter(lambda val: val, ['<p>%s</p>' % tmp.strip() for tmp in text])
             return '<div> %s </div>' % ('\n'.join(tmp_text))
             # return text
         else:
@@ -1744,22 +1744,14 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
                         continue
                     data['mTime'] = node['update_time'] if 'update_time' in node else None
                     data['cTime'] = node['create_time'] if 'create_time' in node else None
-                    data['contents'] = self.text_pro(node['content'] if 'content' in node else '')
+                    data['contents'] = node['content'].strip() if 'content' in node else ''
                     data['rating'] = node['score'] / 5.0
                     data['useId'] = None
                     data['remarkId'] = node['remark_id'] if 'remark_id' in node else ''
                     miscInfo = {'commentCount': node['comment_count'] if 'comment_count' in node else 0}
                     data['miscInfo'] = miscInfo
                     if 'pics' in node and node['pics']:
-                        try:
-                            image = {'url': node['pics']['full_url'] if 'full_url' in node['pics'] else ''}
-                            # data['images'] = [{'url': tmp} for tmp in node['pics']['full_url']]
-                            images = [image]
-                            data['images'] = images
-                        except:
-                            log.WARNING('full)url is list')
-                    else:
-                        data['images'] = {'url': ''}
+                        data['images'] = [{'url': tmp['full_url']} for tmp in node['pics']]
 
                     item = BaiduCommentItem()
                     item['data'] = data
