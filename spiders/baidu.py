@@ -8,10 +8,11 @@ import hashlib
 import urllib2
 import socket
 import time
+import math
+
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 from bson import ObjectId
-import math
 import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
@@ -1650,16 +1651,12 @@ class BaiduCommentSpider(AizouCrawlSpider):
                 data = {'sid': sid, 'sname': sname, 'surl': surl, 'itemId': itemId}
                 yield Request(
                     url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?'
-                        'xid=%s&score=0&pn=1&rn=500&format=ajax' % (sid),
+                        'xid=%s&score=0&pn=0&rn=500&format=ajax' % (sid),
                     callback=self.parse_comment, meta={'col_name': col_name, 'data': data})
 
     def parse_comment(self, response):
-        col_name = response.meta['col_name']
         data = response.meta['data']
-        try:
-            json_data = json.loads(response.body)['data']
-        except:
-            log.WARNING('No JSON object could be decoded')
+        json_data = json.loads(response.body)['data']
         comment_list = json_data['list']
         tmp_comment = []
         for node in comment_list:
@@ -1734,7 +1731,7 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
             # surl = entry['surl']
             # sname = entry['sname']
             # 被评论项目的id,从上面的原始数据中拿到
-            data = {'_id': entry['_id'], 'itemId': entry['itemId']}
+            data = {'itemId': entry['itemId']}
 
             if 'comment_list' in entry:
                 comment_list = entry['comment_list']
@@ -1766,6 +1763,7 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
 
                     item = BaiduCommentItem()
                     item['data'] = data
+
                     yield item
             else:
                 continue
@@ -1780,16 +1778,11 @@ class BaiduCommentProcSpiderPipeline(AizouPipeline):
             return item
 
         data = item['data']
-        if not data:
-            return item
+        col = self.fetch_db_col('misc', 'Comment', 'mongodb-general')
+        remark_id = data.pop('remarkId')
+        data['source.baidu'] = {'id': remark_id}
 
-        col = self.fetch_db_col('misc', 'BaiduComment', 'mongodb-general')
-        ret = col.find_one({'remarkId': data['remarkId']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.update({'remarkId': data['remarkId']}, {'$set': ret}, upsert=True)
+        col.update({'source.baidu.id': remark_id}, {'$set': data}, upsert=True)
 
         return item
 
