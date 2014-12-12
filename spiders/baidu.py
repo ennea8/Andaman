@@ -1215,7 +1215,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                                     'images': images
                                 }
                                 tips_list.append(tips_tmp)
-                    data['activities'] = tips_list
+                    data['tips'] = tips_list
 
                     # 地理文化
                     geo_list = []
@@ -1236,7 +1236,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 返回item
                     item = BaiduSceneProItem()
                     item['data'] = data
-                    item['col_name'] = 'BaiduLocality'
+                    item['col_name'] = 'BaiduDestination'
                     yield item
 
                 # 清洗poi
@@ -1798,39 +1798,45 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
     uuid = '68B7252E-B688-7615-227A-B8ED9FF9920C'
 
     def __init__(self, *a, **kw):
-        super(BaiduRestaurantCommentSpider, self).__init__(*a, **kw)
+        super(BaiduRestaurantRecSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
         col = self.fetch_db_col('raw_data', 'BaiduLocality', 'mongodb-crawler')
         for entry in col.find():
             surl = entry['surl']
             sid = entry['sid']
-            data = {'surl': surl, 'sid': sid}
-            tmp_url = 'http://lvyou.baidu.com/%s/meishi' % surl
+            sname = entry['sname']
+            data = {'surl': surl, 'sid': sid, 'sname': sname}
+            tmp_url = 'http://lvyou.baidu.com/%s/meishi/' % surl
             yield Request(url=tmp_url, callback=self.parse, meta={'data': data})
 
     def parse(self, response):
         sel = Selector(response)
         data = response.meta['data']
-        food_list = sel.xpath('//div[contains(@id,"food-list")]')
+        food_list = sel.xpath('//div[contains(@id,"food-list")]/div')
         if not food_list:
             return
         for node in food_list:
             food_name = node.xpath('.//h3/text()').extract()[0]
-            shop_list = node.xpath('.//ul')
+            shop_list = node.xpath('.//ul/li')
             shop = []
             if shop_list:
                 for shop_node in shop_list:
                     shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()[0]
-                    shop_price = shop_node.xpath(
+                    tmp_shop_price = shop_node.xpath(
                         './p[contains(@class,"clearfix")]//span[contains(@class,"price")]/text()').extract()[0]
+                    match = re.search(r'\d+', tmp_shop_price)
+                    if match:
+                        shop_price = float(match.group())
+                    else:
+                        shop_price = None
                     shop_desc = shop_node.xpath('./p[contains(@class,"comment")]/text()').extract()[0]
                     shop_addr = shop_node.xpath('./p[contains(@class,"f12")]/span/text()').extract()[0]
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
                                 'shop_desc': shop_desc, 'shop_addr': shop_addr}
                     shop.append(tmp_data)
             data['food_name'] = food_name
-            data['food_list'] = shop
+            data['shop_list'] = shop
             item = BaiduRestaurantRecommend()
             item['data'] = data
             return item
