@@ -981,6 +981,7 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
 
     def parse(self, response):
         for col_name in ['BaiduLocality', 'BaiduPoi']:
+
             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             for entry in col_raw_scene.find():
 
@@ -1818,13 +1819,13 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
             shop = []
             if shop_list:
                 for shop_node in shop_list:
-                    #店名
+                    # 店名
                     tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
                     if tmp_shop_name:
                         shop_name = tmp_shop_name[0]
                     else:
                         continue
-                    #均价
+                    # 均价
                     tmp_shop_price = shop_node.xpath(
                         './p[contains(@class,"clearfix")]//span[contains(@class,"price")]/text()').extract()
                     if tmp_shop_price:
@@ -1836,13 +1837,13 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     else:
                         shop_price = None
 
-                    #店铺描述
+                    # 店铺描述
                     tmp_shop_desc = shop_node.xpath('./p[contains(@class,"comment")]/text()').extract()
                     if tmp_shop_desc:
                         shop_desc = tmp_shop_desc[0]
                     else:
                         shop_desc = None
-                    #店铺地址
+                    # 店铺地址
                     tmp_shop_addr = shop_node.xpath('./p[contains(@class,"f12")]/span/text()').extract()
                     if tmp_shop_addr:
                         shop_addr = tmp_shop_addr[0]
@@ -1853,6 +1854,7 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     shop.append(tmp_data)
             data['food_name'] = food_name
             data['shop_list'] = shop
+            data['prikey'] = ObjectId()
             item = BaiduRestaurantRecommend()
             item['data'] = data
             return item
@@ -1871,7 +1873,10 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
-        ret = col.find_one({'sid': data['sid']})
-        col.update({'sid': data['sid']}, {'$set': ret}, upsert=True)
-
+        ret = col.find_one({'prikey': data['prikey']})
+        if not ret:
+            ret = {}
+        for key in data:
+            ret[key] = data[key]
+        col.save(ret)
         return item
