@@ -963,10 +963,6 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
         super(BaiduSceneLocalityProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        # for col_name in ['BaiduPoi', 'BaiduLocality']:
-        # col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
-        # for entry in col_raw_scene.find():
-        # yield Request(url='http://www.baidu.com', meta={'entry': entry}, callback=self.parse)
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     # 通过id拼接图片url
@@ -1822,16 +1818,36 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
             shop = []
             if shop_list:
                 for shop_node in shop_list:
-                    shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()[0]
+                    #店名
+                    tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
+                    if tmp_shop_name:
+                        shop_name = tmp_shop_name[0]
+                    else:
+                        continue
+                    #均价
                     tmp_shop_price = shop_node.xpath(
-                        './p[contains(@class,"clearfix")]//span[contains(@class,"price")]/text()').extract()[0]
-                    match = re.search(r'\d+', tmp_shop_price)
-                    if match:
-                        shop_price = float(match.group())
+                        './p[contains(@class,"clearfix")]//span[contains(@class,"price")]/text()').extract()
+                    if tmp_shop_price:
+                        match = re.search(r'\d+', tmp_shop_price[0])
+                        if match:
+                            shop_price = float(match.group())
+                        else:
+                            shop_price = None
                     else:
                         shop_price = None
-                    shop_desc = shop_node.xpath('./p[contains(@class,"comment")]/text()').extract()[0]
-                    shop_addr = shop_node.xpath('./p[contains(@class,"f12")]/span/text()').extract()[0]
+
+                    #店铺描述
+                    tmp_shop_desc = shop_node.xpath('./p[contains(@class,"comment")]/text()').extract()
+                    if tmp_shop_desc:
+                        shop_desc = tmp_shop_desc[0]
+                    else:
+                        shop_desc = None
+                    #店铺地址
+                    tmp_shop_addr = shop_node.xpath('./p[contains(@class,"f12")]/span/text()').extract()
+                    if tmp_shop_addr:
+                        shop_addr = tmp_shop_addr[0]
+                    else:
+                        shop_addr = ''
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
                                 'shop_desc': shop_desc, 'shop_addr': shop_addr}
                     shop.append(tmp_data)
