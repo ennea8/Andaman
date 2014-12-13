@@ -790,17 +790,19 @@ class MafengwoProcSpider(AizouCrawlSpider):
 
         self.log('Between %s and %s, %d records to be processed.' % (bound[0], bound[1], cursor.count()), log.INFO)
         for entry in cursor:
-            data = {'enabled': True}
+            data = {'enabled': True, 'zhName': entry['title'].strip()}
 
-            tmp = self.parse_name(entry['title'])
-            if not tmp:
-                self.log('Failed to get names for id=%d' % entry['id'], log.CRITICAL)
-                continue
+            # tmp = self.parse_name(entry['title'])
+            # if not tmp:
+            # self.log('Failed to get names for id=%d' % entry['id'], log.CRITICAL)
+            #     continue
 
-            data['enName'] = tmp['enName']
-            data['zhName'] = tmp['zhName']
-            data['name'] = data['zhName'] if data['zhName'] else data['enName']
-            data['alias'] = tmp['alias']
+            # data['enName'] = tmp['enName']
+            # data['zhName'] = tmp['zhName']
+            # data['name'] = data['zhName'] if data['zhName'] else data['enName']
+            # data['alias'] = tmp['alias']
+
+            data['alias'] = [data['zhName']]
 
             desc = None
             address = None
@@ -1290,8 +1292,11 @@ class MafengwoProcPipeline(AizouPipeline):
 
         poi = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
                                   fields={'_id': 1, 'isDone': 1})
-        images_formal = self.process_image_list(image_list, poi['_id'])
+        images_formal = self.process_image_list(image_list, poi['_id'])[:10]
+        tmp = []
+        for img in images_formal:
+            tmp.append({key: img[key] for key in ['key', 'w', 'h'] if key in img})
         if ('isDone' not in poi or not poi['isDone']) and images_formal:
-            col.update({'_id': poi['_id']}, {'$set': {'images': images_formal[:10]}})
+            col.update({'_id': poi['_id']}, {'$set': {'images': tmp}})
 
         return item
