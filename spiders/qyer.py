@@ -3,6 +3,7 @@ import urlparse
 
 import scrapy
 
+from spiders import AizouCrawlSpider, AizouPipeline
 import utils
 
 
@@ -457,6 +458,7 @@ class QyerSpotProcPipeline(object):
         def _image_proc(url):
             m = re.search(r'^(.+pic\.qyer\.com/album/.+/index)/[0-9x]+$', url)
             return m.group(1) if m else url
+
         vs['imageList'] = map(_image_proc, item['poi_photo'] if 'poi_photo' in item and item['poi_photo'] else [])
 
         vs['country'] = country_info
@@ -509,6 +511,239 @@ class QyerSpotProcPipeline(object):
         col_vs.save(vs)
 
         return item
+
+
+class QyerMddItem(scrapy.Item):
+    data = scrapy.Field()
+    type = scrapy.Field()
+
+
+class QyerBaseSpider(AizouCrawlSpider):
+    """
+    穷游基类。通过http://place.qyer.com/，遍历各个国家
+    """
+
+    def __init__(self, *a, **kw):
+        super(QyerBaseSpider, self).__init__(*a, **kw)
+        self.country_filter = None
+        self.cont_map = {
+            'as': 'Asialist',
+            'eu': 'Europelist',
+            'af': 'Africalist',
+            'na': 'NorthAmericalist',
+            'sa': 'SouthAmericalist',
+            'oc': 'Oceanialist',
+            'an': 'Antarcticalist'
+        }
+
+    def start_requests(self):
+        yield Request(url='http://place.qyer.com')
+
+    def parse_country_helper(self, response):
+        if 'cont' in self.param:
+            self.cont_map = {tmp: self.cont_map[tmp] for tmp in self.param['cont']}
+
+        if 'country' in self.param:
+            self.country_filter = [int(tmp) for tmp in self.param['country']]
+
+        sel = Selector(response)
+
+        for cont in self.cont_map:
+            cont_node = sel.xpath('//div[@class="pla_indcountrylists"]/div[@id="%s"]' % self.cont_map[cont])[0]
+            for region_node in cont_node.xpath('.//li[@class="item"]'):
+                is_hot = bool(region_node.xpath('./p[@class="hot"]').extract())
+                tmp = region_node.xpath('.//a[@href and @data-bn-ipg]')
+                if not tmp:
+                    continue
+                region_node = tmp[0]
+                zh_name = region_node.xpath('./text()').extract()[0].strip()
+                en_name = region_node.xpath('./span[@class="en"]/text()').extract()[0].strip()
+                tmp = region_node.xpath('./@data-bn-ipg').extract()[0]
+                pid = int(re.search(r'place-index-countrylist-(\d+)', tmp).group(1))
+                href = region_node.xpath('./@href').extract()[0]
+                url = self.build_href(response.url, href)
+
+                if self.country_filter and pid not in self.country_filter:
+                    continue
+
+                item = {'type': 'country'}
+                data = {'zhName': zh_name, 'enName': en_name, 'alias': {zh_name.lower(), en_name.lower()},
+                        'isHot': is_hot, 'id': pid, 'url': url}
+                item['data'] = data
+
+                yield item
+
+
+class QyerMddSpider(QyerBaseSpider):
+    """
+    穷游目的地的抓取
+    """
+
+    name = 'qyer-mdd'
+    uuid = 'f948c479-217d-49f5-b226-81e58ddef99c'
+
+    def parse(self, response):
+        for result in self.parse_country_helper(response):
+            item = QyerMddItem()
+            item['type'] = result['type']
+            item['data'] = result['data']
+
+            yield item
+
+
+class QyerNoteSpider(QyerBaseSpider):
+    """
+    穷游游记的抓取
+    """
+    name = 'qyer-note'
+    uuid = '8b8134ff-6416-49d4-bd10-a1aaa0a38cf6'
+
+    def parse(self, response):
+        from urlparse import urljoin
+
+        for result in self.parse_country_helper(response):
+            meta = {'country_id': result['data']['id']}
+            url = result['data']['url']
+            if url[-1] != '/':
+                url += '/'
+            url = urljoin(url, 'travel-notes/page1')
+
+            yield Request(url=url, meta={'data': meta}, callback=self.parse_note_list)
+
+    def get_author(self, user_node):
+        from urlparse import urlparse, urlunparse
+
+        user_id = int(re.search(r'qyer\.com/u/(\d+)', user_node.xpath('./a[@href]/@href').extract()[0]).group(1))
+        avatar = user_node.xpath(r'./a[@href]/img[@src and @alt]/@src').extract()[0]
+        avatar = re.sub(r'_avatar_(small|middle)\.jpg', '_avatar_big.jpg', avatar)
+        tmp = urlparse(avatar)
+        avatar = urlunparse((tmp.scheme, tmp.netloc, tmp.path, '', '', ''))
+        user_name = user_node.xpath(r'./a[@href]/img[@src and @alt]/@alt').extract()[0].strip()
+
+        return {'user_id': user_id, 'avatar': avatar, 'user_name': user_name}
+
+    def parse_note_list(self, response):
+        sel = Selector(response)
+        for entry_node in sel.xpath(
+                '//div[@class="pla_main"]/ul[contains(@class,"pla_travellist")]/li[@class="item"]'):
+            tmp = entry_node.xpath('./div[@class="pic"]//img[@src]/@src').extract()
+            cover_url = self.build_href(response.url, tmp[0]) if tmp else None
+            if cover_url == 'http://static.qyer.com/images/place/no/poi_200_133.png':
+                cover_url = None
+
+            header = entry_node.xpath('./div[@class="cnt"]/div[@class="top"]')[0]
+
+            user_node = header.xpath('./p[@class="face"]')[0]
+            author = self.get_author(user_node)
+
+            title_node = header.xpath('./*[@class="title"]/a[@href]')[0]
+            title = title_node.xpath('./text()').extract()[0].strip()
+            url = title_node.xpath('./@href').extract()[0]
+            note_id = int(re.search(r'thread-(\d+)-\d+\.html', url).group(1))
+
+            ctime = header.xpath('.//p[@class="fr"]/span[@class="time"]/text()').extract()[0]
+            view_cnt = int(header.xpath('.//p[@class="fr"]/span[@class="bbsview"]/text()').extract()[0])
+            comment_cnt = int(header.xpath('.//p[@class="fr"]/span[@class="bbsreply"]/text()').extract()[0])
+            favor_cnt = int(header.xpath('.//p[@class="fr"]/span[@class="bbslike"]/text()').extract()[0])
+
+            meta = copy.deepcopy(response.meta['data'])
+            meta['cover_url'] = cover_url
+            meta['user_id'] = author['user_id']
+            meta['avatar'] = author['avatar']
+            meta['user_name'] = author['user_name']
+            meta['title'] = title
+            meta['note_id'] = note_id
+            meta['ctime'] = ctime
+            meta['view_cnt'] = view_cnt
+            meta['comment_cnt'] = comment_cnt
+            meta['favor_cnt'] = favor_cnt
+
+            # self.log('%s' % meta, log.INFO)
+            self.log('user: %s, title: %s, tid: %d' % (meta['user_name'], meta['title'], meta['note_id']), log.INFO)
+
+            yield Request(url='http://bbs.qyer.com/viewthread.php?tid=%d&page=1' % meta['note_id'],
+                          meta={'data': meta}, callback=self.parse_post)
+
+        tmp = sel.xpath('//div[@class="ui_page"]/a[@href and contains(@class,"ui_page_next")]/@href').extract()
+        if tmp:
+            next_page = self.build_href(response.url, tmp[0])
+            yield Request(url=next_page, meta={'data': response.meta['data']}, callback=self.parse_note_list)
+
+    def parse_post(self, response):
+        sel = Selector(response)
+
+        for post_node in sel.xpath('//div[@id="postlist"]/div[@id and @class="bbs_postview"]'):
+            post_id = int(re.search(r'post_(\d+)', post_node.xpath('./@id').extract()[0]).group(1))
+            post_contents = post_node.xpath(
+                './div[contains(@class,"bbs_txttop") or contains(@class,"bbs_txtbox")]').extract()
+            data = copy.deepcopy(response.meta['data'])
+            data['post_id'] = post_id
+            data['post_contents'] = post_contents
+
+            item = QyerMddItem()
+            item['type'] = 'note'
+            item['data'] = data
+
+            yield item
+
+        tmp = sel.xpath(
+            '//div[contains(@class,"forumcontrol")]/div[@class="pages"]/a[@href and @data-bn-ipg and @class="next"]/@href').extract()
+        if tmp:
+            yield Request(url=self.build_href(response.url, tmp[0]), meta={'data': response.meta['data']},
+                          callback=self.parse_post)
+
+
+class QyerNotePipeline(AizouPipeline):
+    spiders = [QyerNoteSpider.name]
+
+    spiders_uuid = [QyerNoteSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        col = self.fetch_db_col('raw_data', 'QyerNote', 'mongodb-crawler')
+
+        col.update({'note_id': data['note_id'], 'post_id': data['post_id']}, {'$set': data}, upsert=True)
+
+        return item
+
+
+class QyerMddPipeline(AizouPipeline):
+    spiders = [QyerMddSpider.name]
+
+    spiders_uuid = [QyerMddSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        if item['type'] == 'country':
+            return self.process_country(item, spider)
+
+        return item
+
+    def process_country(self, item, spider):
+        col = self.fetch_db_col('geo', 'Country', 'mongodb-general')
+
+        data = item['data']
+        alias_list = list(data['alias'])
+        ret = col.find_and_modify({'alias': {'$in': alias_list}},
+                                  {'$addToSet': {'alias': {'$each': alias_list}},
+                                   '$set': {'source.qyer': {'id': data['id'], 'url': data['url']},
+                                            'zhName': data['zhName'],
+                                            'enName': data['enName']}})
+
+        if ret:
+            spider.log('%s => %s' % (item['data']['zhName'], ret['zhName']), log.INFO)
+        else:
+            spider.log('Cannot find: %s' % item['data']['zhName'], log.INFO)
+
+        return item
+
+
+
 
 
 
