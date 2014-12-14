@@ -9,6 +9,7 @@ import urlparse
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider, AizouPipeline
+from spiders.baidu import BaiduSugMixin
 import utils
 
 
@@ -565,7 +566,7 @@ class MafengwoProcItem(Item):
     db_name = Field()
 
 
-class MafengwoProcSpider(AizouCrawlSpider):
+class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
     """
     马蜂窝目的地的清洗
     """
@@ -591,7 +592,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         lower = int(self.param['lower'][0]) if 'lower' in self.param else None
         upper = int(self.param['upper'][0]) if 'upper' in self.param else None
 
-        if lower and upper:
+        if lower is not None and upper is not None:
             i = lower
             step = int(self.param['slice'][0]) if 'slice' in self.param else 8
             while True:
@@ -792,17 +793,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         for entry in cursor:
             data = {'enabled': True, 'zhName': entry['title'].strip()}
 
-            # tmp = self.parse_name(entry['title'])
-            # if not tmp:
-            # self.log('Failed to get names for id=%d' % entry['id'], log.CRITICAL)
-            #     continue
-
-            # data['enName'] = tmp['enName']
-            # data['zhName'] = tmp['zhName']
-            # data['name'] = data['zhName'] if data['zhName'] else data['enName']
-            # data['alias'] = tmp['alias']
-
-            data['alias'] = [data['zhName']]
+            data['alias'] = [data['zhName'].lower()]
 
             desc = None
             address = None
@@ -895,6 +886,7 @@ class MafengwoProcSpider(AizouCrawlSpider):
         if bound[0] is not None and bound[1] is not None:
             query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (
                 bound[0], bound[1])
+        query['id']=117979
         cursor = col_raw_mdd.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
@@ -1039,7 +1031,54 @@ class MafengwoProcSpider(AizouCrawlSpider):
             # else:
             # yield item
 
-            yield item
+            kw_list = []
+            zh_name = data['zhName']
+            kw_list.append(utils.get_short_loc(zh_name))
+            if zh_name not in kw_list:
+                kw_list.append(zh_name)
+            for alias in data['alias']:
+                if alias not in [tmp.lower() for tmp in kw_list]:
+                    kw_list.append(alias)
+
+            keyword = kw_list[0]
+            kw_list = kw_list[1:]
+            req = self.build_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
+            self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
+            yield req
+
+    def parse_mdd_baidu(self, response):
+        item = response.meta['item']
+        data = item['data']
+        source = data['source']
+        lng, lat = data['location']['coordinates']
+        ret = filter(lambda val: val['type_code'] in [4, 5] and
+                                 val['sname'].lower() in data['alias'] and
+                                 utils.haversine(val['lng'], val['lat'], lng, lat) < 400,
+                     self.parse_baidu_sug(response))
+
+        if ret:
+            if len(ret) > 1:
+                self.log('Duplicates found for: mafengwo_id: %d, url: %s' % (source['mafengwo']['id'],
+                                                                             response.url), log.WARNING)
+            baidu_mdd = ret[0]
+
+            source['baidu'] = {'surl': ret[0]['surl'], 'sid': ret[0]['sid']}
+            self.log('Binding: baidu(%s) => mafengwo(%d, %s), surl=%s, sname=%s, parents=%s, type=%d' %
+                     (baidu_mdd['sid'], source['mafengwo']['id'], data['zhName'], baidu_mdd['surl'], baidu_mdd['sname'],
+                      baidu_mdd['parents'], baidu_mdd['type_code']), log.INFO)
+            return item
+        else:
+            kw_list = response.meta['kw_list']
+            if not kw_list:
+                self.log(
+                    'Baidu counterparts not found: id=%d, name=%s' % (source['mafengwo']['id'], data['zhName']))
+                return item
+
+            keyword = kw_list[0]
+            kw_list = kw_list[1:]
+            req = self.build_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
+            self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
+            return req
 
 
 class MafengwoProcPipeline(AizouPipeline):
