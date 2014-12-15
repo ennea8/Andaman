@@ -352,12 +352,19 @@ class MafengwoSpider(AizouCrawlSpider):
         sel = Selector(response)
         item = response.meta['item']
         data = item['data']
+        comment_cnt = 0
 
-        # 如果通过页面进来而不是接口，此时还没有坐标信息。需要抓取
-        if not ('lat' in data and 'lng' in data):
+        try:
             loc_data = json.loads('{%s}' % re.search(r'window\.Env\s*=\s*\{(.+?)\}\s*;', response.body).group(1))
-            data['lat'] = loc_data['lat']
-            data['lng'] = loc_data['lng']
+            comment_cnt = loc_data['comment_count']
+
+            # 如果通过页面进来而不是接口，此时还没有坐标信息。需要抓取
+            if not ('lat' in data and 'lng' in data):
+                data['lat'] = loc_data['lat']
+                data['lng'] = loc_data['lng']
+
+        except (ValueError, TypeError):
+            pass
 
         tmp = sel.xpath('//div[contains(@class,"m-details")]/div[contains(@class,"title")]//h1/text()').extract()
         if not tmp:
@@ -418,6 +425,31 @@ class MafengwoSpider(AizouCrawlSpider):
         url = 'http://www.mafengwo.cn/mdd/ajax_photolist.php?act=getPoiPhotoList&poiid=%d&page=1' % data['id']
         yield Request(url=url, meta={'item': item, 'page': 1, 'act': 'getPoiPhotoList'}, callback=self.parse_photo,
                       errback=self.photo_err)
+
+        # 抓取评论
+        for page_idx in xrange(1, int(comment_cnt / 15) + 2):
+            url = 'http://www.mafengwo.cn/gonglve/ajax.php?act=get_poi_comments&poi_id=%d&type=0&category=1&page=%d' \
+                  % (data['id'], page_idx)
+            yield Request(url=url, meta={'item': item}, callback=self.parse_comments)
+
+    def parse_comments(self, response):
+        item = response.meta['item']
+        poi = item['data']
+
+        ret = json.loads(response.body)
+        if ret['ret'] != 1:
+            return
+
+        html = ret['html']['html']
+        sel = Selector(text=html)
+        for entry_node in sel.xpath('//div[@class="comment-item"]'):
+            entry = entry_node.extract()
+            comment_id = int(re.search(r'comment_no_(\d+)', entry_node.xpath('./@id').extract()[0]).group(1))
+            data = {'poi_id': poi['id'], 'comment_id': comment_id, 'contents': entry, 'type': 'comments'}
+            item = MafengwoItem()
+            item['data'] = data
+            yield item
+
 
     def parse_photo(self, response):
         sel = Selector(response)
@@ -527,6 +559,11 @@ class MafengwoPipeline(AizouPipeline):
             col_name = 'MafengwoHotel'
         elif item_type == 'trans':
             col_name = 'MafengwoTrans'
+        elif item_type == 'comments':
+            col_name = 'MafengwoComment'
+            col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+            col.update({'poi_id': data['poi_id'], 'comment_id': data['comment_id']}, {'$set': data}, upsert=True)
+            return item
         else:
             return item
 
