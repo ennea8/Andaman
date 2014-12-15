@@ -636,21 +636,20 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                 return False, node
 
         def f2(node):
-            if node.tag == 'a' and node.get('href') and 'mafengwo' in node.get('href'):
-                return True, parse_etree(node[0], [f1, f2, f3])
-            else:
-                return False, node
+            from urlparse import urlparse
 
-        def f3(node):
-            # 去掉不必要的class
-            if node.get('class') and ('m-txt' in node.get('class') or 'm-img' in node.get('class')):
-                del node.attrib['class']
+            if node.tag == 'a' and node.get('href'):
+                href = node.get('href')
+                c = urlparse(href)
+                if (not c.scheme and not c.netloc) or 'mafengwo' in c.netloc:
+                    del node.attrib['href']
+
             return False, node
 
         from utils import parse_etree
         from lxml import etree
 
-        node = parse_etree(body, [f1, f2, f3])
+        node = parse_etree(body, [f1, f2])
         return etree.tostring(node, encoding='utf-8').decode('utf-8')
 
     def parse_name(self, name):
@@ -886,7 +885,6 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
         if bound[0] is not None and bound[1] is not None:
             query['$where'] = 'this._id.str.substring(22)>="%s" && this._id.str.substring(22)<="%s"' % (
                 bound[0], bound[1])
-        query['id']=117979
         cursor = col_raw_mdd.find(query)
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
@@ -943,6 +941,8 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             local_traffic = []
             remote_traffic = []
             misc_info = []
+            activities = []
+            specials = []
 
             for info_entry in entry['contents']:
                 if info_entry['info_cat'] == u'概况' and info_entry['title'] == u'简介':
@@ -959,6 +959,14 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                     tmp = get_html(info_entry['details'])
                     if tmp:
                         remote_traffic.append({'title': info_entry['title'], 'contents': tmp})
+                elif info_entry['info_cat'] == u'节庆':
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        activities.append({'title': info_entry['title'], 'contents': tmp})
+                elif info_entry['info_cat'] == u'亮点':
+                    tmp = get_html(info_entry['details'])
+                    if tmp:
+                        specials.append({'title': info_entry['title'], 'contents': tmp})
                 else:
                     # 忽略出入境信息
                     if info_entry['info_cat'] == u'出入境':
@@ -979,6 +987,10 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                 data['remoteTraffic'] = remote_traffic
             if misc_info:
                 data['miscInfo'] = misc_info
+            if activities:
+                data['activities'] = activities
+            if specials:
+                data['specials'] = specials
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
@@ -1042,7 +1054,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             keyword = kw_list[0]
             kw_list = kw_list[1:]
-            req = self.build_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
+            req = self.baidu_sug_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
             self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
             yield req
 
@@ -1051,8 +1063,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
         data = item['data']
         source = data['source']
         lng, lat = data['location']['coordinates']
-        ret = filter(lambda val: val['type_code'] in [4, 5] and
-                                 val['sname'].lower() in data['alias'] and
+        ret = filter(lambda val: val['sname'].lower() in data['alias'] and
                                  utils.haversine(val['lng'], val['lat'], lng, lat) < 400,
                      self.parse_baidu_sug(response))
 
@@ -1071,12 +1082,13 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             kw_list = response.meta['kw_list']
             if not kw_list:
                 self.log(
-                    'Baidu counterparts not found: id=%d, name=%s' % (source['mafengwo']['id'], data['zhName']))
+                    'Baidu counterparts not found: id=%d, name=%s' % (source['mafengwo']['id'], data['zhName']),
+                    log.INFO)
                 return item
 
             keyword = kw_list[0]
             kw_list = kw_list[1:]
-            req = self.build_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
+            req = self.baidu_sug_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
             self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
             return req
 
@@ -1268,7 +1280,8 @@ class MafengwoProcPipeline(AizouPipeline):
         image_list = data.pop('imageList')
 
         ops = {'$set': data}
-        ops['$set']['source.mafengwo'] = src['mafengwo']
+        for key in src:
+            ops['$set']['source.%s' % key] = src[key]
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
         mdd = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
