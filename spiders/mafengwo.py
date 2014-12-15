@@ -188,12 +188,12 @@ class MafengwoSpider(AizouCrawlSpider):
                     meta={'crumb': copy.deepcopy(crumb), 'iType': new_t},
                     callback=self.parse_mdd_ajax)
 
-        # 尝试抓取自身
-        if 'inc-self' in self.param:
-            self_oid = response.meta['id']
-            yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
-                          meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
-                          callback=self.parse_mdd_home, dont_filter=True)
+                # # 尝试抓取自身
+                # if 'inc-self' in self.param:
+                # self_oid = response.meta['id']
+                # yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % self_oid,
+                # meta={'id': self_oid, 'crumb': copy.deepcopy(crumb)},
+                # callback=self.parse_mdd_home, dont_filter=True)
 
     def parse_mdd_home(self, response):
         if 'item' not in response.meta:
@@ -248,9 +248,13 @@ class MafengwoSpider(AizouCrawlSpider):
             yield item
 
         # 从目的地页面出发，解析POI
-        yield Request(url='http://www.mafengwo.cn/jd/%d/gonglve.html' % data['id'],
-                      meta={'type': 'region', 'crumb': data['crumb']},
-                      callback=self.parse_jd)
+        for poi_type in ['cy', 'yl', 'gw']:
+            if 'skip' in self.param and poi_type in self.param['skip']:
+                continue
+
+            yield Request(url='http://www.mafengwo.cn/%s/%d/gonglve.html' % (poi_type, data['id']),
+                          meta={'type': 'region', 'crumb': data['crumb']},
+                          callback=self.parse_jd)
 
     def parse_poi_list(self, response):
         """
@@ -280,29 +284,6 @@ class MafengwoSpider(AizouCrawlSpider):
                               callback=self.parse_poi)
             except (KeyError, IndexError):
                 pass
-
-    # def get_crumb(self, response):
-    # # 获得crumb
-    # crumb = []
-    # for node in Selector(response).xpath(
-    # '//div[@class="crumb"]/div[contains(@class,"item")]/div[@class="drop"]/span[@class="hd"]/a[@href]'):
-    # crumb_name = node.xpath('./text()').extract()[0].strip()
-    # crumb_url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    # match = re.search(r'travel-scenic-spot/mafengwo/(\d+)\.html', crumb_url)
-    # if not match:
-    # # 例外情况：中国
-    # if crumb_name == u'中国':
-    # mdd_id = 21536
-    # crumb_url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/21536.html'
-    # else:
-    # continue
-    # else:
-    # mdd_id = int(match.group(1))
-    # # 目标为洲的那些scrumb，不要抓取
-    # if mdd_id in self.cont_list:
-    # continue
-    # crumb.append({'name': crumb_name, 'url': crumb_url})
-    # return crumb
 
     def parse_jd(self, response):
         sel = Selector(response)
@@ -402,6 +383,18 @@ class MafengwoSpider(AizouCrawlSpider):
             tmp = sel.xpath('//div[@id="main_pic"]/span/strong[@title]/text()').extract()
             if tmp:
                 photo_cnt = int(tmp[0])
+
+        # 补全crumb
+        crumb = data['crumb']
+        for href in sel.xpath(
+                '//div[@class="crumb"]/div[@class="item"]/div[@class="drop"]/span[@class="hd"]/a[@href]/@href') \
+                .extract():
+            match = re.search(r'/travel-scenic-spot/mafengwo/(\d+)\.html', href)
+            if not match:
+                continue
+            crumb_id = int(match.group(1))
+            if crumb_id not in crumb:
+                crumb.append(crumb_id)
 
         desc = []
         desc_entry = {}
