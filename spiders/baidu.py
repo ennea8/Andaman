@@ -1121,6 +1121,14 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         data['timeCostDesc'] = tmp['besttime']['more_desc'] \
                             if 'more_desc' in tmp['besttime'] else ''
 
+                    # 门票信息
+                    tmp_data = {}
+                    if 'ticket_info' in tmp:
+                        price_desc = tmp['ticket_info']['price_desc'] if 'price_desc' in tmp['ticket_info'] else ''
+                        open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp['ticket_info'] else ''
+                        tmp_data = {'price_desc': price_desc, 'open_time_desc': open_time_desc}
+                    data['ticket_info'] = tmp_data
+
                     # 购物
                     goods_list = []
                     if 'shopping' in tmp:
@@ -1336,6 +1344,13 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                         # if re.search('\d', tmp_time_cost) else None
                         data['timeCostDesc'] = tmp['besttime']['more_desc'] \
                             if 'more_desc' in tmp['besttime'] else ''
+                    # 门票信息
+                    tmp_data = {}
+                    if 'ticket_info' in tmp:
+                        price_desc = tmp['ticket_info']['price_desc'] if 'price_desc' in tmp['ticket_info'] else ''
+                        open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp['ticket_info'] else ''
+                        tmp_data = {'price_desc': price_desc, 'open_time_desc': open_time_desc}
+                    data['ticket_info'] = tmp_data
 
                     # 杂项信息
                     miscInfo = []
