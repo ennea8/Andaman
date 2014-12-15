@@ -384,6 +384,18 @@ class MafengwoSpider(AizouCrawlSpider):
             if tmp:
                 photo_cnt = int(tmp[0])
 
+        # 补全crumb
+        crumb = data['crumb']
+        for href in sel.xpath(
+                '//div[@class="crumb"]/div[@class="item"]/div[@class="drop"]/span[@class="hd"]/a[@href]/@href') \
+                .extract():
+            match = re.search(r'/travel-scenic-spot/mafengwo/(\d+)\.html', href)
+            if not match:
+                continue
+            crumb_id = int(match.group(1))
+            if crumb_id not in crumb:
+                crumb.append(crumb_id)
+
         desc = []
         desc_entry = {}
         for node in sel.xpath('//div[contains(@class,"poi-info")]/div[@class="bd"]/*'):
