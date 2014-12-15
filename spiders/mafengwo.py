@@ -248,12 +248,14 @@ class MafengwoSpider(AizouCrawlSpider):
             yield item
 
         # 从目的地页面出发，解析POI
-        for poi_type in ['cy', 'yl', 'gw']:
+        for poi_type in ['vs', 'cy', 'yl', 'gw']:
             if 'skip' in self.param and poi_type in self.param['skip']:
                 continue
 
-            yield Request(url='http://www.mafengwo.cn/%s/%d/gonglve.html' % (poi_type, data['id']),
-                          meta={'type': 'region', 'crumb': data['crumb']},
+            url_key = poi_type if poi_type != 'vs' else 'jd'
+
+            yield Request(url='http://www.mafengwo.cn/%s/%d/gonglve.html' % (url_key, data['id']),
+                          meta={'type': poi_type, 'crumb': data['crumb']},
                           callback=self.parse_jd)
 
     def parse_poi_list(self, response):
