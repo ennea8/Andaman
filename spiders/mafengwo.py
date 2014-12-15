@@ -799,6 +799,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             traffic_info = None
             tel = None
             loc_name = None
+            en_name = None
             details = []
 
             for info_entry in entry['desc']:
@@ -816,6 +817,9 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                     tel = proc_text
                 elif info_entry['name'] == u'当地名称':
                     loc_name = proc_text
+                    details.append(u'%s：%s' % (info_entry['name'], proc_text))
+                elif info_entry['name'] == u'英文名称':
+                    en_name = proc_text
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
                 else:
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
@@ -842,9 +846,11 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                 data['trafficInfo'] = traffic_info
             if tel:
                 data['tel'] = tel
-            if loc_name:
+            for tmp in [loc_name, en_name]:
+                if not tmp:
+                    continue
                 alias_list = set(data['alias'])
-                alias_list.add(loc_name.lower())
+                alias_list.add(tmp.lower())
                 data['alias'] = list(alias_list)
             if details:
                 data['details'] = '\n\n'.join(details)
