@@ -873,7 +873,47 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
             data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
 
-            yield item
+            self.resolve_targets(item)
+
+            yield self.gen_baidu_sug_req(item, 100, True)
+
+    def resolve_targets(self, item):
+        data = item['data']
+
+        col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
+
+        country_flag = False
+        crumb_list = data.pop('crumbIds')
+        crumb = []
+        for cid in crumb_list:
+            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if not ret and not country_flag:
+                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
+                if ret:
+                    # 添加到country字段
+                    data['country'] = ret
+                    for key in ret:
+                        data['country'][key] = ret[key]
+                    country_flag = True
+            if ret:
+                crumb.append(ret['_id'])
+        data['targets'] = crumb
+
+        # 从crumb的最后开始查找。第一个目的地即为city
+        city = None
+        for idx in xrange(len(crumb_list) - 1, -1, -1):
+            cid = crumb_list[idx]
+            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
+            if ret:
+                city = {'_id': ret['_id']}
+                for key in ['zhName', 'enName']:
+                    if key in ret:
+                        city[key] = ret[key]
+                break
+
+        if city:
+            data['locality'] = city
 
     def parse_mdd(self, bound):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
@@ -1043,29 +1083,55 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             # else:
             # yield item
 
-            kw_list = []
-            zh_name = data['zhName']
-            kw_list.append(utils.get_short_loc(zh_name))
-            if zh_name not in kw_list:
-                kw_list.append(zh_name)
-            for alias in data['alias']:
-                if alias not in [tmp.lower() for tmp in kw_list]:
-                    kw_list.append(alias)
+            yield self.gen_baidu_sug_req(item, 400, False)
 
-            keyword = kw_list[0]
-            kw_list = kw_list[1:]
-            req = self.baidu_sug_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
-            self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
-            yield req
+    def gen_baidu_sug_req(self, item, proximity, poi):
+        data = item['data']
+        kw_list = []
+        zh_name = data['zhName']
+        kw_list.append(utils.get_short_loc(zh_name))
+        if zh_name not in kw_list:
+            kw_list.append(zh_name)
+        for alias in data['alias']:
+            if alias not in [tmp.lower() for tmp in kw_list]:
+                kw_list.append(alias)
+            alias = re.sub(ur'风?景区$', '', alias)
+            if alias not in [tmp.lower() for tmp in kw_list]:
+                kw_list.append(alias)
 
-    def parse_mdd_baidu(self, response):
+        keyword = kw_list[0]
+        kw_list = kw_list[1:]
+        req = self.baidu_sug_req(keyword, callback=lambda val: self.bind_baidu_scene(val, proximity, poi),
+                                 meta={'item': item, 'kw_list': kw_list})
+        self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
+
+        return req
+
+    def bind_baidu_scene(self, response, proximity, poi):
         item = response.meta['item']
         data = item['data']
         source = data['source']
         lng, lat = data['location']['coordinates']
-        ret = filter(lambda val: val['sname'].lower() in data['alias'] and
-                                 utils.haversine(val['lng'], val['lat'], lng, lat) < 400,
-                     self.parse_baidu_sug(response))
+
+        if poi:
+            ret = filter(lambda val: val['sname'].lower() in data['alias'] and
+                                     val['type_code'] >= 6 and
+                                     utils.haversine(val['lng'], val['lat'], lng, lat) < proximity,
+                         self.parse_baidu_sug(response))
+            tmp = filter(lambda val: val['sname'].lower() in data['alias'] and
+                                     val['type_code'] == 5 and
+                                     utils.haversine(val['lng'], val['lat'], lng, lat) < proximity,
+                         self.parse_baidu_sug(response))
+            ret.extend(tmp)
+            tmp = filter(lambda val: val['sname'].lower() in data['alias'] and
+                                     val['type_code'] == 4 and
+                                     utils.haversine(val['lng'], val['lat'], lng, lat) < proximity,
+                         self.parse_baidu_sug(response))
+            ret.extend(tmp)
+        else:
+            ret = filter(lambda val: val['sname'].lower() in data['alias'] and
+                                     utils.haversine(val['lng'], val['lat'], lng, lat) < proximity,
+                         self.parse_baidu_sug(response))
 
         if ret:
             if len(ret) > 1:
@@ -1088,7 +1154,8 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             keyword = kw_list[0]
             kw_list = kw_list[1:]
-            req = self.baidu_sug_req(keyword, callback=self.parse_mdd_baidu, meta={'item': item, 'kw_list': kw_list})
+            req = self.baidu_sug_req(keyword, callback=lambda val: self.bind_baidu_scene(val, proximity, poi),
+                                     meta={'item': item, 'kw_list': kw_list})
             self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
             return req
 
@@ -1298,48 +1365,14 @@ class MafengwoProcPipeline(AizouPipeline):
         db_name = item['db_name']
 
         col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
-        col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
-        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
-
-        country_flag = False
-        crumb_list = data.pop('crumbIds')
-        crumb = []
-        for cid in crumb_list:
-            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
-            if not ret and not country_flag:
-                ret = col_country.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1, 'code': 1})
-                if ret:
-                    # 添加到country字段
-                    data['country'] = {}
-                    for key in ret:
-                        data['country'][key] = ret[key]
-                    country_flag = True
-            if ret:
-                crumb.append(ret['_id'])
-        data['targets'] = crumb
-
-        # 从crumb的最后开始查找。第一个目的地即为city
-        city = None
-        for idx in xrange(len(crumb_list) - 1, -1, -1):
-            cid = crumb_list[idx]
-            ret = col_mdd.find_one({'source.mafengwo.id': cid}, {'_id': 1, 'zhName': 1, 'enName': 1})
-            if ret:
-                city = {'_id': ret['_id']}
-                for key in ['zhName', 'enName']:
-                    if key in ret:
-                        city[key] = ret[key]
-                break
 
         src = data.pop('source')
         alias = data.pop('alias')
         image_list = data.pop('imageList')
 
         ops = {'$set': data}
-        ops['$set']['source.mafengwo'] = src['mafengwo']
-        if city:
-            ops['$set']['locality'] = city
-        else:
-            ops['$unset'] = {'locality': 1}
+        for key in src:
+            ops['$set']['source.%s' % key] = src[key]
         ops['$addToSet'] = {'alias': {'$each': alias}}
 
         poi = col.find_and_modify({'source.mafengwo.id': src['mafengwo']['id']}, ops, upsert=True, new=True,
