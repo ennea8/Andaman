@@ -888,7 +888,10 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             self.resolve_targets(item)
 
-            yield self.gen_baidu_sug_req(item, 100, True)
+            if 'bind-baidu' in self.param:
+                yield self.gen_baidu_sug_req(item, 100, True)
+            else:
+                yield item
 
     def resolve_targets(self, item):
         data = item['data']
@@ -1096,7 +1099,10 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             # else:
             # yield item
 
-            yield self.gen_baidu_sug_req(item, 400, False)
+            if 'bind-baidu' in self.param:
+                yield self.gen_baidu_sug_req(item, 400, False)
+            else:
+                yield item
 
     def gen_baidu_sug_req(self, item, proximity, poi):
         data = item['data']
