@@ -1888,7 +1888,7 @@ class BaiduSugMixin(object):
     示例：http://lvyou.baidu.com/destination/ajax/sug?wd=%E5%B7%B4%E9%BB%8E&prod=lvyou_new&su_num=20
     """
 
-    def build_req(self, keyword, **kwargs):
+    def baidu_sug_req(self, keyword, **kwargs):
         from urllib import quote_plus
 
         if isinstance(keyword, unicode):
