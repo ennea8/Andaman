@@ -1124,8 +1124,8 @@ class BaiduSceneLocalityProcSpider(AizouCrawlSpider):
                     # 门票信息
                     # if 'ticket_info' in tmp:
                     # price_desc = tmp['ticket_info']['price_desc'] if 'price_desc' in tmp['ticket_info'] else ''
-                    #     open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp[
-                    #         'ticket_info'] else ''
+                    # open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp[
+                    # 'ticket_info'] else ''
                     # data['priceDesc'] = price_desc
                     # data['openTime'] = open_time_desc
 
@@ -1376,17 +1376,13 @@ class BaiduSceneLocalityProcSpiderPipeline(AizouPipeline):
 
         data = item['data']
         col_name = item['col_name']
-        if col_name == 'BaiduLocality':
-            col = self.fetch_db_col('geo', col_name, 'mongodb-general')
 
-            entry = col.find_one({'sid': data['sid']})
-            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
-
+        # db_map = {'BaiduLocality':'geo', 'BaiduPoi': 'poi'}
+        # col = self.fetch_db_col(db_map[col_name], col_name, 'mongodb-general')
+        # col.update({'sid': data['sid']}, {'$set': data}, upsert=True)
         if col_name == 'BaiduPoi':
             col = self.fetch_db_col('poi', col_name, 'mongodb-general')
-
-            entry = col.find_one({'sid': data['sid']})
-            col.update({'sid': data['sid']}, {'$set': entry}, upsert=True)
+            col.update({'sid': data['sid']}, {'$set': data}, upsert=True)
 
 
 class BaiduRestaurantProcSpider(AizouCrawlSpider):
