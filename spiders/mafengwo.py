@@ -8,8 +8,8 @@ import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
 
-from spiders import AizouCrawlSpider, AizouPipeline
-from spiders.baidu import BaiduSugMixin
+from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
+from spiders.baidu_mixin import BaiduSugMixin
 import utils
 
 
@@ -1217,7 +1217,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             return req
 
 
-class MafengwoProcPipeline(AizouPipeline):
+class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
     """
     蚂蜂窝
     """
@@ -1253,106 +1253,6 @@ class MafengwoProcPipeline(AizouPipeline):
             col.update({'_id': ret['_id']}, {'$set': {'source.mafengwo.id': data['id']}})
 
         return item
-
-    def process_image_list(self, image_list, item_id):
-        col_im_c = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
-        # 正式的，供POI、目的地等使用的images字段
-        images_formal = []
-
-        def is_qiniu(url):
-            """
-            判断是否为存储在七牛上的照片，同时返回key
-            :param url:
-            """
-            match = re.search(r'http://lvxingpai-img-store\.qiniudn\.com/(.+)', url)
-            if match:
-                return True, match.group(1)
-            else:
-                return False, 'assets/images/%s' % img['url_hash']
-
-        def fetch_qiniu_pic(key, item_id):
-            """
-            通过key在Images中查找相应的记录，同时登记item_id
-            :param key:
-            :param item_id:
-            :return:
-            """
-            return col_im.find_and_modify({'key': key}, {'$addToSet': {'itemIds': item_id}}, new=True)
-
-        def append_image(img):
-            """
-            往images_formal中添加一个项目
-            :param img:
-            """
-            if not img:
-                return
-
-            img_set = set([tmp['key'] for tmp in images_formal])
-            if img['key'] in img_set:
-                return
-
-            new_img = {}
-            for key in ['key', 'w', 'h', 'size', 'title', 'user_name', 'favor_cnt']:
-                if key in img:
-                    new_img[key] = img[key]
-            new_img['url'] = 'http://lvxingpai-img-store.qiniudn.com/%s' % new_img['key']
-            images_formal.append(new_img)
-
-        # 先一次性把item_id在Images和ImageCandidates中对应的图像查找出来
-        im_map = {tmp['key']: tmp for tmp in col_im.find({'itemIds': item_id})}
-        imc_map = {tmp['key']: tmp for tmp in col_im_c.find({'itemIds': item_id})}
-
-        for img in image_list:
-            url = img['url']
-            qiniu_flag, key = is_qiniu(url)
-
-            if qiniu_flag:
-                # 如果已经是七牛格式，说明按理说应该已经存在于库里
-                if key in im_map:
-                    ret = im_map[key]
-                else:
-                    ret = fetch_qiniu_pic(key, item_id)
-                append_image(ret)
-            else:
-                if key in im_map:
-                    ret = im_map[key]
-                    src = 'im'
-                elif key in imc_map:
-                    ret = imc_map[key]
-                    src = 'imc'
-                else:
-                    # 既不存在于Images中，也不存在与ImageCandidates中
-                    ret = fetch_qiniu_pic(key, item_id)
-                    src = 'im'
-
-                if ret and src == 'im':
-                    # 已经存在于数据库中，直接添加到images_formal
-                    append_image(ret)
-
-                if not ret:
-                    # 尚不存在，添加到ImageCandidates
-                    new_img = {}
-                    for tmp in img:
-                        if tmp in ['itemIds', '_id']:
-                            continue
-                        new_img[tmp] = img[tmp]
-                    new_img['key'] = key
-                    col_im_c.update({'url_hash': img['url_hash']},
-                                    {'$setOnInsert': new_img, '$addToSet': {'itemIds': item_id}}, upsert=True)
-
-        def images_cmp(img1, img2):
-            f1 = img1['favor_cnt'] if 'favor_cnt' in img1 else 0
-            f2 = img2['favor_cnt'] if 'favor_cnt' in img2 else 0
-
-            if f1 != f2:
-                return f1 - f2
-            else:
-                s1 = img1['size'] if 'size' in img1 else 0
-                s2 = img2['size'] if 'size' in img2 else 0
-                return s1 - s2
-
-        return sorted(images_formal, cmp=images_cmp, reverse=True)
 
     def process_mdd(self, item, spider):
         data = item['data']
