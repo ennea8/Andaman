@@ -28,7 +28,7 @@ class MafengwoSugMixin(object):
     def parse_mfw_sug(response):
         from urllib import unquote_plus
 
-        rtext = unquote_plus(response.body[3:-2])
+        rtext = unquote_plus(response.body[3:-2]).decode('utf-8')
 
         # j('search://|mdd|/group/cs.php?t=%E6%90%9C%E7%B4%A2%E7%9B%B4%E8%BE%BE&p=mdd&l=%2Ftravel-scenic-spot%2F
         # mafengwo%2F11124.html&d=%E4%BC%A6%E6%95%A6|ss-place|伦敦|英格兰|伦敦|search://|gonglve|/group/cs.php?t=
@@ -64,13 +64,18 @@ class MafengwoSugMixin(object):
         tmpl = tmpl[title]
 
         results = []
-        for r in filter(lambda val: re.search(tmpl['title'], val), re.split(r'search://', rtext)):
-            match = re.search(tmpl['id'], r)
-            if not match:
-                continue
-            rid = int(match.group(1))
-            name = re.search(tmpl['name'], r).group(1)
-            results.append({'id': rid, 'name': name})
+        for r in filter(lambda val: re.search(r'\|(mdd|scenic)\|', val), re.split(r'search://', rtext)):
+            match = re.search(r'/travel-scenic-spot/mafengwo/(\d+)\.html', r)
+            if match:
+                rid = int(match.group(1))
+                name = re.search(tmpl['name'], r).group(1)
+                results.append({'id': rid, 'name': name, 'type': 'mdd'})
+            else:
+                match = re.search(r'/poi/(\d+)\.html', r)
+                if match:
+                    rid = int(match.group(1))
+                    name = re.search(tmpl['name'], r).group(1)
+                    results.append({'id': rid, 'name': name, 'type': 'vs'})
 
         return results
 

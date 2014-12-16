@@ -1014,14 +1014,17 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
         source = data['source']
         lng, lat = data['location']['coordinates']
 
-        if sug_type == 'mdd':
-            col = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
-        elif sug_type == 'vs':
-            col = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
-        else:
-            return
+        col_loc = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+        col_vs = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
 
         def find_counterpart(sug):
+            if sug['type'] == 'mdd':
+                col = col_loc
+            elif sug['type'] == 'vs':
+                col = col_vs
+            else:
+                return
+
             mfw_cp = col.find_one({'source.mafengwo.id': sug['id']}, {'location': 1})
             if not mfw_cp:
                 return
@@ -1091,7 +1094,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
     def proc_locality_misc(self, data, contents):
         # 示例：func('shoppingIntro', 'commodities', 'shopping', 'goods')
         def func(h1, h2, t1, t2):
-            goods_list = []
+            item_lists = []
             if t1 in contents:
                 data[h1] = self.text_pro(contents[t1]['desc']) if 'desc' in contents[t1] else ''
                 if t2 in contents[t1]:
@@ -1102,15 +1105,14 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                             pic_url = node['pic_url'].strip()
                             if pic_url:
                                 images = self.images_pro([pic_url])
-                        goods_tmp = {
+                        item_lists.append({
                             'title': node['name'],
                             'desc': self.text_pro(node['desc']),
                             'images': images
-                        }
-                        goods_list.append(goods_tmp)
+                        })
             else:
                 data[h1] = ''
-            data[h2] = goods_list
+            data[h2] = item_lists
 
         # 购物
         func('shoppingIntro', 'commodities', 'shopping', 'goods')
@@ -1176,9 +1178,9 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                 # 源
                 data['source'] = {'baidu': {'id': entry['sid']}}
 
+                loc_list = []
                 # 层级结构
                 if 'scene_path' in entry:
-                    loc_list = []
                     country_fetched = False
                     for scene_path in entry['scene_path']:
                         if country_fetched:
@@ -1192,7 +1194,8 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                                 loc_list.append({key: ret[key] for key in ['_id', 'zhName', 'enName']})
                                 country_fetched = True
 
-                    data['locList'] = loc_list
+                data['locList'] = loc_list
+                data['targets'] = [loc_tmp['_id'] for loc_tmp in loc_list]
 
                 data['tags'] = []
 
