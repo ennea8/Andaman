@@ -1228,8 +1228,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                 # 设置别名
                 if data['enName']:
                     alias.add(data['enName'])
-                data['alias'] = list(set(filter(lambda val: val,
-                                                [tmp.strip().lower() for tmp in [node for node in alias]])))
+                data['alias'] = list(set(filter(lambda val: val, [tmp.strip().lower() for tmp in alias])))
 
                 # 字段
                 contents = entry['content'] if 'content' in entry else {}
@@ -1245,14 +1244,14 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
 
                 # 旅行时间
                 if 'besttime' in contents:
-                    data['travelMonth'] = contents['besttime']['simple_desc'] \
-                        if 'simple_desc' in contents['besttime'] else ''
+                    best_time = contents['besttime']
+                    travel_month = best_time['more_desc'] if 'more_desc' in best_time else ''
+                    if not travel_month:
+                        travel_month = best_time['simple_desc'] if 'simple_desc' in best_time else ''
+                    data['travelMonth'] = travel_month
 
-                    tmp_time_cost = contents['besttime']['recommend_visit_time'] \
-                        if 'recommend_visit_time' in contents['besttime'] else ''
+                    tmp_time_cost = best_time['recommend_visit_time'] if 'recommend_visit_time' in best_time else ''
                     data['timeCostDesc'] = tmp_time_cost
-                    # data['timeCostDesc'] = contents['besttime']['more_desc'] \
-                    # if 'more_desc' in contents['besttime'] else ''
 
                 if is_locality:
                     self.proc_locality_misc(data, contents)
