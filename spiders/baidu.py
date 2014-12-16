@@ -1155,6 +1155,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
             query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+            self.log('QUERY: %s' % query, log.INFO)
             cursor = col_raw_scene.find(query)
 
             if 'limit' in self.param:
@@ -1215,11 +1216,13 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     # 位置信息
                     # if 'map_info' in tmp and tmp['map_info']:
                     map_info = filter(lambda val: val,
-                                      [c_tmp for c_tmp in re.split(ur'[,\uff0c]', tmp['map_info'])])
-                    coord = [float(node) for node in map_info]
-                    if len(coord) == 2:
-                        data['location'] = {'type': 'Point', 'coordinates': coord}
-
+                                      [c_tmp for c_tmp in re.split(ur'[,/\uff0c]', tmp['map_info'])])
+                    try:
+                        coord = [float(node) for node in map_info]
+                        if len(coord) == 2:
+                            data['location'] = {'type': 'Point', 'coordinates': coord}
+                    except (ValueError, UnicodeEncodeError):
+                        self.log(map_info, log.ERROR)
                 else:
                     data['desc'] = ''
                     data['rating'] = None

@@ -102,6 +102,8 @@ class ProcImagesMixin(object):
 
         for img in image_list:
             url = img['url']
+            if 'url_hash' not in img:
+                img['url_hash'] = hashlib.md5(url).hexdigest()
             qiniu_flag, key = is_qiniu(url)
 
             if qiniu_flag:
