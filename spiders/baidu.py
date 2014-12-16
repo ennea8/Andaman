@@ -1160,6 +1160,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
             if 'limit' in self.param:
                 cursor.limit(int(self.param['limit'][0]))
 
+            self.log('%d records to process...' % cursor.count(), log.INFO)
             for entry in cursor:
                 is_locality = entry['type'] == 'locality'
 
