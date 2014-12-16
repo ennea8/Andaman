@@ -1009,8 +1009,11 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
         item = response.meta['item']
         proximity = response.meta['proximity']
         sug_type = response.meta['sug_type']
-
         data = item['data']
+
+        if 'location' not in data:
+            return item
+
         source = data['source']
         lng, lat = data['location']['coordinates']
 
@@ -1160,6 +1163,8 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
             for entry in cursor:
                 is_locality = entry['type'] == 'locality'
 
+                self.log('Yielding %s: %s, %s' % tuple([entry[key] for key in ['sid', 'surl', 'sname']]), log.INFO)
+
                 data = {'abroad': True if entry['is_china'] == '0' else False,
                         'commentCnt': int(entry['rating_count']) if 'rating_count' in entry else None,
                         'visitCnt': int(entry['gone_count']) if 'gone_count' in entry else None,
@@ -1207,14 +1212,12 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                         if 'avg_remark_score' in tmp else None
                     data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
                     # 位置信息
-                    if 'map_info' in tmp and tmp['map_info']:
-                        map_info = filter(lambda val: val,
-                                          [c_tmp for c_tmp in re.split(ur'[,\uff0c]', tmp['map_info'])])
-                        try:
-                            coord = [float(node) for node in map_info]
-                            data['location'] = {'type': 'Point', 'coordinates': coord}
-                        except ValueError:
-                            pass
+                    # if 'map_info' in tmp and tmp['map_info']:
+                    map_info = filter(lambda val: val,
+                                      [c_tmp for c_tmp in re.split(ur'[,\uff0c]', tmp['map_info'])])
+                    coord = [float(node) for node in map_info]
+                    if len(coord) == 2:
+                        data['location'] = {'type': 'Point', 'coordinates': coord}
 
                 else:
                     data['desc'] = ''
