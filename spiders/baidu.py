@@ -1524,10 +1524,8 @@ class BaiduCommentSpider(AizouCrawlSpider):
     def parse_comment(self, response):
 
         data = response.meta['data']
-        try:
-            tmp_data = json.loads(response.body)
-        except ValueError:
-            pass
+
+        tmp_data = json.loads(response.body)
         if 'data' in tmp_data:
             json_data = tmp_data['data']
             comment_list = json_data['list']
@@ -1538,6 +1536,7 @@ class BaiduCommentSpider(AizouCrawlSpider):
             data['comment_list'] = tmp_comment
         item = BaiduCommentItem()
         item['data'] = data
+
         return item
 
 
@@ -1751,7 +1750,10 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
         food_list = sel.xpath('//div[contains(@id,"food-list")]/div')
         if not food_list:
             return
+
+        #self.log(food_list, log.INFO)
         for node in food_list:
+            temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
             food_name = node.xpath('.//h3/text()').extract()[0]
             shop_list = node.xpath('.//ul/li')
             shop = []
@@ -1790,12 +1792,15 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
                                 'shop_desc': shop_desc, 'shop_addr': shop_addr}
                     shop.append(tmp_data)
-            data['food_name'] = food_name
-            data['shop_list'] = shop
-            data['prikey'] = food_name+(data['sid'])
+            else:
+                continue
+            # self.log(food_name, log.INFO)
+            temp['food_name'] = food_name
+            temp['shop_list'] = shop
+            temp['prikey'] = food_name + (data['sid'])
             item = BaiduRestaurantRecommend()
-            item['data'] = data
-            return item
+            item['data'] = temp
+            yield item
 
 
 class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
@@ -1812,4 +1817,6 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
 
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
         col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
+        # digest = hashlib.md5(data['prikey']).hexdigest()
+        #spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
         return item
