@@ -1505,9 +1505,6 @@ class BaiduCommentSpider(AizouCrawlSpider):
         super(BaiduCommentSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.parse)
-
-    def parse(self, response):
         for col_name in ['BaiduLocality', 'BaiduPoi']:
             col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             for entry in col.find():
@@ -1520,19 +1517,25 @@ class BaiduCommentSpider(AizouCrawlSpider):
                 data = {'sid': sid, 'sname': sname, 'surl': surl, 'itemId': itemId}
                 yield Request(
                     url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?'
-                        'xid=%s&score=0&pn=0&rn=500&format=ajax' % (sid),
+                        'xid=%s&score=0&pn=0&rn=500&format=json' % (sid),
                     callback=self.parse_comment, meta={'col_name': col_name, 'data': data})
 
-    def parse_comment(self, response):
-        data = response.meta['data']
-        json_data = json.loads(response.body)['data']
-        comment_list = json_data['list']
-        tmp_comment = []
-        for node in comment_list:
-            node.pop('from')
-            tmp_comment.append(node)
-        data['comment_list'] = tmp_comment
 
+    def parse_comment(self, response):
+
+        data = response.meta['data']
+        try:
+            tmp_data = json.loads(response.body)
+        except ValueError:
+            pass
+        if 'data' in tmp_data:
+            json_data = tmp_data['data']
+            comment_list = json_data['list']
+            tmp_comment = []
+            for node in comment_list:
+                node.pop('from')
+                tmp_comment.append(node)
+            data['comment_list'] = tmp_comment
         item = BaiduCommentItem()
         item['data'] = data
         return item
@@ -1552,11 +1555,7 @@ class BaiduCommentSpiderPipeline(AizouPipeline):
 
         col = self.fetch_db_col('raw_data', 'BaiduComment', 'mongodb-crawler')
         ret = col.find_one({'sid': data['sid']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'sid': data['sid']}, {'$set': ret}, upsert=True)
 
         return item
 
@@ -1793,7 +1792,7 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     shop.append(tmp_data)
             data['food_name'] = food_name
             data['shop_list'] = shop
-            data['prikey'] = ObjectId()
+            data['prikey'] = food_name+(data['sid'])
             item = BaiduRestaurantRecommend()
             item['data'] = data
             return item
@@ -1812,10 +1811,5 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
-        ret = col.find_one({'prikey': data['prikey']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
         return item
