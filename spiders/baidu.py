@@ -1065,32 +1065,34 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
 
     def proc_traffic(self, data, contents, is_locality):
         # 处理交通
-        traffic = []
         traffic_intro = ''
         traffic_details = {}
 
         if 'traffic' in contents:
             traffic_intro = contents['traffic']['desc'] if 'desc' in contents['traffic'] else ''
             for key in ['remote', 'local']:
+                traffic = []
                 if key in contents['traffic']:
                     for node in contents['traffic'][key]:
                         traffic.append({
                             'title': node['name'],
-                            'contents': self.text_pro(node['desc'])
+                            'contents_html': self.text_pro(node['desc']),
+                            'contents': node['desc']
                         })
-                    traffic_details[key + 'Traffic'] = traffic
-                else:
-                    traffic_details[key + 'Traffic'] = traffic
+                traffic_details[key + 'Traffic'] = traffic
 
         if is_locality:
             data['trafficIntro'] = traffic_intro
             for key in traffic_details:
-                data[key] = traffic_details[key]
+                data[key] = []
+                for tmp in traffic_details[key]:
+                    data[key].append({html_key: tmp[html_key] for html_key in ['title', 'contents_html']})
         else:
             tmp = [traffic_intro.strip()]
-            for key, value in traffic_details.items():
-                info_entry = '%s\n\n%s' % (key, value)
-                tmp.append(info_entry)
+            for value in (traffic_details[t_type] for t_type in ['localTraffic', 'remoteTraffic'] if
+                          t_type in traffic_details):
+                info_entry = [u'%s：\n\n%s' % (value_tmp['title'], value_tmp['contents']) for value_tmp in value]
+                tmp.extend(info_entry)
             tmp = filter(lambda val: val, tmp)
             data['trafficInfo'] = '\n\n'.join(tmp) if tmp else ''
 
