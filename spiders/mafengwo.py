@@ -601,6 +601,16 @@ class MafengwoProcItem(Item):
 class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
     """
     马蜂窝目的地的清洗
+
+    参数列表：
+    def-hot：默认的热度。默认值为0.3。
+    denom：计算热度/评分等的基准因子。默认值为2000。
+    lower/upper：分片处理。默认为不分片。
+    slice：分片处理的步进。默认为8。
+    mdd/vs/gw/cy/...：处理目的地/景点/购物/餐饮等。
+    limit：条数限制。
+    query：通过查询条件限制处理对象。
+    bind-baidu：是否和百度进行绑定。默认为不绑定。
     """
 
     name = 'mafengwo-proc'
@@ -1196,7 +1206,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                                                                              response.url), log.WARNING)
             baidu_mdd = ret[0]
 
-            source['baidu'] = {'surl': ret[0]['surl'], 'sid': ret[0]['sid']}
+            source['baidu'] = {'surl': ret[0]['surl'], 'id': ret[0]['sid']}
             self.log('Binding: baidu(%s) => mafengwo(%d, %s), surl=%s, sname=%s, parents=%s, type=%d' %
                      (baidu_mdd['sid'], source['mafengwo']['id'], data['zhName'], baidu_mdd['surl'], baidu_mdd['sname'],
                       baidu_mdd['parents'], baidu_mdd['type_code']), log.INFO)
