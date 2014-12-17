@@ -1489,9 +1489,6 @@ class BaiduCommentSpider(AizouCrawlSpider):
         super(BaiduCommentSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.parse)
-
-    def parse(self, response):
         for col_name in ['BaiduLocality', 'BaiduPoi']:
             col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             for entry in col.find():
@@ -1504,21 +1501,26 @@ class BaiduCommentSpider(AizouCrawlSpider):
                 data = {'sid': sid, 'sname': sname, 'surl': surl, 'itemId': itemId}
                 yield Request(
                     url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?'
-                        'xid=%s&score=0&pn=0&rn=500&format=ajax' % (sid),
+                        'xid=%s&score=0&pn=0&rn=500&format=json' % (sid),
                     callback=self.parse_comment, meta={'col_name': col_name, 'data': data})
 
-    def parse_comment(self, response):
-        data = response.meta['data']
-        json_data = json.loads(response.body)['data']
-        comment_list = json_data['list']
-        tmp_comment = []
-        for node in comment_list:
-            node.pop('from')
-            tmp_comment.append(node)
-        data['comment_list'] = tmp_comment
 
+    def parse_comment(self, response):
+
+        data = response.meta['data']
+
+        tmp_data = json.loads(response.body)
+        if 'data' in tmp_data:
+            json_data = tmp_data['data']
+            comment_list = json_data['list']
+            tmp_comment = []
+            for node in comment_list:
+                node.pop('from')
+                tmp_comment.append(node)
+            data['comment_list'] = tmp_comment
         item = BaiduCommentItem()
         item['data'] = data
+
         return item
 
 
@@ -1536,11 +1538,7 @@ class BaiduCommentSpiderPipeline(AizouPipeline):
 
         col = self.fetch_db_col('raw_data', 'BaiduComment', 'mongodb-crawler')
         ret = col.find_one({'sid': data['sid']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'sid': data['sid']}, {'$set': ret}, upsert=True)
 
         return item
 
@@ -1736,12 +1734,21 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
         food_list = sel.xpath('//div[contains(@id,"food-list")]/div')
         if not food_list:
             return
+
+        # 获得JSON结构
+        restaurants = {tmp['poid']: tmp for tmp in
+                       json.loads(re.search(r'var\s+opiList\s*=\s*(\[.+?\])', response.body))}
+
+        # self.log(food_list, log.INFO)
         for node in food_list:
+            temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
             food_name = node.xpath('.//h3/text()').extract()[0]
             shop_list = node.xpath('.//ul/li')
             shop = []
             if shop_list:
                 for shop_node in shop_list:
+                    # id
+                    shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
                     # 店名
                     tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
                     if tmp_shop_name:
@@ -1773,14 +1780,18 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     else:
                         shop_addr = ''
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
-                                'shop_desc': shop_desc, 'shop_addr': shop_addr}
+                                'shop_desc': shop_desc, 'shop_addr': shop_addr,
+                                'shop_id': shop_id, 'original': restaurants[shop_id]}
                     shop.append(tmp_data)
-            data['food_name'] = food_name
-            data['shop_list'] = shop
-            data['prikey'] = ObjectId()
+            else:
+                continue
+            # self.log(food_name, log.INFO)
+            temp['food_name'] = food_name
+            temp['shop_list'] = shop
+            temp['prikey'] = food_name + (data['sid'])
             item = BaiduRestaurantRecommend()
-            item['data'] = data
-            return item
+            item['data'] = temp
+            yield item
 
 
 class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
@@ -1796,10 +1807,7 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
-        ret = col.find_one({'prikey': data['prikey']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
+        # digest = hashlib.md5(data['prikey']).hexdigest()
+        # spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
         return item
