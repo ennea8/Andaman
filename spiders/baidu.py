@@ -1751,7 +1751,11 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
         if not food_list:
             return
 
-        #self.log(food_list, log.INFO)
+        # 获得JSON结构
+        restaurants = {tmp['poid']: tmp for tmp in
+                       json.loads(re.search(r'var\s+opiList\s*=\s*(\[.+?\])', response.body))}
+
+        # self.log(food_list, log.INFO)
         for node in food_list:
             temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
             food_name = node.xpath('.//h3/text()').extract()[0]
@@ -1759,6 +1763,8 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
             shop = []
             if shop_list:
                 for shop_node in shop_list:
+                    # id
+                    shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
                     # 店名
                     tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
                     if tmp_shop_name:
@@ -1790,7 +1796,8 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     else:
                         shop_addr = ''
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
-                                'shop_desc': shop_desc, 'shop_addr': shop_addr}
+                                'shop_desc': shop_desc, 'shop_addr': shop_addr,
+                                'shop_id': shop_id, 'original': restaurants[shop_id]}
                     shop.append(tmp_data)
             else:
                 continue
@@ -1818,5 +1825,5 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
         col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
         # digest = hashlib.md5(data['prikey']).hexdigest()
-        #spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
+        # spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
         return item
