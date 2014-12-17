@@ -1091,7 +1091,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
             tmp = [traffic_intro.strip()]
             for value in (traffic_details[t_type] for t_type in ['localTraffic', 'remoteTraffic'] if
                           t_type in traffic_details):
-                info_entry = [u'%s：\n\n%s' % (value_tmp['title'], value_tmp['contents']) for value_tmp in value]
+                info_entry = ['%s：\n\n%s' % (value_tmp['title'], value_tmp['contents']) for value_tmp in value]
                 tmp.extend(info_entry)
             tmp = filter(lambda val: val, tmp)
             data['trafficInfo'] = '\n\n'.join(tmp) if tmp else ''
@@ -1122,12 +1122,10 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
         # 购物
         func('shoppingIntro', 'commodities', 'shopping', 'goods')
         # 美食
-        func('diningIntro', 'cuisine', 'dining', 'food')
+        func('diningIntro', 'cuisines', 'dining', 'food')
         # 活动
         func('activityIntro', 'activities', 'entertainment', 'activity')
         # 小贴士
-        func('activityIntro', 'activities', 'entertainment', 'activity')
-        # 活动
         func('tipsIntro', 'tips', 'attention', 'list')
         # 地理文化
         func('geoHistoryIntro', 'geoHistory', 'geography_history', 'list')
@@ -1157,7 +1155,6 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
 
             query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
-            self.log('QUERY: %s' % query, log.INFO)
             cursor = col_raw_scene.find(query)
 
             if 'limit' in self.param:
