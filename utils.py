@@ -69,7 +69,7 @@ def mercator2wgs(mx, my):
     x = mx / 20037508.34 * 180
     y = my / 20037508.34 * 180
     y = 180 / pi * (2 * atan(exp(y * pi / 180)) - pi / 2)
-    return (x, y)
+    return x, y
 
 
 # //Web墨卡托转经纬度
