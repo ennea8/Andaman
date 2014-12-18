@@ -1386,10 +1386,13 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     item['db_name'] = 'poi'
                     item['col_name'] = 'BaiduPoi'
 
-                proximity = 400 if is_locality else 100
-                sug_type = 'mdd' if is_locality else 'vs'
+                if 'bind' in self.param:
+                    proximity = 400 if is_locality else 100
+                    sug_type = 'mdd' if is_locality else 'vs'
 
-                yield self.gen_mfw_sug_req(item, proximity, sug_type)
+                    yield self.gen_mfw_sug_req(item, proximity, sug_type)
+                else:
+                    yield item
 
 
 class BaiduSceneProcPipeline(AizouPipeline, ProcImagesMixin):
