@@ -774,6 +774,12 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         super(BaiduSceneSpider, self).__init__(*a, **kw)
+        if 'targets' not in self.param:
+            self.param['targets'] = []
+        elif 'all' in self.param:
+            self.param = ['scene', 'scene-comment', 'dining', 'hotel']
+        elif not self.param:
+            self.param = {}
 
     def start_requests(self):
         start_url = 'http://lvyou.baidu.com/scene/'
@@ -830,8 +836,9 @@ class BaiduSceneSpider(AizouCrawlSpider):
             item_data['scene_list'] = []
         item_data['scene_list'].extend(scene_list)
 
-        # 判断到达最后一页
-        if not scene_list:
+        # 如果抓取目标有scene，则需要读取完整的scene_list信息
+        if 'scene' not in self.param['targets'] or not scene_list:
+            # 最后一页，或者不需要完整scene
             yield Request(url='http://lvyou.baidu.com/%s' % item['data']['surl'], callback=self.parse_scene,
                           meta={'item': item})
         else:
@@ -853,28 +860,89 @@ class BaiduSceneSpider(AizouCrawlSpider):
         item['type'] = 'locality' if u'景点' in nav_list else 'poi'
 
         # 返回scene本身
-        yield item
+        if 'scene' in self.param['targets']:
+            yield item
 
         sid = item['data']['sid']
         sname = item['data']['sname']
         surl = item['data']['surl']
+        base_data = {'sid': sid, 'sname': sname, 'surl': surl}
+
+        if 'scene-comment' in self.param['targets']:
+            yield Request(url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?xid=%s&score=0&pn=0&rn=500'
+                              '&format=ajax' % sid, callback=self.parse_scene_comment, meta={'data': base_data})
 
         # 去哪吃item
         if item['type'] == 'locality':
-            # 抓取去哪吃的信息
-            dining_tmpl = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
-                          'sid=%s&type=&poi=&order=overall_rating&flag=0&nn=0&rn=5&pn=%d'
-            page_idx = 1
-            eatwhere_url = dining_tmpl % (sid, page_idx)
-            base_data = {'sid': sid, 'sname': sname, 'surl': surl}
-            yield Request(url=eatwhere_url, callback=self.parse_restaurant,
-                          meta={'page_idx': page_idx, 'data': base_data, 'tmpl': dining_tmpl})
+            if 'dining' in self.param['targets']:
+                # 抓取去哪吃的信息
+                dining_tmpl = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
+                              'sid=%s&type=&poi=%s&order=overall_rating&flag=0&nn=%d&rn=10&pn=%d'
+                page_idx = 0
+                eatwhere_url = dining_tmpl % (sid, sname, 0, page_idx * 10)
+                yield Request(url=eatwhere_url, callback=self.parse_dining,
+                              meta={'page_idx': page_idx, 'data': base_data, 'tmpl': dining_tmpl})
 
-            # 住宿item
-            yield Request(url='http://lvyou.baidu.com/%s/zhusu' % surl, callback=self.parse_hotel,
-                          meta={'data': base_data})
+                # 抓取吃什么的店铺推荐
+                yield Request(url='http://lvyou.baidu.com/%s/meishi/' % surl, callback=self.parse_cuisine,
+                              meta={'data': base_data})
 
-    def parse_restaurant(self, response):
+            if 'hotel' in self.param['targets']:
+                # 住宿item
+                yield Request(url='http://lvyou.baidu.com/%s/zhusu' % surl, callback=self.parse_hotel,
+                              meta={'data': base_data})
+
+    def parse_cuisine(self, response):
+        data = response.meta['data']
+        # 获得JSON结构
+        match = re.search(r'var\s+opiList\s*=\s*(\[.*?\])', response.body)
+        if match:
+            restaurants = {tmp['poid']: tmp for tmp in
+                           json.loads(match.group(1))}
+        else:
+            restaurants = {}
+
+        for node in Selector(response).xpath('//div[contains(@id,"food-list")]/div'):
+            food_name = node.xpath('.//h3/text()').extract()[0]
+            for shop_node in node.xpath('.//ul/li'):
+                # id
+                shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
+
+                entry = restaurants[shop_id]
+                if 'place_uid' not in entry or not entry['place_uid']:
+                    continue
+
+                if 'special_dishes' not in entry:
+                    entry['special_dishes'] = []
+                entry['special_dishes'].append(food_name)
+
+                item = BaiduSceneItem()
+                item['type'] = 'dining'
+                for key in ('sid', 'sname', 'surl'):
+                    entry[key] = data[key]
+                item['data'] = entry
+                yield item
+
+                # 抓取餐厅的评论信息
+                place_uid = entry['place_uid']
+                comment_url = 'http://lvyou.baidu.com/scene/poi/restaurant?surl=%s&place_uid=%s' % \
+                              (data['surl'], place_uid)
+                base_data = copy.deepcopy(data)
+                base_data['place_uid'] = place_uid
+                yield Request(url=comment_url, callback=self.parse_dining_comment, meta={'data': base_data})
+
+    @staticmethod
+    def parse_scene_comment(response):
+        rdata = response.meta['data']
+        for entry in json.loads(response.body)['data']['list']:
+            item = BaiduSceneItem()
+            item['type'] = 'scene-comment'
+            for key in ('sid', 'sname', 'surl'):
+                entry[key] = rdata[key]
+            item['data'] = entry
+            yield item
+
+    def parse_dining(self, response):
         rdata = response.meta['data']
         page_idx = response.meta['page_idx']
         tmpl = response.meta['tmpl']
@@ -882,18 +950,68 @@ class BaiduSceneSpider(AizouCrawlSpider):
         dining_data = json.loads(response.body)['data']['restaurant']
 
         # 第一页的时候，判断有多少个页面
-        if page_idx == 1:
+        if page_idx == 0:
             tot = dining_data['total']
-            for idx in xrange(2, int(math.ceil(tot / 5.0) + 1)):
-                yield Request(url=tmpl % (rdata['sid'], idx), callback=self.parse_restaurant,
+            for idx in xrange(1, int(math.ceil(tot / 10.0))):
+                yield Request(url=tmpl % (rdata['sid'], rdata['sname'], idx * 10 - 5, idx * 10),
+                              callback=self.parse_dining,
                               meta={'page_idx': idx, 'data': {key: rdata[key] for key in ('sid', 'sname', 'surl')},
                                     'tmpl': tmpl})
 
         for entry in dining_data['list']:
-            item = BaiduSceneItem()
-            item['type'] = 'dining'
             for key in ('sid', 'sname', 'surl'):
                 entry[key] = rdata[key]
+
+            # 有的餐厅没有uid信息，构造一个
+            if 'uid' not in entry or not entry['uid']:
+                continue
+                # if not entry['addr']:
+                # continue
+                # else:
+                # entry['uid'] = hashlib.md5('%s|%s' % (entry['name'], entry['surl']))
+                #     entry['fake_uid'] = True
+
+            item = BaiduSceneItem()
+            item['type'] = 'dining'
+
+            item['data'] = entry
+            yield item
+
+            # if 'fake_uid' not in entry or not entry['fake_uid']:
+            # 抓取餐厅的评论信息
+            place_uid = entry['uid']
+            comment_url = 'http://lvyou.baidu.com/scene/poi/restaurant?surl=%s&place_uid=%s' % \
+                          (rdata['surl'], place_uid)
+            base_data = copy.deepcopy(rdata)
+            base_data['place_uid'] = place_uid
+            yield Request(url=comment_url, callback=self.parse_dining_comment, meta={'data': base_data})
+
+    @staticmethod
+    def parse_dining_comment(response):
+        rdata = response.meta['data']
+        for node in Selector(response).xpath('//ul[contains(@class,"comment")]/li'):
+            entry = copy.deepcopy(rdata)
+            tmp = node.xpath('./p[@class="content"]/text()').extract()
+            if not tmp:
+                continue
+            entry['contents'] = tmp[0]
+            entry['rating'] = float(
+                node.xpath('./p[@class="detail-header"]/span[@class="rating"]/mark/text()').extract()[0]) / 5.0
+            entry['contents'] = node.xpath('./p[@class="content"]/text()').extract()[0]
+            tmp = node.xpath('./p[@class="detail-footer"]/span[1]/text()').extract()
+            if tmp:
+                entry['userName'] = tmp[0]
+            entry['userAvatar'] = ''
+            entry['images'] = []
+            entry['userId'] = ''
+            date_text = node.xpath('./p[@class="detail-footer"]/span[2]/text()').extract()[0]
+            entry['cTime'] = long(1000 * time.mktime(time.strptime(date_text, '%Y-%m-%d %H:%M')))
+            entry['mTime'] = entry['cTime']
+            entry['miscInfo'] = {}
+            entry['prikey'] = hashlib.md5('%s|%s' % (entry['userName'], date_text)).hexdigest()
+
+            item = BaiduSceneItem()
+            item['type'] = 'dining-comment'
             item['data'] = entry
             yield item
 
@@ -904,8 +1022,10 @@ class BaiduSceneSpider(AizouCrawlSpider):
         match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
         if not match:
             return
-        
+
         for entry in json.loads(match.group(1)):
+            if not entry['ext']['address']:
+                continue
             item = BaiduSceneItem()
             item['type'] = 'hotel'
             for key in ('sid', 'sname', 'surl'):
@@ -925,19 +1045,17 @@ class BaiduScenePipeline(AizouPipeline):
         data = item['data']
         item_type = item['type']
 
-        if item_type == 'locality':
-            colname = 'BaiduLocality'
-        elif item_type == 'poi':
-            colname = 'BaiduPoi'
-        elif item_type == 'dining':
-            colname = 'BaiduRestaurant'
-        elif item_type == 'hotel':
-            colname = 'BaiduHotel'
-        else:
-            return item
+        col_map = {'locality': ('BaiduLocality', 'sid'),
+                   'poi': ('BaiduPoi', 'sid'),
+                   'dining': ('BaiduRestaurant', 'uid'),
+                   'hotel': ('BaiduHotel', 'place_uid'),
+                   'dining-comment': ('BaiduDiningCmt', 'prikey'),
+                   'scene-comment': ('BaiduSceneCmt', 'remark_id')}
 
-        col = self.fetch_db_col('raw_data', colname, 'mongodb-crawler')
-        col.update({'sid': data['sid']}, {'$set': data}, upsert=True)
+        if item_type in col_map:
+            col_name, pk = col_map[item_type]
+            col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+            col.update({pk: data[pk]}, {'$set': data}, upsert=True)
 
         return item
 
@@ -1489,9 +1607,6 @@ class BaiduCommentSpider(AizouCrawlSpider):
         super(BaiduCommentSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.parse)
-
-    def parse(self, response):
         for col_name in ['BaiduLocality', 'BaiduPoi']:
             col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             for entry in col.find():
@@ -1504,21 +1619,26 @@ class BaiduCommentSpider(AizouCrawlSpider):
                 data = {'sid': sid, 'sname': sname, 'surl': surl, 'itemId': itemId}
                 yield Request(
                     url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?'
-                        'xid=%s&score=0&pn=0&rn=500&format=ajax' % (sid),
+                        'xid=%s&score=0&pn=0&rn=500&format=json' % (sid),
                     callback=self.parse_comment, meta={'col_name': col_name, 'data': data})
 
-    def parse_comment(self, response):
-        data = response.meta['data']
-        json_data = json.loads(response.body)['data']
-        comment_list = json_data['list']
-        tmp_comment = []
-        for node in comment_list:
-            node.pop('from')
-            tmp_comment.append(node)
-        data['comment_list'] = tmp_comment
 
+    def parse_comment(self, response):
+
+        data = response.meta['data']
+
+        tmp_data = json.loads(response.body)
+        if 'data' in tmp_data:
+            json_data = tmp_data['data']
+            comment_list = json_data['list']
+            tmp_comment = []
+            for node in comment_list:
+                node.pop('from')
+                tmp_comment.append(node)
+            data['comment_list'] = tmp_comment
         item = BaiduCommentItem()
         item['data'] = data
+
         return item
 
 
@@ -1536,11 +1656,7 @@ class BaiduCommentSpiderPipeline(AizouPipeline):
 
         col = self.fetch_db_col('raw_data', 'BaiduComment', 'mongodb-crawler')
         ret = col.find_one({'sid': data['sid']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'sid': data['sid']}, {'$set': ret}, upsert=True)
 
         return item
 
@@ -1736,12 +1852,21 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
         food_list = sel.xpath('//div[contains(@id,"food-list")]/div')
         if not food_list:
             return
+
+        # 获得JSON结构
+        restaurants = {tmp['poid']: tmp for tmp in
+                       json.loads(re.search(r'var\s+opiList\s*=\s*(\[.+?\])', response.body))}
+
+        # self.log(food_list, log.INFO)
         for node in food_list:
+            temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
             food_name = node.xpath('.//h3/text()').extract()[0]
             shop_list = node.xpath('.//ul/li')
             shop = []
             if shop_list:
                 for shop_node in shop_list:
+                    # id
+                    shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
                     # 店名
                     tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
                     if tmp_shop_name:
@@ -1773,14 +1898,18 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
                     else:
                         shop_addr = ''
                     tmp_data = {'shop_name': shop_name, 'shop_price': shop_price,
-                                'shop_desc': shop_desc, 'shop_addr': shop_addr}
+                                'shop_desc': shop_desc, 'shop_addr': shop_addr,
+                                'shop_id': shop_id, 'original': restaurants[shop_id]}
                     shop.append(tmp_data)
-            data['food_name'] = food_name
-            data['shop_list'] = shop
-            data['prikey'] = ObjectId()
+            else:
+                continue
+            # self.log(food_name, log.INFO)
+            temp['food_name'] = food_name
+            temp['shop_list'] = shop
+            temp['prikey'] = food_name + (data['sid'])
             item = BaiduRestaurantRecommend()
-            item['data'] = data
-            return item
+            item['data'] = temp
+            yield item
 
 
 class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
@@ -1796,10 +1925,7 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
-        ret = col.find_one({'prikey': data['prikey']})
-        if not ret:
-            ret = {}
-        for key in data:
-            ret[key] = data[key]
-        col.save(ret)
+        col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
+        # digest = hashlib.md5(data['prikey']).hexdigest()
+        # spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
         return item
