@@ -897,14 +897,13 @@ class BaiduSceneSpider(AizouCrawlSpider):
             item['data'] = entry
             yield item
 
-    @staticmethod
-    def parse_hotel(response):
+    def parse_hotel(self, response):
         rdata = response.meta['data']
 
         match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
         if not match:
             return
-        
+
         for entry in json.loads(match.group(1)):
             item = BaiduSceneItem()
             item['type'] = 'hotel'
@@ -1551,11 +1550,12 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
     uuid = '87FF4575-EA3F-959C-7CCD-4E6392AF7A8B'
 
     # 文本格式的处理
-    def text_pro(self, text):
+    @staticmethod
+    def text_pro(text):
         if text:
             text = re.split(r'\n+', text)
             tmp_text = filter(lambda val: val, ['<p>%s</p>' % tmp.strip() for tmp in text])
-            return '<div> %s </div>' % ('\n'.join(tmp_text))
+            return '<div> %s </div>' % (''.join(tmp_text))
             # return text
         else:
             return ''
@@ -1567,37 +1567,42 @@ class BaiduCommentProcSpider(AizouCrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        col = self.fetch_db_col('raw_data', 'BaiduComment', 'mongodb-crawler')
+        col = self.fetch_db_col('raw_data', 'BaiduSceneCmt', 'mongodb-crawler')
         for entry in col.find():
+            data = {}
+            sid = entry['sid']
+            # 取得项目id
+            loc_doc = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general').find_one({'source.baidu.id': sid})
+            if loc_doc:
+                data['itemId'] = loc_doc['_id']
+            else:
+                vspot_doc = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general').find_one({'source.baidu.id': sid})
+                if vspot_doc:
+                    data['itemId'] = vspot_doc['_id']
+                else:
+                    data['itemId'] = None
 
-            data = {'itemId': entry['itemId']}
-
-            if 'comment_list' in entry:
-                comment_list = entry['comment_list']
-                for node in comment_list:
-                    if 'user' in node:
-                        data['userAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % node['user'][
-                            'avatar_large']
-                        data['userName'] = node['user']['nickname']
-                    else:
-                        continue
-                    data['mTime'] = node['update_time'] if 'update_time' in node else None
-                    data['cTime'] = node['create_time'] if 'create_time' in node else None
-                    data['contents'] = node['content'].strip() if 'content' in node else ''
-                    data['rating'] = node['score'] / 5.0
-                    data['useId'] = None
-                    data['remarkId'] = node['remark_id'] if 'remark_id' in node else ''
-                    miscInfo = {'commentCount': node['comment_count'] if 'comment_count' in node else 0}
-                    data['miscInfo'] = miscInfo
-                    if 'pics' in node and node['pics']:
-                        data['images'] = [{'url': tmp['full_url']} for tmp in node['pics']]
-
-                    item = BaiduCommentItem()
-                    item['data'] = data
-
-                    yield item
+            # 取得用户信息
+            if 'user' in entry:
+                data['userAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['user'][
+                    'avatar_large']
+                data['userName'] = entry['user']['nickname']
             else:
                 continue
+            data['mTime'] = entry['update_time'] if 'update_time' in entry else None
+            data['cTime'] = entry['create_time'] if 'create_time' in entry else None
+            data['contents'] = entry['content'].strip() if 'content' in entry else ''
+            data['rating'] = entry['score'] / 5.0
+            data['useId'] = None
+            data['remarkId'] = entry['remark_id'] if 'remark_id' in entry else ''
+            misc_info = {'commentCount': entry['comment_count'] if 'comment_count' in entry else 0}
+            data['miscInfo'] = misc_info
+            if 'pics' in entry and entry['pics']:
+                data['images'] = [{'url': tmp['full_url']} for tmp in entry['pics']]
+            item = BaiduCommentItem()
+            item['data'] = data
+
+            yield item
 
 
 class BaiduCommentProcSpiderPipeline(AizouPipeline):
@@ -1614,7 +1619,7 @@ class BaiduCommentProcSpiderPipeline(AizouPipeline):
         data['source.baidu'] = {'id': remark_id}
 
         col.update({'source.baidu.id': remark_id}, {'$set': data}, upsert=True)
-
+        # spider.log('%s' % data['userName'], log.INFO)
         return item
 
 
@@ -1685,6 +1690,7 @@ class BaiduRestaurantCommentSpider(AizouCrawlSpider):
                 break
 
 
+
 class BaiduRestaurantCommentSpiderPipeline(AizouPipeline):
     spiders = [BaiduRestaurantCommentSpider.name]
     spiders_uuid = [BaiduRestaurantCommentSpider.uuid]
@@ -1701,6 +1707,67 @@ class BaiduRestaurantCommentSpiderPipeline(AizouPipeline):
         ret = col.find_one({'prikey': data['prikey']})
         col.update({'prikey': data['prikey']}, {'$set': ret}, upsert=True)
 
+        return item
+
+
+class BaiduDiningCmtItem(Item):
+    data = Field()
+
+
+class BaiduDiningCmtProcSpider(AizouCrawlSpider):
+    """
+    百度餐厅评论数据的清洗
+    """
+    name = 'baidu-dining-cmt-proc'
+    uuid = '25E1FE27-11A0-7960-6B76-2C8EDDEF749A'
+
+    def __init__(self, *a, **kw):
+        super(BaiduDiningCmtProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse)
+
+    def parse(self, response):
+        col = self.fetch_db_col('raw_data', 'BaiduDiningCmt', 'mongodb-crawler')
+        for entry in col.find():
+            data = {}
+            place_uid = entry['place_uid']
+            # 取得项目id
+            rest_doc = self.fetch_db_col('geo', 'BaiduRestaurant', 'mongodb-general').find_one(
+                {'source.baidu.id': place_uid})
+            if rest_doc:
+                data['itemId'] = rest_doc['_id']
+            else:
+                data['itemId'] = None
+
+            # 取得用户信息
+            data['userAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['userAvatar']
+            data['userName'] = entry['userName'] if 'userName' in entry else ''
+            data['mTime'] = entry['mTime'] if 'mTime' in entry else None
+            data['cTime'] = entry['cTime'] if 'cTime' in entry else None
+            data['contents'] = entry['content'].strip() if 'content' in entry else ''
+            data['rating'] = entry['rating'] if 'rating' in entry else None
+            data['useId'] = None
+            data['miscInfo'] = entry['miscInfo'] if 'miscInfo' in entry else None
+            data['images'] = entry['images'] if 'images' in entry else None
+            item = BaiduCommentItem()
+            item['data'] = data
+
+            yield item
+
+
+class BaiduDiningCmtProcSpiderPipeline(AizouPipeline):
+    spiders = [BaiduDiningCmtProcSpider.name]
+    spiders_uuid = [BaiduDiningCmtProcSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        col = self.fetch_db_col('misc', 'RestaurantComment', 'mongodb-general')
+        col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
+        # spider.log('%s' % data['userName'], log.INFO)
         return item
 
 
@@ -1735,7 +1802,7 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
         if not food_list:
             return
 
-        #self.log(food_list, log.INFO)
+        # self.log(food_list, log.INFO)
         for node in food_list:
             temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
             food_name = node.xpath('.//h3/text()').extract()[0]
@@ -1802,5 +1869,5 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
         col = self.fetch_db_col('raw_data', 'BaiduRestaurantRecommend', 'mongodb-crawler')
         col.update({'prikey': data['prikey']}, {'$set': data}, upsert=True)
         # digest = hashlib.md5(data['prikey']).hexdigest()
-        #spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
+        # spider.log('%s, %s' % (data['prikey'], data['food_name']), log.INFO)
         return item
