@@ -1197,11 +1197,13 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                 traffic_details[key + 'Traffic'] = traffic
 
         if is_locality:
-            data['trafficIntro'] = traffic_intro
+            data['trafficIntro'] = self.text_pro(traffic_intro)
             for key in traffic_details:
                 data[key] = []
                 for tmp in traffic_details[key]:
-                    data[key].append({html_key: tmp[html_key] for html_key in ['title', 'contents_html']})
+                    title = tmp['title']
+                    desc = tmp['contents_html']
+                    data[key].append({'title': title, 'desc': desc})
         else:
             tmp = [traffic_intro.strip()]
             for value in (traffic_details[t_type] for t_type in ['localTraffic', 'remoteTraffic'] if
@@ -1365,7 +1367,7 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     travel_month = best_time['more_desc'] if 'more_desc' in best_time else ''
                     if not travel_month:
                         travel_month = best_time['simple_desc'] if 'simple_desc' in best_time else ''
-                    data['travelMonth'] = travel_month
+                    data['travelMonth'] = travel_month.strip()
 
                     tmp_time_cost = best_time['recommend_visit_time'] if 'recommend_visit_time' in best_time else ''
                     data['timeCostDesc'] = tmp_time_cost
@@ -1386,10 +1388,13 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     item['db_name'] = 'poi'
                     item['col_name'] = 'BaiduPoi'
 
-                proximity = 400 if is_locality else 100
-                sug_type = 'mdd' if is_locality else 'vs'
+                if 'bind' in self.param:
+                    proximity = 400 if is_locality else 100
+                    sug_type = 'mdd' if is_locality else 'vs'
 
-                yield self.gen_mfw_sug_req(item, proximity, sug_type)
+                    yield self.gen_mfw_sug_req(item, proximity, sug_type)
+                else:
+                    yield item
 
 
 class BaiduSceneProcPipeline(AizouPipeline, ProcImagesMixin):
