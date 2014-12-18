@@ -122,6 +122,7 @@ class MergeSpider(AizouCrawlSpider):
         if 'limit' in self.param:
             cursor.limit(int(self.param['limit'][0]))
 
+        self.log('%d records to process...' % cursor.count())
         for entry in cursor:
             # 举例：
             # src: {'source': {'mafengwo': {}}, {'baidu': {}}}
@@ -144,7 +145,7 @@ class MergeSpider(AizouCrawlSpider):
 
             item = MergeItem()
             item['db'] = dst_db
-            item['col'] = dst_col
+            item['col'] = dst_col_name
             item['profile'] = dst_profile
 
             if merge_targets:
