@@ -1428,6 +1428,7 @@ class BaiduSceneProcPipeline(AizouPipeline, ProcImagesMixin):
 
 class BaiduRestaurantHotelItem(Item):
     data = Field()
+    col_name = Field()
 
 
 class BaiduRestaurantProcSpider(AizouCrawlSpider):
@@ -1450,7 +1451,6 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        # TODO 开关控制餐厅、酒店的清洗
         col = self.fetch_db_col('raw_data', 'BaiduRestaurant', 'mongodb-crawler')
         for entry in col.find():
             data = {}
@@ -1514,14 +1514,44 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                           'contents': entry['rec_reason'] if 'rec_reason' in entry else None}]
             data['miscInfo'] = misc_info
 
-            item = BaiduSceneProItem()
+            item = BaiduRestaurantHotelItem()
             item['data'] = data
             item['col_name'] = 'BaiduRestaurant'
             yield item
 
 
+class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
+    spiders = [BaiduRestaurantProcSpider.name]
+    spiders_uuid = [BaiduRestaurantProcSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        col_name = item['col_name']
+        col = self.fetch_db_col('poi', col_name, 'mongodb-general')
+        col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
+        spider.log('%s' % data['zhName'], log.INFO)
+        return item
+
+
+class BaiduHotelProcSpider(AizouCrawlSpider):
+    """
+    百度酒店数据的整理
+    """
+    name = 'baidu-hotel-proc'
+    uuid = '295C846A-7DB4-FB1A-2E64-AADABA44D022'
+
+    def __init__(self, *a, **kw):
+        super(BaiduHotelProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse)
+
+    def parse(self, response):
         col = self.fetch_db_col('raw_data', 'BaiduHotel', 'mongodb-crawler')
-        for entry in col.find({'name': '广兴宾馆'}):
+        for entry in col.find():
             if 'ext' not in entry:
                 continue
             ext = entry['ext']
@@ -1541,7 +1571,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
             data['level'] = entry['type']
             # TODO 标签
             tags = ext['rec_tag'] if 'rec_tag' in ext and ext['rec_tag'] else None
-            data['tags'] = filter(lambda val: val, re.split(ur'[,\uff0c;\s]', tags))
+            # data['tags'] = filter(lambda val: val, re.split(ur'[,\uff0c;\s]', tags))
             # 地址
             data['address'] = ext['address'] if 'address' in ext else ''
             # 电话
@@ -1583,15 +1613,15 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
                          {'title': 'traffic', 'contents': ext['contents'] if 'contents' in ext else None}]
             data['miscInfo'] = misc_info
 
-            item = BaiduSceneProItem()
+            item = BaiduRestaurantHotelItem()
             item['data'] = data
             item['col_name'] = 'BaiduHotel'
             yield item
 
 
-class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
-    spiders = [BaiduRestaurantProcSpider.name]
-    spiders_uuid = [BaiduRestaurantProcSpider.uuid]
+class BaiduHotelProcSpiderPipeline(AizouPipeline):
+    spiders = [BaiduHotelProcSpider.name]
+    spiders_uuid = [BaiduHotelProcSpider.uuid]
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
