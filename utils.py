@@ -72,10 +72,14 @@ def mercator2wgs(mx, my):
     return x, y
 
 
+def images_pro(urls):
+    return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
+
+
 # //Web墨卡托转经纬度
 # dvec3 CMathEngine::WebMercator2lonLat( dvec3   mercator )
 # {
-#     dvec3 lonLat;
+# dvec3 lonLat;
 #     double x = mercator.x/20037508.34*180;
 #     double y = mercator.y/20037508.34*180;
 #     y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
