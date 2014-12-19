@@ -1335,7 +1335,10 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     try:
                         coord = [float(node) for node in map_info]
                         if len(coord) == 2:
-                            data['location'] = {'type': 'Point', 'coordinates': coord}
+                            # 有时候经纬度反了
+                            ret = utils.guess_coords(*coord)
+                            if ret:
+                                data['location'] = {'type': 'Point', 'coordinates': ret}
                     except (ValueError, UnicodeEncodeError):
                         self.log(map_info, log.ERROR)
                 else:
