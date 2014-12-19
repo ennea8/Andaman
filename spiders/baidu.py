@@ -1333,7 +1333,10 @@ class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
                     try:
                         coord = [float(node) for node in map_info]
                         if len(coord) == 2:
-                            data['location'] = {'type': 'Point', 'coordinates': coord}
+                            # 有时候经纬度反了
+                            ret = utils.guess_coords(*coord)
+                            if ret:
+                                data['location'] = {'type': 'Point', 'coordinates': ret}
                     except (ValueError, UnicodeEncodeError):
                         self.log(map_info, log.ERROR)
                 else:
@@ -1436,7 +1439,7 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
     """
     百度餐厅数据的整理
     """
-    name = 'baidu-restaurant-proc'
+    name = 'baidu-rest-hotel-proc'
     uuid = 'D061397C-6615-D85D-E2B2-C7253E9BED42'
 
     def __init__(self, param, *a, **kw):
@@ -1446,75 +1449,142 @@ class BaiduRestaurantProcSpider(AizouCrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        col = self.fetch_db_col('raw_data', 'BaiduRestaurant', 'mongodb-crawler')
-        for entry in col.find():
-            if 'ext' not in entry:
+        for col_name in ['BaiduRestaurant', 'BaiduHotel']:
+            col = self.fetch_db_col('raw_data', 'BaiduRestaurant', 'mongodb-crawler')
+            for entry in col.find({'name': '蓬莱依海渔家乐'}):
                 data = {}
-                sid = entry['sid']
-                doc = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general').find_one({'source.baidu.id': sid})
-                if not doc:
-                    continue
-                # 别名
-                data['alias'] = None
-                # 源
-                data['source.baidu.id'] = entry['place_uid']
-                # 层级控制
-                data['country'] = doc['country']
-                data['targets'] = [tmp['_id'] for tmp in doc['locList']]
-                # 特色菜
-                special_dishes = entry['special_dishes'] if 'special_dishes' in entry else None
-                if special_dishes:
-                    data['specialDishes'] = filter(lambda val: val, re.split(ur'[,\uff0c]', special_dishes))
-                else:
-                    data['specialDishes'] = special_dishes
-                # 标签
-                tags = entry['tag'] if 'tag' in entry else None
-                data['tags'] = filter(lambda val: val, re.split(ur'[,\uff0c;\s]', tags))
-                # 地址
-                data['address'] = entry['addr'] if 'addr' in entry else ''
-                # 电话
-                data['telephone'] = entry['phone'] if 'phone' in entry else ''
-                # 店铺中文名
-                data['zhName'] = entry['name'] if 'name' in entry else ''
-                data['enName'] = None
-                # 评分
-                data['rating'] = float(entry['overall_rating']) / 5.0 if 'overall_rating' in entry and entry[
-                    'overall_rating'] else None
-                # 评论次数
-                data['commentCnt'] = entry['comment_num'] if 'comment_num' in entry else None
-                # 热度
-                data['hotness'] = None
-                # 浏览次数
-                data['visitCnt'] = None
-                # 收藏次数
-                data['favorCnt'] = None
-                # 价格描述
-                try:
-                    data['price'] = float(entry['price']) if 'price' in entry and entry['price'] else None
-                except ValueError:
-                    data['priceDesc'] = entry['price']
-                # 店铺描述
-                data['desc'] = entry['description'] if 'description' else ''
-                # 店铺图片
-                images = [{'url': entry['image'] if 'image' in entry else ''}]
-                data['images'] = images
-                # 位置信息
-                if 'map_x' in entry and entry['map_x']:
-                    lng = float(entry['map_x'])
-                    lat = float(entry['map_y'])
-                    coord = utils.
-                else:
-                    coord = None
-                data['location'] = {'type': 'Point', 'coordinates': coord}
-                misc_info = [{'title': 'rec_reason',
-                              'contents': entry['rec_reason'] if 'rec_reason' in entry else None}]
-                data['miscInfo'] = misc_info
+                if 'ext' not in entry:
+                    sid = entry['sid']
+                    doc = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general').find_one(
+                        {'source.baidu.id': sid})
+                    if not doc:
+                        continue
+                    # 别名
+                    data['alias'] = None
+                    # 源
+                    data['source.baidu.id'] = entry['place_uid']
+                    # 层级控制
+                    data['country'] = doc['country']
+                    data['targets'] = [tmp['_id'] for tmp in doc['locList']]
+                    # 特色菜
+                    special_dishes = entry['special_dishes'] if 'special_dishes' in entry else None
+                    if special_dishes:
+                        data['specialDishes'] = filter(lambda val: val, re.split(ur'[,\uff0c]', special_dishes))
+                    else:
+                        data['specialDishes'] = None
+                    # 标签
+                    tags = entry['tag'] if 'tag' in entry else None
+                    data['tags'] = filter(lambda val: val, re.split(ur'[,\uff0c;\s]', tags))
+                    # 地址
+                    data['address'] = entry['addr'] if 'addr' in entry else ''
+                    # 电话
+                    data['telephone'] = entry['phone'] if 'phone' in entry else ''
+                    # 店铺中文名
+                    data['zhName'] = entry['name'] if 'name' in entry else ''
+                    data['enName'] = None
+                    # 评分
+                    data['rating'] = float(entry['overall_rating']) / 5.0 if 'overall_rating' in entry and entry[
+                        'overall_rating'] else None
+                    # 评论次数
+                    data['commentCnt'] = entry['comment_num'] if 'comment_num' in entry else None
+                    # 热度
+                    data['hotness'] = None
+                    # 浏览次数
+                    data['visitCnt'] = None
+                    # 收藏次数
+                    data['favorCnt'] = None
+                    # 价格描述
+                    try:
+                        data['price'] = float(entry['price']) if 'price' in entry and entry['price'] else None
+                    except ValueError:
+                        data['priceDesc'] = entry['price']
+                    # 店铺描述
+                    data['desc'] = entry['description'] if 'description' else ''
+                    # 店铺图片
+                    images = [{'url': entry['image'] if 'image' in entry else ''}]
+                    data['images'] = images
+                    # 位置信息
+                    if 'map_x' in entry and entry['map_x']:
+                        lng = float(entry['map_x'])
+                        lat = float(entry['map_y'])
+                        coord = utils.guess_coords(lng, lat)
+                    else:
+                        coord = None
+                    data['location'] = {'type': 'Point', 'coordinates': coord}
+                    misc_info = [{'title': 'rec_reason',
+                                  'contents': entry['rec_reason'] if 'rec_reason' in entry else None}]
+                    data['miscInfo'] = misc_info
 
-                item = BaiduRestaurantHotelItem()
-                item['data'] = data
-                item['col_name'] = 'BaiduRestaurant'
-                yield item
+                    item = BaiduRestaurantHotelItem()
+                    item['data'] = data
+                    item['col_name'] = col_name
+                    yield item
+                else:
+                    ext = entry['ext']
+                    sid = entry['sid']
+                    doc = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general').find_one(
+                        {'source.baidu.id': sid})
+                    if not doc:
+                        continue
+                    # 别名
+                    data['alias'] = None
+                    # 源
+                    data['source.baidu.id'] = entry['place_uid']
+                    # 层级控制
+                    data['country'] = doc['country']
+                    data['targets'] = [tmp['_id'] for tmp in doc['locList']]
+                    # TODO 标签
+                    tags = ext['recommendation'] if 'recommendation' in ext and ext['recommendation'] else None
+                    if tags:
+                        data['tags'] = filter(lambda val: val, re.split(ur'[,\uff0c;\s]', tags))
+                    else:
+                        data['tags'] = None
+                    # 地址
+                    data['address'] = ext['address'] if 'address' in ext else ''
+                    # 电话
+                    data['telephone'] = ext['phone'] if 'phone' in ext else ''
+                    # 店铺中文名
+                    data['zhName'] = entry['name'] if 'name' in entry else ''
+                    data['enName'] = ext['en_name']
+                    # 评分
+                    data['rating'] = float(entry['overall_rating']) / 5.0 if 'overall_rating' in entry and entry[
+                        'overall_rating'] else None
+                    # 评论次数
+                    data['commentCnt'] = ext['remark_count'] if 'remark_count' in ext else None
+                    # 热度
+                    data['hotness'] = None
+                    # 浏览次数
+                    data['visitCnt'] = None
+                    # 收藏次数
+                    data['favorCnt'] = None
+                    # 价格描述
+                    try:
+                        data['price'] = float(entry['price']) if 'price' in entry and entry['price'] else None
+                    except ValueError:
+                        data['priceDesc'] = entry['price']
+                    # 店铺描述
+                    data['desc'] = ext['desc'] if 'desc' in ext and ext['desc'] else ext['rec_reason']
+                    # 店铺图片
+                    images = [
+                        {'url': utils.images_pro(ext['pic_url']) if 'pic_url' in entry and ext['pic_url']else None}]
+                    data['images'] = images
+                    # 位置信息
+                    if 'map_x' in entry and entry['map_x']:
+                        lng = float(entry['map_x'])
+                        lat = float(entry['map_y'])
+                        coord = utils.guess_coords(lng, lat)
+                    else:
+                        coord = None
+                    data['location'] = {'type': 'Point', 'coordinates': coord}
+                    misc_info = [{'title': 'tips',
+                                  'contents': ext['tips'] if 'tips' in ext else None},
+                                 {'title': 'traffic', 'contents': ext['contents'] if 'contents' in ext else None}]
+                    data['miscInfo'] = misc_info
 
+                    item = BaiduRestaurantHotelItem()
+                    item['data'] = data
+                    item['col_name'] = col_name
+                    yield item
 
 
 class BaiduRestaurantProcSpiderPipeline(AizouPipeline):
@@ -1951,7 +2021,7 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
             sname = entry['sname']
             tmp_url = 'http://lvyou.baidu.com/%s/meishi/' % surl
             data = {'sname': sname, 'surl': surl}
-            yield Request(url=tmp_url, callback=self.parse, meta={'data':data})
+            yield Request(url=tmp_url, callback=self.parse, meta={'data': data})
 
     def parse(self, response):
         # sel = Selector(response)
@@ -1972,18 +2042,18 @@ class BaiduRestaurantRecSpider(AizouCrawlSpider):
 
         # for node in food_list:
         # temp = {'surl': data['surl'], 'sid': data['sid'], 'sname': data['sname']}
-        #     food_name = node.xpath('.//h3/text()').extract()[0]
-        #     shop_list = node.xpath('.//ul/li')
-        #     shop = []
-        #     if shop_list:
-        #         for shop_node in shop_list:
-        #             # id
-        #             shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
-        #             # 店名
-        #             tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
-        #             if tmp_shop_name:
-        #                 shop_name = tmp_shop_name[0]
-        #             else:
+        # food_name = node.xpath('.//h3/text()').extract()[0]
+        # shop_list = node.xpath('.//ul/li')
+        # shop = []
+        # if shop_list:
+        # for shop_node in shop_list:
+        # # id
+        # shop_id = shop_node.xpath('.//div[@data-poid]/@data-poid').extract()[0]
+        # # 店名
+        # tmp_shop_name = shop_node.xpath('./p[contains(@class,"clearfix")]//a/text()').extract()
+        # if tmp_shop_name:
+        # shop_name = tmp_shop_name[0]
+        # else:
         #                 continue
         #             # 均价
         #             tmp_shop_price = shop_node.xpath(

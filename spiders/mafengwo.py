@@ -1058,26 +1058,26 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                 elif info_entry['info_cat'] == u'内部交通':
                     tmp = get_html(info_entry['details'])
                     if tmp:
-                        local_traffic.append({'title': info_entry['title'], 'contents': tmp})
+                        local_traffic.append({'title': info_entry['title'], 'desc': tmp})
                 elif info_entry['info_cat'] == u'外部交通':
                     tmp = get_html(info_entry['details'])
                     if tmp:
-                        remote_traffic.append({'title': info_entry['title'], 'contents': tmp})
+                        remote_traffic.append({'title': info_entry['title'], 'desc': tmp})
                 elif info_entry['info_cat'] == u'节庆':
                     tmp = get_html(info_entry['details'])
                     if tmp:
-                        activities.append({'title': info_entry['title'], 'contents': tmp})
+                        activities.append({'title': info_entry['title'], 'desc': tmp})
                 elif info_entry['info_cat'] == u'亮点':
                     tmp = get_html(info_entry['details'])
                     if tmp:
-                        specials.append({'title': info_entry['title'], 'contents': tmp})
+                        specials.append({'title': info_entry['title'], 'desc': tmp})
                 else:
                     # 忽略出入境信息
                     if info_entry['info_cat'] == u'出入境':
                         continue
                     tmp = get_html(info_entry['details'])
                     if tmp:
-                        misc_info.append({'title': info_entry['title'], 'contents': tmp})
+                        misc_info.append({'title': info_entry['title'], 'desc': tmp})
 
             if desc:
                 data['desc'] = desc
