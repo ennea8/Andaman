@@ -874,7 +874,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
 
             # 评分
-            data['rating'] = float(entry['rating']) / 5
+            data['rating'] = float(entry['rating'])
 
             if desc:
                 data['desc'] = desc
