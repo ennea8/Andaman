@@ -23,7 +23,11 @@ class AizouCrawlSpider(CrawlSpider):
 
     def __init__(self, param, *a, **kw):
         super(CrawlSpider, self).__init__(*a, **kw)
-        self.param = param
+        if param:
+            self.param = param
+        else:
+            self.param = {}
+
         self.col_dict = {}
 
         # 每个爬虫需要分配一个唯一的爬虫id，用来在日志文件里面作出区分。
@@ -50,7 +54,7 @@ class ProcImagesMixin(object):
     """
     在清洗数据的时候，处理images列表
     """
-    
+
     def process_image_list(self, image_list, item_id):
         col_im_c = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
         col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
