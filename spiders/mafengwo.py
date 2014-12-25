@@ -1364,10 +1364,11 @@ class MafengwoNoteSpider(AizouCrawlSpider):
 
     def start_requests(self):
         col_raw = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
-        cursor = col_raw.find({}, {'id': 1})
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        cursor = col_raw.find(query, {'id': 1})
         if 'limit' in self.param:
             cursor.limit(int(self.param['']))
-        for entry in cursor:
+        for entry in list(cursor):
             mdd_id = entry['id']
             yield Request(url='http://www.mafengwo.cn/yj/%d/1-0-1.html' % mdd_id, meta={'mdd': mdd_id, 'page': 1})
 
