@@ -25,7 +25,7 @@ class MafengwoSpider(AizouCrawlSpider):
     马蜂窝目的地的抓取
     """
 
-    name = 'mafengwo-mdd'
+    name = 'mafengwo'
     uuid = '74f9b075-65f3-400d-b093-5bdbdb552e86'
 
     def __init__(self, *a, **kw):
@@ -821,6 +821,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
     def parse_poi(self, col_name, bound):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        tot_num = col_raw.find({}).count()
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
         if bound[0] is not None and bound[1] is not None:
@@ -867,11 +868,10 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
 
             # 热门程度
-            hotness = 0
-            for k in ['comment_cnt', 'images_tot']:
-                if k in entry:
-                    hotness += entry[k]
-            data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
+            data['commentCnt'] = entry['comment_cnt']
+            # 计算hotness
+            data['hotness'] = sum(map(lambda k: col_raw.find({k: {'$lt': entry[k]}}).count() / float(tot_num),
+                                      ('comment_cnt', 'images_tot'))) / 2.0
 
             # 评分
             data['rating'] = float(entry['rating'])
