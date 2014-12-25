@@ -1352,3 +1352,160 @@ class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
             col.update({'_id': poi['_id']}, {'$set': {'images': tmp}})
 
         return item
+
+
+class MafengwoNoteSpider(AizouCrawlSpider):
+    """
+    马蜂窝目的地的抓取
+    """
+
+    name = 'mafengwo-note'
+    uuid = '08c80cbf-fd94-4d95-9e4f-4745d20e12a9'
+
+    def start_requests(self):
+        col_raw = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        cursor = col_raw.find({}, {'id': 1})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['']))
+        for entry in cursor:
+            mdd_id = entry['id']
+            yield Request(url='http://www.mafengwo.cn/yj/%d/1-0-1.html' % mdd_id, meta={'mdd': mdd_id, 'page': 1})
+
+    def parse(self, response):
+        mdd_id = response.meta['mdd']
+        page_idx = response.meta['page']
+        sel = Selector(response)
+
+        def page_populator():
+            """
+            获得翻页的url
+            :return:
+            """
+            try:
+                page_hotel = sel.xpath('//div[@class="page-hotel"]')[0]
+                last_href = page_hotel.xpath('./a[@class="ti last" and @href]/@href').extract()[0]
+                last_page = int(re.search(r'1-0-(\d+)\.html', last_href).group(1))
+                return ['http://www.mafengwo.cn/yj/%d/1-0-%d.html' % (mdd_id, p) for p in xrange(2, last_page + 1)]
+            except (IndexError, TypeError):
+                return []
+
+        # 如果是第一页，则populate后面的页数
+        if page_idx == 1:
+            for url in page_populator():
+                yield Request(url=url, meta={'mdd': mdd_id, 'page': page_idx})
+
+        for node in sel.xpath('//div[@class="post-list"]/ul/li[contains(@class,"post-item")]'):
+            cover = node.xpath('./div[@class="post-cover"]/a[@href]/img[@data-original]/@data-original').extract()[0]
+            note_id = int(node.xpath('./div[@class="post-ding"]/a/@data-iid').extract()[0])
+            vote_cnt = int(node.xpath('./div[@class="post-ding"]/a/@data-vote').extract()[0])
+
+            title = node.xpath('./h2[contains(@class,"post-title")]/a/text()').extract()[0].strip()
+
+            author_node = node.xpath('./div[@class="post-author"]/span[@class="author"]')[0]
+            avatar = author_node.xpath('./a[@href]/img[@data-original]/@data-original').extract()[0]
+            href = author_node.xpath('./a[@href]/@href').extract()[0]
+            user_id = int(re.search(r'/u/(\d+)\.html', href).group(1))
+            tmp = filter(lambda val: val, [tmp.strip() for tmp in author_node.xpath('./a[@href]/text()').extract()])
+            nickname = tmp[0] if tmp else ''
+
+            view_cnt = int(
+                node.xpath('./span[@class="status"]/i[@class="icon_view"]/following-sibling::text()').extract()[0])
+            comment_cnt = int(
+                node.xpath('./span[@class="status"]/i[@class="icon_comment"]/following-sibling::text()').extract()[0])
+
+            data = {'cover': cover, 'note_id': note_id, 'vote_cnt': vote_cnt, 'title': title, 'author_avatar': avatar,
+                    'author_id': user_id, 'author_name': nickname, 'view_cnt': view_cnt, 'comment_cnt': comment_cnt,
+                    'mdd': mdd_id}
+
+            yield Request(url='http://www.mafengwo.cn/group/info.php?iid=%d&page=1' % note_id, callback=self.parse_note,
+                          meta={'data': data})
+
+    def parse_note(self, response):
+        data = copy.deepcopy(response.meta['data'])
+
+        sel = Selector(response)
+
+        tmp = sel.xpath('//div[@class="vc_article"]')
+        if tmp:
+            article = tmp[0]
+            data['note_type'] = 2
+            data['contents'] = article.extract()
+            data['post_id'] = data['note_id']
+            item = MafengwoItem()
+            item['data'] = data
+
+            yield Request(
+                url='http://www.mafengwo.cn/group/ajax_ginfo_ready.php?sAction=initGinfo&iId=%d' % data['mdd'],
+                callback=self.parse_stat, meta={'item': item}, cookies={
+                    'mafengwo': '9b148eb8ba78dd3aebe5826f70df326c_67590906_549ba2f7ef2cf3.'
+                                '39042540_549ba2f7ef2e09.39878707'})
+        else:
+            data['type'] = 1
+
+            for href in sel.xpath('//div[@class="paginator"]/a[@class="ti" and @href]/@href').extract():
+                new_data = copy.deepcopy(data)
+                yield Request(url=self.build_href(response.url, href), callback=self.parse_note,
+                              meta={'data': new_data})
+
+            for post_item in sel.xpath('//div[contains(@class,"post_main")]/div[@class="post_item"]'):
+                tmp = post_item.xpath('./div[@class="post_info"]/@id').extract()
+                if not tmp:
+                    new_data = copy.deepcopy(data)
+                    new_data['main_post'] = True
+                    new_data['post_id'] = 'main-%d' % new_data['note_id']
+                else:
+                    new_data = {'main_post': False, 'note_id': data['note_id'], 'title': data['title'],
+                                'post_id': int(re.search(r'reply_(\d+)', tmp[0]).group(1))}
+
+                user_node = \
+                    post_item.xpath('./div[@class="author_info"]/div[@class="avatar_box"]/div[@class="out_pic"]')[0]
+                user_id = int(re.search(r'/u/(\d+)\.html', user_node.xpath('./a[@href]/@href').extract()[0]).group(1))
+                avatar = user_node.xpath('./a[@href]/img[@src and @title]/@src').extract()[0]
+                user_name = user_node.xpath('./a[@href]/img[@src and @title]/@title').extract()[0].strip()
+                new_data['user_id'] = user_id
+                new_data['user_avatar'] = avatar
+                new_data['user_name'] = user_name
+
+                new_data['contents'] = post_item.extract()
+                item = MafengwoItem()
+                item['data'] = new_data
+
+                if new_data['main_post']:
+                    yield Request(url='http://www.mafengwo.cn/group/ajax_ginfo_ready.php?sAction=initGinfo&iId=%d' %
+                                      new_data['note_id'], callback=self.parse_stat, meta={'item': item},
+                                  cookies={
+                                      'mafengwo': '9b148eb8ba78dd3aebe5826f70df326c_67590906_549ba2f7ef2cf3.'
+                                                  '39042540_549ba2f7ef2e09.39878707'})
+                else:
+                    yield item
+
+    @staticmethod
+    def parse_stat(response):
+        item = response.meta['item']
+        data = item['data']
+        payload = json.loads(response.body)['payload']
+        tmp = payload['share_pv']
+        data['share_cnt'] = int(tmp) if tmp else 0
+        tmp = payload['fav_total']
+        data['favor_cnt'] = int(tmp) if tmp else 0
+        yield item
+
+
+class MafengwoNotePipeline(AizouPipeline):
+    """
+    蚂蜂窝
+    """
+
+    spiders = [MafengwoNoteSpider.name]
+
+    spiders_uuid = [MafengwoNoteSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        col = self.fetch_db_col('raw_data', 'MafengwoNote', 'mongodb-crawler')
+        data = item['data']
+        col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
+
+        return item
