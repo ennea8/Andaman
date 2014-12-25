@@ -63,37 +63,6 @@ class MafengwoSpider(AizouCrawlSpider):
             yield Request(url=url, meta={'id': rid, 'crumb': [rid], 'level': level, 'iType': 1},
                           callback=self.parse_mdd_ajax)
 
-
-    # def get_region_list(self, response):
-    # sel = Selector(response)
-    # self_id = response.meta['id']
-    # ctype = response.meta['type']
-    # for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
-    # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    # if mdd_id != self_id:
-    # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    # yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
-
-    # def parse(self, response):
-    # # 地区的过滤
-    # if 'region' in self.param:
-    # region_list = [int(tmp) for tmp in self.param['region']]
-    # else:
-    # region_list = None
-    #
-    # crumb = response.meta['crumb']
-    #
-    # for node in Selector(response).xpath('//dd[@id="region_list"]/a[@href]'):
-    # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    # if region_list and mdd_id not in region_list:
-    # continue
-    #
-    # # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    # url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
-    # yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
-
     def parse_mdd_ajax(self, response):
         """
         解析：http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=52314&iType=3
@@ -124,16 +93,8 @@ class MafengwoSpider(AizouCrawlSpider):
                     if oid not in self.region_filter:
                         continue
 
-                item = MafengwoItem()
-                data = {}
-                item['data'] = data
-
-                data['id'] = oid
-                data['title'] = entry['name']
-                data['lat'] = entry['lat']
-                data['lng'] = entry['lng']
-                data['vs_cnt'] = entry['rank']
-                data['comment_cnt'] = entry['num_comment']
+                data = {'id': oid, 'title': entry['name'], 'lat': entry['lat'], 'lng': entry['lng'],
+                        'vs_cnt': entry['rank'], 'comment_cnt': entry['num_comment']}
                 img = entry['img_link']
                 img = re.sub(r'gonglve\.w\d+\.', '', img)
                 data['cover'] = img
@@ -141,6 +102,9 @@ class MafengwoSpider(AizouCrawlSpider):
                 crumb_1.append(oid)
                 data['crumb'] = crumb_1
                 data['type'] = 'country' if level == 'cont' else 'region'
+
+                item = MafengwoItem()
+                item['data'] = data
 
                 yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % oid,
                               meta={'id': oid, 'item': item}, dont_filter=True,
@@ -153,11 +117,7 @@ class MafengwoSpider(AizouCrawlSpider):
             if not ('skip' in self.param and type_mapping[itype] in self.param['skip']):
                 # 跳过某些POI类型，抓取poi
                 for entry in ret['list']:
-                    item = MafengwoItem()
-                    data = {}
-                    item['data'] = data
-
-                    data['type'] = type_mapping[itype]
+                    data = {'type': type_mapping[itype]}
 
                     oid = entry['id']
                     data['id'] = oid
@@ -171,6 +131,9 @@ class MafengwoSpider(AizouCrawlSpider):
                     data['cover'] = img
                     crumb_1 = copy.deepcopy(crumb)
                     data['crumb'] = crumb_1
+
+                    item = MafengwoItem()
+                    item['data'] = data
 
                     yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
                                   meta={'id': oid, 'item': item},
@@ -210,7 +173,7 @@ class MafengwoSpider(AizouCrawlSpider):
         sel = Selector(response)
         for node1 in sel.xpath('//div[contains(@class,"m-tags")]/div[@class="bd"]/div[@class="t-info"]/p'):
             span_list = node1.xpath('./span/text()').extract()
-            if len(span_list) < 2 and len(span_list) > 0:
+            if 2 > len(span_list) > 0:
                 self.log('Unsupported region homepage: %d' % data['id'], log.WARNING)
                 continue
             elif not span_list:
@@ -315,8 +278,8 @@ class MafengwoSpider(AizouCrawlSpider):
 
         if 'title' not in data:
             tmp = sel.xpath(
-                '//div[contains(@class,"sub-nav")]/div[@class="mdd-title"]/span[@class="s-name"]/text()').extract()[
-                0].strip()
+                '//div[contains(@class,"sub-nav")]/div[@class="mdd-title"]/span[@class="s-name"]/'
+                'text()').extract()[0].strip()
             m = re.search(ur'(.+)(城市|国家)概况', tmp)
             data['title'] = m.group(1).strip()
 
