@@ -6,3 +6,5 @@ logs
 common.cfg
 baidu_key.cfg
 tmp
+merge_rules.cfg
+spiders/baidu.py
