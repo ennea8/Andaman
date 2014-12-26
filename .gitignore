@@ -3,8 +3,5 @@
 *.jpg
 private.cfg
 logs
-common.c`fg
 baidu_key.cfg
 tmp
-merge_rules.cfg
-spiders/baidu.py
