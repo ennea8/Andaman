@@ -3,7 +3,7 @@
 *.jpg
 private.cfg
 logs
-common.cfg
+common.c`fg
 baidu_key.cfg
 tmp
 merge_rules.cfg

@@ -1,4 +1,5 @@
 # coding=utf-8
+import HTMLParser
 import json
 import os
 import random
@@ -910,7 +911,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         sname = tmp_data['sname']
         sid = tmp_data['sid']
         idx = response.meta['idx']
-        log.msg('抓取地区游记列表,sname:%s,idx:%d' % (sname, idx), level=log.INFO)
+        #log.msg('抓取地区游记列表,sname:%s,idx:%d' % (sname, idx), level=log.INFO)
         # 首次进行计算
         if idx == 0:
             total = source_data['search_res']['page']['total']
@@ -921,10 +922,11 @@ class BaiduSceneSpider(AizouCrawlSpider):
         # 地区首页notes列表
         if idx != total_idx:
             # 子页
-            idx_oth = 1
+            idx_oth = 0
             for node in source_data['search_res']['notes_list']:
                 item = BaiduSceneItem()
                 note_id = node['nid']
+                #note_id = 'b032cd1cdbc0cdda9f42f954'
                 node['sid'] = sid
                 item['data'] = node
                 item['type'] = 'note_abs'
@@ -957,13 +959,16 @@ class BaiduSceneSpider(AizouCrawlSpider):
     def parse_note_floor(self, response):
         idx_oth = response.meta['idx_oth']
         note_id = response.meta['note_id']
-        log.msg('抓贴,note_id:%s,idx:%d' % (note_id, idx_oth), level=log.INFO)
+        #log.msg('抓贴,note_id:%s,idx:%d' % (note_id, idx_oth), level=log.INFO)
         sel = Selector(response)
-        note_floor = sel.xpath('//div[@id="building-container"]/div[contains(@class,"s5m0")]')
+        note_floor = sel.xpath('//div[@id="building-container"]/div[contains(@class,"grid-s5m0")]')
+        note_area_list = sel.xpath('//div[@id="building-container"]/textarea[@class="textarea-hide"]/text()').extract()
 
         if note_floor:
-            # 丢弃第一楼
-            for node in note_floor[1:]:
+            # 丢弃目录
+            if idx_oth == 0:  # 首页
+                note_floor = note_floor[1:]
+            for node in note_floor:
                 floor_id = node.xpath('.//div[@class="col-main"]//div[@class="floor"]/div/@id').extract()[0]
                 item = BaiduSceneItem()
                 data = {'floor_id': floor_id, 'node': node.extract(), 'nid': note_id}
@@ -971,11 +976,21 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 item['type'] = 'note_floor'
                 yield item
 
-                # 翻页
-                idx_oth += 1
-                yield Request(url='http://lvyou.baidu.com/notes/%s-%d' % (note_id, idx_oth * 15),
-                              callback=self.parse_note_floor,
-                              meta={'idx_oth': idx_oth, 'note_id': note_id})
+            for node in note_area_list:
+                selector = Selector(text=node)
+                floor_id = selector.xpath(
+                    '//div[contains(@class,"grid-s5m0")]//div[@class="col-main"]//div[@class="floor"]/div/@id').extract()[0]
+                item = BaiduSceneItem()
+                data = {'floor_id': floor_id, 'node': node.strip(), 'nid': note_id}
+                item['data'] = data
+                item['type'] = 'note_floor'
+                yield item
+
+            # 翻页
+            idx_oth += 1
+            yield Request(url='http://lvyou.baidu.com/notes/%s-%d' % (note_id, idx_oth * 15),
+                          callback=self.parse_note_floor,
+                          meta={'idx_oth': idx_oth, 'note_id': note_id})
         # 到达最后一页
         else:
             return
@@ -986,7 +1001,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         youji_list = sel.xpath('//div[@id="building-container"]//div[@class="detail-bd"]/div')
         idx_ath = response.meta['idx_ath']
         note_id = response.meta['note_id']
-        log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
+        #log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
         post_id_list = response.meta['post_id_list']
         flag = response.meta['flag']
 
