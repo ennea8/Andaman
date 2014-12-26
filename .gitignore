@@ -3,6 +3,5 @@
 *.jpg
 private.cfg
 logs
-common.cfg
 baidu_key.cfg
 tmp
