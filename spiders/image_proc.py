@@ -6,6 +6,8 @@ import random
 import re
 import time
 
+import pymongo
+
 import qiniu.conf
 import qiniu.rs
 import qiniu.io
@@ -276,5 +278,261 @@ class ImageProcPipeline(AizouPipeline):
 
         col_im.update({'key': img['key']}, ops, upsert=True)
         col_im_c.remove({'url_hash': img['url_hash']})
+
+        return item
+
+
+class UniversalImageSpider(AizouCrawlSpider):
+    """
+    将images里面的内容，转换成album
+    调用参数：--col geo:Locality
+    """
+    name = 'univ-image'
+    uuid = '81122b9c-d445-4f89-939f-e3a51c30512f'
+
+    def __init__(self, param, *a, **kw):
+        super(UniversalImageSpider, self).__init__(param, *a, **kw)
+
+        image_det_names = self.param['image-detector']
+
+        self.min_width = int(self.param['min-width'][0]) if 'min-width' in self.param else 0
+        self.min_height = int(self.param['min-height'][0]) if 'min-height' in self.param else 0
+
+        section = conf.global_conf.get('qiniu', {})
+        self.ak = section['ak']
+        self.sk = section['sk']
+
+        # globals()
+        def is_detector((name, val)):
+            if not name.endswith('ImageDetector'):
+                return False
+            try:
+                c = val
+                if c.name in image_det_names and 'get_images' in dir(c):
+                    return True
+            except AttributeError:
+                pass
+            return False
+
+        self.detectors = [cls[1]() for cls in filter(is_detector, globals().items())]
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com')
+
+    def parse(self, response):
+        db_name = self.param['db'][0]
+        col_name = self.param['col'][0]
+        profile = self.param['profile'][0]
+
+        col = self.fetch_db_col(db_name, col_name, profile)
+
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        cursor = col.find(query, {'_id': 1})
+
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        if 'skip' in self.param:
+            cursor.skip(int(self.param['skip'][0]))
+
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+
+        def walk_tree(node):
+            for det in self.detectors:
+                image_urls.extend(det.get_images(node))
+
+            # 进入子节点
+            children = []
+            if isinstance(node, dict):
+                children = node.values()
+            elif isinstance(node, list):
+                children = node
+
+            for subnode in filter(lambda val: val and (isinstance(val, dict) or isinstance(val, list)), children):
+                walk_tree(subnode)
+
+        for entry in list(cursor):
+            entry = col.find_one({'_id': entry['_id']})
+            image_urls = []
+            walk_tree(entry)
+
+            for url in image_urls:
+                # 查看是否在数据库中已存在
+                k = hashlib.md5(url).hexdigest()
+                key = 'assets/images/%s' % k
+
+                ret = col_im.find_one({'key': {'$in': [re.compile(r'^%s' % key), k]}}, {'_id': 1})
+                if not ret:
+                    item = ImageProcItem()
+                    item['image'] = {'url': url, 'key': k, 'bucket': 'aizou', 'url_hash': k}
+                    yield Request(url=url, callback=self.img_downloaded, meta={'item': item})
+
+    def check_img(self, fname):
+        """
+        检查fname是否为有效的图像（是否能打开，是否能加载，内容是否有误）
+        :param fname:
+        :return:
+        """
+        from PIL import Image
+
+        try:
+            with open(fname, 'rb') as f:
+                img = Image.open(f, 'r')
+                img.load()
+                w, h = img.size
+                if w < self.min_width or h < self.min_height:
+                    return False
+                else:
+                    return True
+        except IOError:
+            return False
+
+    def get_upload_token(self, key, bucket='aizou', overwrite=True):
+        """
+        获得七牛的上传凭证
+        :param key:
+        :param bucket:
+        :param overwrite: 是否为覆盖模式
+        """
+        qiniu.conf.ACCESS_KEY = self.ak
+        qiniu.conf.SECRET_KEY = self.sk
+
+        # 配置上传策略。
+        scope = '%s:%s' % (bucket, key) if overwrite else bucket
+        policy = qiniu.rs.PutPolicy(scope)
+        return policy.token()
+
+    def parse_stat(self, response):
+        stat = json.loads(response.body)
+        meta = response.meta
+        item = meta['item']
+        key = item['image']['key']
+        bucket = item['image']['bucket']
+
+        url = 'http://%s.qiniudn.com/%s?imageInfo' % (bucket, key)
+        yield Request(url=url, callback=self.parse_image_info,
+                      meta={'item': item, 'stat': stat})
+
+    @staticmethod
+    def parse_image_info(response):
+        image_info = json.loads(response.body)
+        if 'error' not in image_info:
+            meta = response.meta
+            item = meta['item']
+            stat = meta['stat']
+            img = item['image']
+            bucket = img['bucket']
+            key = img['key']
+
+            entry = {'url_hash': img['url_hash'],
+                     'cTime': long(time.time() * 1000),
+                     'cm': image_info['colorModel'],
+                     'h': image_info['height'],
+                     'w': image_info['width'],
+                     'fmt': image_info['format'],
+                     'size': stat['fsize'],
+                     'url': img['url'],
+                     'bucket': bucket,
+                     'key': key,
+                     'type': stat['mimeType'],
+                     'hash': stat['hash']}
+            for k, v in entry.items():
+                img[k] = v
+            if '_id' in img:
+                img.pop('_id')
+
+            yield item
+
+    def img_downloaded(self, response):
+        if response.status not in [400, 403, 404]:
+            self.log('DOWNLOADED: %s' % response.url, log.INFO)
+            meta = response.meta
+
+            fname = './tmp/%d' % (long(time.time() * 1000) + random.randint(1, 10000))
+            with open(fname, 'wb') as f:
+                f.write(response.body)
+
+            if not self.check_img(fname):
+                os.remove(fname)
+                return
+            else:
+                image = meta['item']['image']
+                key = image['key']
+                bucket = image['bucket']
+                sc = False
+                self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
+
+                uptoken = self.get_upload_token(key, bucket)
+                # 上传的额外选项
+                extra = qiniu.io.PutExtra()
+                # 文件自动校验crc
+                extra.check_crc = 1
+
+                for idx in xrange(5):
+                    ret, err = qiniu.io.put_file(uptoken, key, fname, extra)
+                    if err:
+                        self.log('UPLOADING FAILED #%d: %s, reason: %s, file=%s' % (idx, key, err, fname), log.INFO)
+                        continue
+                    else:
+                        sc = True
+                        break
+                if not sc:
+                    raise IOError
+                self.log('UPLOADING COMPLETED: %s' % key, log.INFO)
+
+                # 删除上传成功的文件
+                os.remove(fname)
+
+                # 统计信息
+                url = 'http://%s.qiniudn.com/%s?stat' % (bucket, key)
+                yield Request(url=url, meta={'item': meta['item']}, callback=self.parse_stat)
+
+
+class BaiduNoteImageDetector(object):
+    name = 'baidu-note'
+
+    @staticmethod
+    def get_images(node):
+        images = []
+        if isinstance(node, dict):
+            candidates = []
+            if 'pic_url' in node:
+                tmp = node['pic_url']
+                if tmp:
+                    candidates.append(tmp)
+
+            if 'highlight' in node:
+                try:
+                    candidates.extend(filter(lambda val: val, node['highlight']['list']))
+                except KeyError:
+                    pass
+
+            for c in candidates:
+                if re.search(r'[0-9a-f]{40}', c):
+                    images.append('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c)
+
+        return images
+
+
+class UniversalImagePipeline(AizouPipeline):
+    spiders = [UniversalImageSpider.name]
+    spiders_uuid = [UniversalImageSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        img = item['image']
+
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+        if 'itemIds' in img:
+            item_ids = img.pop('itemIds')
+        else:
+            item_ids = None
+        ops = {'$set': img}
+        if item_ids:
+            ops['$addToSet'] = {'itemIds': {'$each': item_ids}}
+
+        col_im.update({'key': img['key']}, ops, upsert=True)
 
         return item

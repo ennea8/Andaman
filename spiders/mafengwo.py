@@ -3,7 +3,6 @@ import copy
 import hashlib
 import json
 import re
-import math
 import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
@@ -25,7 +24,7 @@ class MafengwoSpider(AizouCrawlSpider):
     马蜂窝目的地的抓取
     """
 
-    name = 'mafengwo-mdd'
+    name = 'mafengwo'
     uuid = '74f9b075-65f3-400d-b093-5bdbdb552e86'
 
     def __init__(self, *a, **kw):
@@ -63,37 +62,6 @@ class MafengwoSpider(AizouCrawlSpider):
             yield Request(url=url, meta={'id': rid, 'crumb': [rid], 'level': level, 'iType': 1},
                           callback=self.parse_mdd_ajax)
 
-
-    # def get_region_list(self, response):
-    # sel = Selector(response)
-    # self_id = response.meta['id']
-    # ctype = response.meta['type']
-    # for node in sel.xpath('//dd[@id="region_list"]/a[@href]'):
-    # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    # if mdd_id != self_id:
-    # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    # yield Request(url=url, callback=self.parse_mdd_home, meta={'type': ctype, 'id': mdd_id})
-
-    # def parse(self, response):
-    # # 地区的过滤
-    # if 'region' in self.param:
-    # region_list = [int(tmp) for tmp in self.param['region']]
-    # else:
-    # region_list = None
-    #
-    # crumb = response.meta['crumb']
-    #
-    # for node in Selector(response).xpath('//dd[@id="region_list"]/a[@href]'):
-    # url = self.build_href(response.url, node.xpath('./@href').extract()[0])
-    # mdd_id = int(re.search(r'mafengwo\.cn/jd/(\d+)', url).group(1))
-    # if region_list and mdd_id not in region_list:
-    # continue
-    #
-    # # url = 'http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % mdd_id
-    # url = 'http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=%d&iType=3' % mdd_id
-    # yield Request(url=url, callback=self.parse_mdd_ajax, meta={'id': mdd_id, 'crumb': []})
-
     def parse_mdd_ajax(self, response):
         """
         解析：http://www.mafengwo.cn/gonglve/sg_ajax.php?sAct=getMapData&iMddid=52314&iType=3
@@ -124,16 +92,8 @@ class MafengwoSpider(AizouCrawlSpider):
                     if oid not in self.region_filter:
                         continue
 
-                item = MafengwoItem()
-                data = {}
-                item['data'] = data
-
-                data['id'] = oid
-                data['title'] = entry['name']
-                data['lat'] = entry['lat']
-                data['lng'] = entry['lng']
-                data['vs_cnt'] = entry['rank']
-                data['comment_cnt'] = entry['num_comment']
+                data = {'id': oid, 'title': entry['name'], 'lat': entry['lat'], 'lng': entry['lng'],
+                        'vs_cnt': entry['rank'], 'comment_cnt': entry['num_comment']}
                 img = entry['img_link']
                 img = re.sub(r'gonglve\.w\d+\.', '', img)
                 data['cover'] = img
@@ -141,6 +101,9 @@ class MafengwoSpider(AizouCrawlSpider):
                 crumb_1.append(oid)
                 data['crumb'] = crumb_1
                 data['type'] = 'country' if level == 'cont' else 'region'
+
+                item = MafengwoItem()
+                item['data'] = data
 
                 yield Request(url='http://www.mafengwo.cn/travel-scenic-spot/mafengwo/%d.html' % oid,
                               meta={'id': oid, 'item': item}, dont_filter=True,
@@ -153,11 +116,7 @@ class MafengwoSpider(AizouCrawlSpider):
             if not ('skip' in self.param and type_mapping[itype] in self.param['skip']):
                 # 跳过某些POI类型，抓取poi
                 for entry in ret['list']:
-                    item = MafengwoItem()
-                    data = {}
-                    item['data'] = data
-
-                    data['type'] = type_mapping[itype]
+                    data = {'type': type_mapping[itype]}
 
                     oid = entry['id']
                     data['id'] = oid
@@ -171,6 +130,9 @@ class MafengwoSpider(AizouCrawlSpider):
                     data['cover'] = img
                     crumb_1 = copy.deepcopy(crumb)
                     data['crumb'] = crumb_1
+
+                    item = MafengwoItem()
+                    item['data'] = data
 
                     yield Request(url='http://www.mafengwo.cn/poi/%d.html' % oid,
                                   meta={'id': oid, 'item': item},
@@ -210,7 +172,7 @@ class MafengwoSpider(AizouCrawlSpider):
         sel = Selector(response)
         for node1 in sel.xpath('//div[contains(@class,"m-tags")]/div[@class="bd"]/div[@class="t-info"]/p'):
             span_list = node1.xpath('./span/text()').extract()
-            if len(span_list) < 2 and len(span_list) > 0:
+            if 2 > len(span_list) > 0:
                 self.log('Unsupported region homepage: %d' % data['id'], log.WARNING)
                 continue
             elif not span_list:
@@ -315,8 +277,8 @@ class MafengwoSpider(AizouCrawlSpider):
 
         if 'title' not in data:
             tmp = sel.xpath(
-                '//div[contains(@class,"sub-nav")]/div[@class="mdd-title"]/span[@class="s-name"]/text()').extract()[
-                0].strip()
+                '//div[contains(@class,"sub-nav")]/div[@class="mdd-title"]/span[@class="s-name"]/'
+                'text()').extract()[0].strip()
             m = re.search(ur'(.+)(城市|国家)概况', tmp)
             data['title'] = m.group(1).strip()
 
@@ -821,6 +783,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
     def parse_poi(self, col_name, bound):
         col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        tot_num = col_raw.find({}).count()
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
         if bound[0] is not None and bound[1] is not None:
@@ -867,14 +830,13 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                     details.append(u'%s：%s' % (info_entry['name'], proc_text))
 
             # 热门程度
-            hotness = 0
-            for k in ['comment_cnt', 'images_tot']:
-                if k in entry:
-                    hotness += entry[k]
-            data['hotness'] = 2 / (1 + math.exp(-float(hotness) / self.denom)) - 1
+            data['commentCnt'] = entry['comment_cnt']
+            # 计算hotness
+            data['hotness'] = sum(map(lambda k: col_raw.find({k: {'$lt': entry[k]}}).count() / float(tot_num),
+                                      ('comment_cnt', 'images_tot'))) / 2.0
 
             # 评分
-            data['rating'] = float(entry['rating']) / 5
+            data['rating'] = float(entry['rating'])
 
             if desc:
                 data['desc'] = desc
@@ -919,13 +881,13 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             item['db_name'] = 'poi'
 
             if col_name == 'MafengwoVs':
-                item['col_name'] = 'ViewSpot'
+                item['col_name'] = 'MfwViewSpotProc'
             elif col_name == 'MafengwoGw':
-                item['col_name'] = 'Shopping'
+                item['col_name'] = 'MfwShoppingProc'
             elif col_name == 'MafengwoHotel':
-                item['col_name'] = 'Hotel'
+                item['col_name'] = 'MfwHotelProc'
             elif col_name == 'MafengwoCy':
-                item['col_name'] = 'Restaurant'
+                item['col_name'] = 'MfwRestaurantProc'
             else:
                 return
 
@@ -981,6 +943,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
     def parse_mdd(self, bound):
         col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        tot_num = col_raw_mdd.count()
         col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
@@ -1098,10 +1061,20 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             data['tags'] = list(set(filter(lambda val: val, [tmp.lower().strip() for tmp in entry['tags']])))
 
-            if 'vs_cnt' in entry and entry['vs_cnt'] is not None:
-                data['hotness'] = 2 / (1 + math.exp(-float(entry['vs_cnt']) / self.denom)) - 1
-            else:
-                data['hotness'] = 0
+            # 热门程度
+            if 'comment_cnt' in entry:
+                data['commentCnt'] = entry['comment_cnt']
+            if 'vs_cnt' in entry:
+                data['visitCnt'] = entry['vs_cnt']
+
+            # 计算hotness
+            def hotness(key):
+                if key not in entry:
+                    return None
+                return col_raw_mdd.find({key: {'$lt': entry[key]}}).count() / float(tot_num)
+
+            hotness_list = filter(lambda val: val, map(hotness, ('comment_cnt', 'images_tot', 'vs_cnt')))
+            data['hotness'] = sum(hotness_list) / float(len(hotness_list)) if hotness_list else 0
 
             crumb_ids = []
             for crumb_entry in entry['crumb']:
@@ -1124,28 +1097,8 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             item = MafengwoProcItem()
             item['data'] = data
-            item['col_name'] = 'Locality'
-            item['db_name'] = 'geo'
-
-            # if 'skip-geocode' not in self.param:
-            # # 尝试通过geocode获得目的地别名及其它信息
-            # addr = u''
-            # for idx in xrange(len(entry['crumb']) - 1, -1, -1):
-            # addr += u'%s,' % (entry['crumb'][idx]['name'])
-            # idx = addr.rfind(',')
-            # addr = addr[:idx] if idx > 0 else addr
-            #
-            # if addr and 'location' in data:
-            # lang = ['en-US']
-            # yield Request(
-            # url=u'http://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false' % addr,
-            # headers={'Accept-Language': 'zh-CN'},
-            # meta={'item': item, 'lang': lang},
-            # callback=self.parse_geocode)
-            # else:
-            # yield item
-            # else:
-            # yield item
+            item['col_name'] = 'MfwLocalityProc'
+            item['db_name'] = 'raw_data'
 
             if 'bind-baidu' in self.param:
                 yield self.gen_baidu_sug_req(item, 400, False)
@@ -1247,11 +1200,11 @@ class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
             return item
 
         col_name = item['col_name']
-        if col_name == 'Locality':
+        if col_name == 'MfwLocalityProc':
             return self.process_mdd(item, spider)
-        elif col_name in ['ViewSpot', 'Hotel', 'Shopping', 'Restaurant']:
+        elif col_name in ['MfwViewSpotProc', 'MfwHotelProc', 'MfwShoppingProc', 'MfwRestaurantProc']:
             return self.process_poi(item, spider)
-        elif col_name == 'Country':
+        elif col_name == 'MfwCountryProc':
             return self.process_country(item, spider)
 
     def process_country(self, item, spider):
@@ -1269,7 +1222,7 @@ class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
         col_name = item['col_name']
         db_name = item['db_name']
 
-        col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+        col = self.fetch_db_col(db_name, col_name, 'mongodb-crawler')
         col_mdd = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
@@ -1331,7 +1284,7 @@ class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
         col_name = item['col_name']
         db_name = item['db_name']
 
-        col = self.fetch_db_col(db_name, col_name, 'mongodb-general')
+        col = self.fetch_db_col(db_name, col_name, 'mongodb-crawler')
 
         src = data.pop('source')
         alias = data.pop('alias')
@@ -1350,5 +1303,163 @@ class MafengwoProcPipeline(AizouPipeline, ProcImagesMixin):
             tmp.append({key: img[key] for key in ['key', 'w', 'h'] if key in img})
         if ('isDone' not in poi or not poi['isDone']) and images_formal:
             col.update({'_id': poi['_id']}, {'$set': {'images': tmp}})
+
+        return item
+
+
+class MafengwoNoteSpider(AizouCrawlSpider):
+    """
+    马蜂窝目的地的抓取
+    """
+
+    name = 'mafengwo-note'
+    uuid = '08c80cbf-fd94-4d95-9e4f-4745d20e12a9'
+
+    def start_requests(self):
+        col_raw = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        cursor = col_raw.find(query, {'id': 1})
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['']))
+        for entry in list(cursor):
+            mdd_id = entry['id']
+            yield Request(url='http://www.mafengwo.cn/yj/%d/1-0-1.html' % mdd_id, meta={'mdd': mdd_id, 'page': 1})
+
+    def parse(self, response):
+        mdd_id = response.meta['mdd']
+        page_idx = response.meta['page']
+        sel = Selector(response)
+
+        def page_populator():
+            """
+            获得翻页的url
+            :return:
+            """
+            try:
+                page_hotel = sel.xpath('//div[@class="page-hotel"]')[0]
+                last_href = page_hotel.xpath('./a[@class="ti last" and @href]/@href').extract()[0]
+                last_page = int(re.search(r'1-0-(\d+)\.html', last_href).group(1))
+                return ['http://www.mafengwo.cn/yj/%d/1-0-%d.html' % (mdd_id, p) for p in xrange(2, last_page + 1)]
+            except (IndexError, TypeError):
+                return []
+
+        # 如果是第一页，则populate后面的页数
+        if page_idx == 1:
+            for url in page_populator():
+                yield Request(url=url, meta={'mdd': mdd_id, 'page': page_idx})
+
+        for node in sel.xpath('//div[@class="post-list"]/ul/li[contains(@class,"post-item")]'):
+            cover = node.xpath('./div[@class="post-cover"]/a[@href]/img[@data-original]/@data-original').extract()[0]
+            note_id = int(node.xpath('./div[@class="post-ding"]/a/@data-iid').extract()[0])
+            vote_cnt = int(node.xpath('./div[@class="post-ding"]/a/@data-vote').extract()[0])
+
+            title = node.xpath('./h2[contains(@class,"post-title")]/a/text()').extract()[0].strip()
+
+            author_node = node.xpath('./div[@class="post-author"]/span[@class="author"]')[0]
+            avatar = author_node.xpath('./a[@href]/img[@data-original]/@data-original').extract()[0]
+            href = author_node.xpath('./a[@href]/@href').extract()[0]
+            user_id = int(re.search(r'/u/(\d+)\.html', href).group(1))
+            tmp = filter(lambda val: val, [tmp.strip() for tmp in author_node.xpath('./a[@href]/text()').extract()])
+            nickname = tmp[0] if tmp else ''
+
+            view_cnt = int(
+                node.xpath('./span[@class="status"]/i[@class="icon_view"]/following-sibling::text()').extract()[0])
+            comment_cnt = int(
+                node.xpath('./span[@class="status"]/i[@class="icon_comment"]/following-sibling::text()').extract()[0])
+
+            data = {'cover': cover, 'note_id': note_id, 'vote_cnt': vote_cnt, 'title': title, 'author_avatar': avatar,
+                    'author_id': user_id, 'author_name': nickname, 'view_cnt': view_cnt, 'comment_cnt': comment_cnt,
+                    'mdd': mdd_id}
+
+            yield Request(url='http://www.mafengwo.cn/group/info.php?iid=%d&page=1' % note_id, callback=self.parse_note,
+                          meta={'data': data})
+
+    def parse_note(self, response):
+        data = copy.deepcopy(response.meta['data'])
+
+        sel = Selector(response)
+
+        tmp = sel.xpath('//div[@class="vc_article"]')
+        if tmp:
+            article = tmp[0]
+            data['note_type'] = 2
+            data['contents'] = article.extract()
+            data['post_id'] = data['note_id']
+            item = MafengwoItem()
+            item['data'] = data
+
+            yield Request(
+                url='http://www.mafengwo.cn/group/ajax_ginfo_ready.php?sAction=initGinfo&iId=%d' % data['mdd'],
+                callback=self.parse_stat, meta={'item': item}, cookies={
+                    'mafengwo': '9b148eb8ba78dd3aebe5826f70df326c_67590906_549ba2f7ef2cf3.'
+                                '39042540_549ba2f7ef2e09.39878707'})
+        else:
+            data['type'] = 1
+
+            for href in sel.xpath('//div[@class="paginator"]/a[@class="ti" and @href]/@href').extract():
+                new_data = copy.deepcopy(data)
+                yield Request(url=self.build_href(response.url, href), callback=self.parse_note,
+                              meta={'data': new_data})
+
+            for post_item in sel.xpath('//div[contains(@class,"post_main")]/div[@class="post_item"]'):
+                tmp = post_item.xpath('./div[@class="post_info"]/@id').extract()
+                if not tmp:
+                    new_data = copy.deepcopy(data)
+                    new_data['main_post'] = True
+                    new_data['post_id'] = 'main-%d' % new_data['note_id']
+                else:
+                    new_data = {'main_post': False, 'note_id': data['note_id'], 'title': data['title'],
+                                'post_id': int(re.search(r'reply_(\d+)', tmp[0]).group(1))}
+
+                user_node = \
+                    post_item.xpath('./div[@class="author_info"]/div[@class="avatar_box"]/div[@class="out_pic"]')[0]
+                user_id = int(re.search(r'/u/(\d+)\.html', user_node.xpath('./a[@href]/@href').extract()[0]).group(1))
+                avatar = user_node.xpath('./a[@href]/img[@src and @title]/@src').extract()[0]
+                user_name = user_node.xpath('./a[@href]/img[@src and @title]/@title').extract()[0].strip()
+                new_data['user_id'] = user_id
+                new_data['user_avatar'] = avatar
+                new_data['user_name'] = user_name
+
+                new_data['contents'] = post_item.extract()
+                item = MafengwoItem()
+                item['data'] = new_data
+
+                if new_data['main_post']:
+                    yield Request(url='http://www.mafengwo.cn/group/ajax_ginfo_ready.php?sAction=initGinfo&iId=%d' %
+                                      new_data['note_id'], callback=self.parse_stat, meta={'item': item},
+                                  cookies={
+                                      'mafengwo': '9b148eb8ba78dd3aebe5826f70df326c_67590906_549ba2f7ef2cf3.'
+                                                  '39042540_549ba2f7ef2e09.39878707'})
+                else:
+                    yield item
+
+    @staticmethod
+    def parse_stat(response):
+        item = response.meta['item']
+        data = item['data']
+        payload = json.loads(response.body)['payload']
+        tmp = payload['share_pv']
+        data['share_cnt'] = int(tmp) if tmp else 0
+        tmp = payload['fav_total']
+        data['favor_cnt'] = int(tmp) if tmp else 0
+        yield item
+
+
+class MafengwoNotePipeline(AizouPipeline):
+    """
+    蚂蜂窝
+    """
+
+    spiders = [MafengwoNoteSpider.name]
+
+    spiders_uuid = [MafengwoNoteSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        col = self.fetch_db_col('raw_data', 'MafengwoNote', 'mongodb-crawler')
+        data = item['data']
+        col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
 
         return item
