@@ -1070,7 +1070,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             # 计算hotness
             def hotness(key):
                 if key not in entry:
-                    return None
+                    return 0.5
                 return col_raw_mdd.find({key: {'$lt': entry[key]}}).count() / float(tot_num)
 
             hotness_list = filter(lambda val: val, map(hotness, ('comment_cnt', 'images_tot', 'vs_cnt')))
