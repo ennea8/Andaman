@@ -1197,7 +1197,7 @@ class BaiduScenePipeline(AizouPipeline):
         if item_type in col_map:
             col_name, pk = col_map[item_type]
             # spider.log('title:%s,nid:%s' % (data['title'], data['nid']), log.INFO)
-            col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+            col = self.fetch_db_col('raw_baidu', col_name, 'mongodb-crawler')
             col.update({pk: data[pk]}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
