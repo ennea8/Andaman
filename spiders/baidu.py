@@ -917,7 +917,6 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 地区首页notes列表
         # 子页
-        idx_oth = 0
         note_list = source_data['search_res']['notes_list']
         if not note_list:
             return
@@ -929,15 +928,16 @@ class BaiduSceneSpider(AizouCrawlSpider):
             node['sid'] = sid
             item['data'] = node
             item['type'] = 'note_abs'
+            # self.log('Yielding note_abs: nid=%s, url=%s' % (note_id, response.url), log.INFO)
             yield item
 
             # 某一游记的具体交互
-            yield Request(url='http://lvyou.baidu.com/notes/%s-%d' % (note_id, idx_oth), callback=self.parse_note_floor,
-                          meta={'note_id': note_id, 'idx_oth': idx_oth})
+            yield Request(url='http://lvyou.baidu.com/notes/%s-%d' % (note_id, 0), callback=self.parse_note_floor,
+                          meta={'note_id': note_id})
 
-            yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, idx_oth),
+            yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, 0),
                           callback=self.parse_note_floor,
-                          meta={'note_id': note_id, 'idx_oth': idx_oth, 'main_post': True})
+                          meta={'note_id': note_id, 'main_post': True})
 
             # # 只看游记
             # idx_ath = 0
@@ -950,9 +950,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
     # 具体论坛抓贴
     def parse_note_floor(self, response):
-        idx_oth = response.meta['idx_oth']
         note_id = response.meta['note_id']
-        # log.msg('抓贴,note_id:%s,idx:%d' % (note_id, idx_oth), level=log.INFO)
         sel = Selector(response)
         note_floor = sel.xpath('//div[@id="building-container"]//div[contains(@class,"grid-s5m0")]')
         note_area_list = sel.xpath('//div[@id="building-container"]//textarea[@class="textarea-hide"]/text()').extract()
@@ -975,25 +973,23 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
                 item['data'] = data
                 item['type'] = 'note_floor'
+                # self.log('Yielding note post: post_id=%s, url=%s' % (floor_id, response.url), log.INFO)
                 yield item
 
-            # 翻页
-            idx_oth += 1
-            url_tmpl = 'http://lvyou.baidu.com/notes/%s/d-%d' if main_post else 'http://lvyou.baidu.com/notes/%s-%d'
-            m = {'idx_oth': idx_oth, 'note_id': note_id}
+        # 翻页
+        for href in sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog" and @href]/@href').extract():
+            m = {'note_id': note_id}
             if main_post:
                 m['main_post'] = True
-                yield Request(url=url_tmpl % (note_id, idx_oth), callback=self.parse_note_floor, meta=m)
-            else:
-                yield Request(url=url_tmpl % (note_id, idx_oth * 15), callback=self.parse_note_floor, meta=m)
+            yield Request(url=self.build_href(response.url, href), callback=self.parse_note_floor, meta=m)
 
     # # 只存放游记发帖id
     # def parse_youji(self, response):
     # sel = Selector(response)
     # youji_list = sel.xpath('//div[@id="building-container"]//div[@class="detail-bd"]/div')
     # idx_ath = response.meta['idx_ath']
-    #     note_id = response.meta['note_id']
-    #     # log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
+    # note_id = response.meta['note_id']
+    # # log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
     #     post_id_list = response.meta['post_id_list']
     #     flag = response.meta['flag']
     #
