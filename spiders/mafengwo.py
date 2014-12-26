@@ -1439,9 +1439,15 @@ class MafengwoNoteSpider(AizouCrawlSpider):
         data = item['data']
         payload = json.loads(response.body)['payload']
         tmp = payload['share_pv']
-        data['share_cnt'] = int(tmp) if tmp else 0
+        if tmp:
+            data['share_cnt'] = int(re.search(r'\d+', tmp).group())
+        else:
+            data['share_cnt'] = 0
         tmp = payload['fav_total']
-        data['favor_cnt'] = int(tmp) if tmp else 0
+        if tmp:
+            data['favor_cnt'] = int(re.search(r'\d+', tmp).group())
+        else:
+            data['favor_cnt'] = 0
         yield item
 
 
