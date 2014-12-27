@@ -72,6 +72,9 @@ def mercator2wgs(mx, my):
     return x, y
 
 
+def images_pro(urls):
+    return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
+
 def guess_coords(x, y):
     # 可能是墨卡托
     if abs(x) > 180 or abs(y) > 180:
@@ -89,7 +92,6 @@ def guess_coords(x, y):
         return
 
     return rx, ry
-
 
 # //Web墨卡托转经纬度
 # dvec3 CMathEngine::WebMercator2lonLat( dvec3   mercator )

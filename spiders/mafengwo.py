@@ -1433,19 +1433,22 @@ class MafengwoNoteSpider(AizouCrawlSpider):
                 else:
                     yield item
 
-    @staticmethod
-    def parse_stat(response):
+    def parse_stat(self, response):
         item = response.meta['item']
         data = item['data']
         payload = json.loads(response.body)['payload']
         tmp = payload['share_pv']
         if tmp:
-            data['share_cnt'] = int(re.search(r'\d+', tmp).group())
+            if isinstance(tmp, str):
+                tmp = int(re.search(r'\d+', tmp).group())
+            data['share_cnt'] = tmp
         else:
             data['share_cnt'] = 0
         tmp = payload['fav_total']
         if tmp:
-            data['favor_cnt'] = int(re.search(r'\d+', tmp).group())
+            if isinstance(tmp, str):
+                tmp = int(re.search(r'\d+', tmp).group())
+            data['favor_cnt'] = tmp
         else:
             data['favor_cnt'] = 0
         yield item
