@@ -918,13 +918,18 @@ class BaiduSceneSpider(AizouCrawlSpider):
         # 地区首页notes列表
         # 子页
         note_list = source_data['search_res']['notes_list']
+        # month_list = source_data['search_res']['month']
+        # day_list = source_data['search_res']['days']
+        cost_list = source_data['search_res']['costs']
         if not note_list:
             return
 
         for node in note_list:
             item = BaiduSceneItem()
             note_id = node['nid']
-            # note_id = 'b032cd1cdbc0cdda9f42f954'
+            node['price_cost'] = filter(lambda val: val['id'] == node['avg_cost'], cost_list)
+            # node['day_cost'] = filter(lambda val: val['id'] == node['wdays'], day_list)
+            # node['month_cost'] = filter(lambda val: val['id'] == node['wmonth'], month_list)
             node['sid'] = sid
             item['data'] = node
             item['type'] = 'note_abs'
@@ -991,30 +996,30 @@ class BaiduSceneSpider(AizouCrawlSpider):
     # note_id = response.meta['note_id']
     # # log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
     # post_id_list = response.meta['post_id_list']
-    #     flag = response.meta['flag']
+    # flag = response.meta['flag']
     #
-    #     # 首页判断是否可以翻页
-    #     if idx_ath == 0:
-    #         page_list = sel.xpath('//div[@class="detail-ft clearfix"]//div[@class="pagelist-wrapper"]')
-    #         if not page_list:
-    #             tmp_post_id_list = youji_list.xpath('.//div[@class="floor"]/div/@id').extract()
-    #             post_id_list.extend(tmp_post_id_list)
-    #             data = {'nid': note_id, 'post_id_list': post_id_list}
-    #             item = BaiduSceneItem()
-    #             item['data'] = data
-    #             item['type'] = 'post_id_list'
-    #             yield item
-    #         else:
-    #             flag = 1
-    #     else:
-    #         flag = response.meta['flag']
+    # # 首页判断是否可以翻页
+    # if idx_ath == 0:
+    # page_list = sel.xpath('//div[@class="detail-ft clearfix"]//div[@class="pagelist-wrapper"]')
+    # if not page_list:
+    # tmp_post_id_list = youji_list.xpath('.//div[@class="floor"]/div/@id').extract()
+    # post_id_list.extend(tmp_post_id_list)
+    # data = {'nid': note_id, 'post_id_list': post_id_list}
+    # item = BaiduSceneItem()
+    # item['data'] = data
+    # item['type'] = 'post_id_list'
+    # yield item
+    # else:
+    # flag = 1
+    # else:
+    # flag = response.meta['flag']
     #
-    #     if youji_list and flag:
-    #         tmp_post_id_list = youji_list.xpath('.//div[@class="floor"]/div/@id').extract()
-    #         post_id_list.extend(tmp_post_id_list)
-    #         # 向后翻页
-    #         idx_ath += 1
-    #         yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, idx_ath),
+    # if youji_list and flag:
+    # tmp_post_id_list = youji_list.xpath('.//div[@class="floor"]/div/@id').extract()
+    # post_id_list.extend(tmp_post_id_list)
+    # # 向后翻页
+    # idx_ath += 1
+    # yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, idx_ath),
     #                       callback=self.parse_youji,
     #                       meta={'note_id': note_id, 'idx_ath': idx_ath, 'post_id_list': post_id_list, 'flag': flag})
     #     # 到达最后一页
@@ -2250,3 +2255,26 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
         # digest = hashlib.md5(data['prikey']).hexdigest()
         spider.log('%s' % (data['name']), log.INFO)
         return item
+
+
+class BaiduNoteItem(Item):
+    data = Field()
+
+
+class BaiduNoteProcSpider(AizouCrawlSpider):
+    """
+    百度游记数据的清洗
+    """
+    name = 'note_proc'
+    uuid = 'B05E3272-78B1-5F38-3258-5F6E68433F27'
+
+    def __init__(self, *a, **kw):
+        super(BaiduNoteProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
+        for entry in col.find():
+            data = {}
+            nid = entry['nid']
+            data['source.baidu.id'] = nid
+            data['authorName'] = entry['uname']
