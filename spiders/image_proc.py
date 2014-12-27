@@ -488,8 +488,8 @@ class UniversalImageSpider(AizouCrawlSpider):
                 yield Request(url=url, meta={'item': meta['item']}, callback=self.parse_stat)
 
 
-class BaiduNoteImageDetector(object):
-    name = 'baidu-note'
+class BaiduSceneImageDetector(object):
+    name = 'baidu-scene'
 
     @staticmethod
     def get_images(node):
