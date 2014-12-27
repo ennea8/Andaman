@@ -911,7 +911,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         sname = tmp_data['sname']
         sid = tmp_data['sid']
         idx = response.meta['idx']
-        #log.msg('抓取地区游记列表,sname:%s,idx:%d' % (sname, idx), level=log.INFO)
+        log.msg('抓取地区游记列表,sname:%s,idx:%d' % (sname, idx), level=log.INFO)
         # 首次进行计算
         if idx == 0:
             total = source_data['search_res']['page']['total']
@@ -959,7 +959,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
     def parse_note_floor(self, response):
         idx_oth = response.meta['idx_oth']
         note_id = response.meta['note_id']
-        #log.msg('抓贴,note_id:%s,idx:%d' % (note_id, idx_oth), level=log.INFO)
+        # log.msg('抓贴,note_id:%s,idx:%d' % (note_id, idx_oth), level=log.INFO)
         sel = Selector(response)
         note_floor = sel.xpath('//div[@id="building-container"]/div[contains(@class,"grid-s5m0")]')
         note_area_list = sel.xpath('//div[@id="building-container"]/textarea[@class="textarea-hide"]/text()').extract()
@@ -1001,7 +1001,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         youji_list = sel.xpath('//div[@id="building-container"]//div[@class="detail-bd"]/div')
         idx_ath = response.meta['idx_ath']
         note_id = response.meta['note_id']
-        #log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
+        # log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
         post_id_list = response.meta['post_id_list']
         flag = response.meta['flag']
 
@@ -1204,7 +1204,7 @@ class BaiduScenePipeline(AizouPipeline):
 
         if item_type in col_map:
             col_name, pk = col_map[item_type]
-            # spider.log('title:%s,nid:%s' % (data['title'], data['nid']), log.INFO)
+            #log.msg('nid:%s' % (data['nid']), level=log.INFO)
             col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
             col.update({pk: data[pk]}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
