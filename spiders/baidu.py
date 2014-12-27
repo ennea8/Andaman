@@ -918,13 +918,18 @@ class BaiduSceneSpider(AizouCrawlSpider):
         # 地区首页notes列表
         # 子页
         note_list = source_data['search_res']['notes_list']
+        # month_list = source_data['search_res']['month']
+        # day_list = source_data['search_res']['days']
+        cost_list = source_data['search_res']['costs']
         if not note_list:
             return
 
         for node in note_list:
             note_abs = BaiduSceneItem()
             note_id = node['nid']
-            # note_id = 'b032cd1cdbc0cdda9f42f954'
+            node['price_cost'] = filter(lambda val: val['id'] == node['avg_cost'], cost_list)
+            # node['day_cost'] = filter(lambda val: val['id'] == node['wdays'], day_list)
+            # node['month_cost'] = filter(lambda val: val['id'] == node['wmonth'], month_list)
             node['sid'] = sid
             note_abs['data'] = node
             note_abs['type'] = 'note_abs'
@@ -1156,7 +1161,6 @@ class BaiduScenePipeline(AizouPipeline):
 
         if item_type in col_map:
             col_name, pk = col_map[item_type]
-            # spider.log('title:%s,nid:%s' % (data['title'], data['nid']), log.INFO)
             col = self.fetch_db_col('raw_baidu', col_name, 'mongodb-crawler')
             col.update({pk: data[pk]}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
@@ -2215,3 +2219,26 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
         # digest = hashlib.md5(data['prikey']).hexdigest()
         spider.log('%s' % (data['name']), log.INFO)
         return item
+
+
+class BaiduNoteItem(Item):
+    data = Field()
+
+
+class BaiduNoteProcSpider(AizouCrawlSpider):
+    """
+    百度游记数据的清洗
+    """
+    name = 'note_proc'
+    uuid = 'B05E3272-78B1-5F38-3258-5F6E68433F27'
+
+    def __init__(self, *a, **kw):
+        super(BaiduNoteProcSpider, self).__init__(*a, **kw)
+
+    def start_requests(self):
+        col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
+        for entry in col.find():
+            data = {}
+            nid = entry['nid']
+            data['source.baidu.id'] = nid
+            data['authorName'] = entry['uname']
