@@ -910,7 +910,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         if idx == 0:
             total = source_data['search_res']['page']['total']
 
-            for pn in xrange(10, total + 1, 10):
+            for pn in xrange(10, min(total, 760), 10):
                 yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
                                   (sname, pn), callback=self.parse_note,
                               meta={'data': copy.deepcopy(tmp_data), 'idx': idx})
@@ -990,7 +990,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
     # idx_ath = response.meta['idx_ath']
     # note_id = response.meta['note_id']
     # # log.msg('抓游记id列表,note_id:%s,idx:%d' % (note_id, idx_ath), level=log.INFO)
-    #     post_id_list = response.meta['post_id_list']
+    # post_id_list = response.meta['post_id_list']
     #     flag = response.meta['flag']
     #
     #     # 首页判断是否可以翻页
