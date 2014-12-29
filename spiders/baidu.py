@@ -2322,7 +2322,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
                     href = node.get('href')
                     if href.find('lvyou.baidu.com'):
                         etree.strip_attributes(node, 'href')
-            tmp['content'] = etree.tostring(content_root[0])
+            tmp['content'] = etree.tostring(content_root[0], encoding='utf-8').decode('utf-8')
             contents.append(tmp)
 
         tmp_data['contents'] = contents
