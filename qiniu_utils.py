@@ -7,14 +7,16 @@ import time
 
 __author__ = 'zephyre'
 
-import qiniu.conf
+try:
+    import qiniu.conf
 
-qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
-qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
+    qiniu.conf.ACCESS_KEY = "QBsaz_MsErywKS2kkQpwJlIIvBYmryNuPzoGvHJF"
+    qiniu.conf.SECRET_KEY = "OTi4GrXf8CQQ0ZLit6Wgy3P8MxFIueqMOwBJhBti"
 
-import qiniu.io
-import qiniu.rs
-
+    import qiniu.io
+    import qiniu.rs
+except ImportError:
+    pass
 
 def io_ops(op, retry=3, cooldown=3, extra_except=None):
     """

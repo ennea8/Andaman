@@ -222,7 +222,7 @@ def main():
         if 'verbose' in param:
             logfile = None
         else:
-            logfile = './logs/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
+            logfile = '/var/log/andaman/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
 

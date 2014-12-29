@@ -525,14 +525,14 @@ class MafengwoPipeline(AizouPipeline):
             col_name = 'MafengwoTrans'
         elif item_type == 'comments':
             col_name = 'MafengwoComment'
-            col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+            col = self.fetch_db_col('raw_mfw', col_name, 'mongodb-crawler')
             col.update({'poi_id': data['poi_id'], 'comment_id': data['comment_id']}, {'$set': data}, upsert=True)
             return item
         else:
             return item
 
         # 存储原始图像
-        col_img = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+        col_img = self.fetch_db_col('raw_mfw', 'MafengwoImage', 'mongodb-crawler')
         if 'imageList' not in data:
             data['imageList'] = []
         image_list = data.pop('imageList')
@@ -548,7 +548,7 @@ class MafengwoPipeline(AizouPipeline):
             col_img.update({'url_hash': tmp['url_hash']}, {'$set': tmp, '$addToSet': {'itemIds': sig}}, upsert=True)
 
         # 存储item本身
-        col = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        col = self.fetch_db_col('raw_mfw', col_name, 'mongodb-crawler')
         col.update({'id': data['id']}, {'$set': data}, upsert=True)
 
         return item
@@ -771,7 +771,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
                           meta={'item': item, 'lang': lang})
 
     def parse_country(self):
-        col = self.fetch_db_col('raw_data', 'MafengwoCountry', 'mongodb-crawler')
+        col = self.fetch_db_col('raw_mfw', 'MafengwoCountry', 'mongodb-crawler')
 
         for entry in col.find({}, {'id': 1, 'title': 1}):
             item = MafengwoProcItem()
@@ -782,7 +782,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             yield item
 
     def parse_poi(self, col_name, bound):
-        col_raw = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+        col_raw = self.fetch_db_col('raw_mfw', col_name, 'mongodb-crawler')
         tot_num = col_raw.find({}).count()
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
@@ -893,7 +893,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
 
             # 获得对应的图像
             sig = '%s-%d' % (col_name, data['source']['mafengwo']['id'])
-            col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+            col_raw_im = self.fetch_db_col('raw_mfw', 'MafengwoImage', 'mongodb-crawler')
             data['imageList'] = list(col_raw_im.find({'itemIds': sig}))
 
             self.resolve_targets(item)
@@ -942,9 +942,9 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             data['locality'] = city
 
     def parse_mdd(self, bound):
-        col_raw_mdd = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        col_raw_mdd = self.fetch_db_col('raw_mfw', 'MafengwoMdd', 'mongodb-crawler')
         tot_num = col_raw_mdd.count()
-        col_raw_im = self.fetch_db_col('raw_data', 'MafengwoImage', 'mongodb-crawler')
+        col_raw_im = self.fetch_db_col('raw_mfw', 'MafengwoImage', 'mongodb-crawler')
         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
 
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
@@ -1098,7 +1098,7 @@ class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):
             item = MafengwoProcItem()
             item['data'] = data
             item['col_name'] = 'MfwLocalityProc'
-            item['db_name'] = 'raw_data'
+            item['db_name'] = 'raw_mfw'
 
             if 'bind-baidu' in self.param:
                 yield self.gen_baidu_sug_req(item, 400, False)
@@ -1316,7 +1316,7 @@ class MafengwoNoteSpider(AizouCrawlSpider):
     uuid = '08c80cbf-fd94-4d95-9e4f-4745d20e12a9'
 
     def start_requests(self):
-        col_raw = self.fetch_db_col('raw_data', 'MafengwoMdd', 'mongodb-crawler')
+        col_raw = self.fetch_db_col('raw_mfw', 'MafengwoMdd', 'mongodb-crawler')
         query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
         cursor = col_raw.find(query, {'id': 1})
         if 'limit' in self.param:
@@ -1467,7 +1467,7 @@ class MafengwoNotePipeline(AizouPipeline):
         if not self.is_handler(item, spider):
             return item
 
-        col = self.fetch_db_col('raw_data', 'MafengwoNote', 'mongodb-crawler')
+        col = self.fetch_db_col('raw_mfw', 'MafengwoNote', 'mongodb-crawler')
         data = item['data']
         col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
 
