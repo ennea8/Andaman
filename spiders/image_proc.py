@@ -1,8 +1,6 @@
 # coding=utf-8
 import hashlib
 import json
-import os
-import random
 import re
 import time
 
@@ -21,10 +19,10 @@ class ImageProcItem(Item):
 
 
 # class ImageProcSpider(AizouCrawlSpider):
-#     """
-#     将imageList中的内容，上传到七牛，然后更新images列表
-#     """
-#     name = 'image-proc'
+# """
+# 将imageList中的内容，上传到七牛，然后更新images列表
+# """
+# name = 'image-proc'
 #     uuid = 'ccef9d95-7b40-441c-a6d0-2c7fb293a4ef'
 #
 #     handle_httpstatus_list = [400, 403, 404]
@@ -248,7 +246,7 @@ class UniversalImageSpider(AizouCrawlSpider):
                 pass
             return False
 
-        self.detectors = [cls[1]() for cls in filter(is_detector, globals().items())]
+        self.detectors = [cls[1](self) for cls in filter(is_detector, globals().items())]
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com')
@@ -264,10 +262,41 @@ class UniversalImageSpider(AizouCrawlSpider):
         cursor = col.find(query, {'_id': 1})
 
         if 'limit' in self.param:
-            cursor.limit(int(self.param['limit'][0]))
+            limit = int(self.param['limit'][0])
+        else:
+            limit = None
+        if limit:
+            cursor.limit(limit)
 
         if 'skip' in self.param:
-            cursor.skip(int(self.param['skip'][0]))
+            skip = int(self.param['skip'][0])
+        else:
+            skip = 0
+        cursor.skip(skip)
+
+        tot = cursor.count(with_limit_and_skip=True)
+        self.log('%d documents to process...' % tot, log.INFO)
+
+        # 每次最多1000个
+        max_batch = 1000
+        batch_cnt = tot / max_batch + 1
+
+        for batch_idx in xrange(batch_cnt):
+            cursor = col.find(query, {'_id': 1})
+            cursor.skip(skip + batch_idx * max_batch)
+            cursor.limit(max_batch)
+
+            yield Request(url='http://www.baidu.com', callback=self.parse_sub, meta={'cursor': cursor},
+                          dont_filter=True)
+
+    def parse_sub(self, response):
+        cursor = response.meta['cursor']
+
+        db_name = self.param['db'][0]
+        col_name = self.param['col'][0]
+        profile = self.param['profile'][0]
+
+        col = self.fetch_db_col(db_name, col_name, profile)
 
         col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
 
@@ -285,7 +314,7 @@ class UniversalImageSpider(AizouCrawlSpider):
             for subnode in filter(lambda val: val and (isinstance(val, dict) or isinstance(val, list)), children):
                 walk_tree(subnode)
 
-        for entry in list(cursor):
+        for entry in cursor:
             entry = col.find_one({'_id': entry['_id']})
             image_urls = []
             walk_tree(entry)
@@ -315,6 +344,7 @@ class UniversalImageSpider(AizouCrawlSpider):
                     img = Image.open(f, 'r')
             elif data:
                 import cStringIO
+
                 img = Image.open(cStringIO.StringIO(data), 'r')
             else:
                 raise ValueError
@@ -423,6 +453,9 @@ class UniversalImageSpider(AizouCrawlSpider):
 class BaiduSceneImageDetector(object):
     name = 'baidu-scene'
 
+    def __init__(self, spider):
+        self.spider = spider
+
     @staticmethod
     def get_images(node):
         images = []
@@ -432,6 +465,11 @@ class BaiduSceneImageDetector(object):
                 tmp = node['pic_url']
                 if tmp:
                     candidates.append(tmp)
+
+            if 'image' in node and node['image']:
+                match = re.search(r'hiphotos\.baidu\.com/lvpics/pic/item/([0-9a-f]+)\.jpg', node['image'])
+                if match:
+                    candidates.append(match.group(1))
 
             if 'highlight' in node:
                 try:
@@ -443,7 +481,33 @@ class BaiduSceneImageDetector(object):
                 if re.search(r'[0-9a-f]{40}', c):
                     images.append('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c)
 
-        return images
+        return list(set(images))
+
+
+class BaiduNoteImageDetector(object):
+    name = 'baidu-note'
+
+    def __init__(self, spider):
+        self.spider = spider
+
+    @staticmethod
+    def get_images(node):
+        images = []
+        if isinstance(node, dict):
+            candidates = []
+
+            contents = node['node'] if 'node' in node else ''
+
+            for src in re.findall(r'<img\s+[^<>]*src="(.+?)"', contents):
+                match = re.search(r'hiphotos\.baidu\.com/lvpics/pic/item/([0-9a-f]+)\.jpg', src)
+                if match:
+                    candidates.append(match.group(1))
+
+            for c in candidates:
+                if re.search(r'[0-9a-f]{40}', c):
+                    images.append('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c)
+
+        return list(set(images))
 
 
 class UniversalImagePipeline(AizouPipeline):
