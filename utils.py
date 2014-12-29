@@ -1,5 +1,6 @@
 # coding=utf-8
 import ConfigParser
+import hashlib
 import os
 import re
 from math import radians, cos, sin, asin, sqrt
@@ -73,7 +74,16 @@ def mercator2wgs(mx, my):
 
 
 def images_pro(urls):
-    return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
+    if urls:
+        hash_list = [hashlib.md5('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp for tmp in urls).hexdigest()]
+        return [{'url': 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s'} % tmp for tmp in hash_list]
+    else:
+        return None
+        # hash_list = [hashlib.md5('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg').hexdigest() % tmp for tmp in
+        # (urls if urls else []]
+        # return [{'url': 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' %
+        # }]
+
 
 def guess_coords(x, y):
     # 可能是墨卡托
@@ -93,16 +103,17 @@ def guess_coords(x, y):
 
     return rx, ry
 
+
 # //Web墨卡托转经纬度
 # dvec3 CMathEngine::WebMercator2lonLat( dvec3   mercator )
 # {
 # dvec3 lonLat;
-#     double x = mercator.x/20037508.34*180;
-#     double y = mercator.y/20037508.34*180;
-#     y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
-#     lonLat.x = x;
-#     lonLat.y = y;
-#     return lonLat;
+# double x = mercator.x/20037508.34*180;
+# double y = mercator.y/20037508.34*180;
+# y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
+# lonLat.x = x;
+# lonLat.y = y;
+# return lonLat;
 # }
 
 

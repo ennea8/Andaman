@@ -1,5 +1,6 @@
 # coding=utf-8
 import json
+from lxml.html import HtmlElement
 import os
 import random
 import re
@@ -26,7 +27,7 @@ from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
-
+from lxml import etree
 
 __author__ = 'zephyre'
 
@@ -2236,9 +2237,113 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
         super(BaiduNoteProcSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
-        for entry in col.find():
+        abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
+        loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
+        vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
+        for entry in abs_col.find():
+            # TODO 图片处理
             data = {}
             nid = entry['nid']
             data['source.baidu.id'] = nid
             data['authorName'] = entry['uname']
+            data['title'] = entry['title']
+            data['authorAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
+            data['publishTime'] = int(entry['create_time'])
+            data['summary'] = entry['content'].strip()
+            data['viewCnt'] = int(entry['view_count']) if 'view_count' in entry else None
+            data['voteCnt'] = int(entry['recommend_count']) if 'recommend_count' in entry else None
+            data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
+            data['essence'] = True if int(entry['is_praised']) == 1 else False
+            data['lowerDays'] = int(entry['days']) if 'days' in entry else None
+            data['upperDays'] = data['lowerDays']
+            price_cost = entry['price_cost'][0]['buildrange'] if 'price_cost' in entry and entry['price_cost'] else None
+            data['lowerCost'] = int(price_cost[0]) if price_cost else None
+            data['upperCost'] = int(price_cost[1]) if price_cost else None
+            # except IndexError:
+            # log.msg('nid:%s' % nid, level=log.ERROR)
+            covers_list = [tmp['pic_url'] for tmp in entry['album_pic_list']]
+            # data['covers'] = utils.images_pro(covers_list)
+            data['covers'] = [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % i for i in covers_list}]
+            vs_list = entry['vs_list'] if 'vs_list' in entry else []
+            # vs_list去重
+            vs_list = [tmp for tmp in set(vs_list)]
+            locality_list = []
+            viewspot_list = []
+            for tmp_id in vs_list:
+                doc = loc_col.find_one({'source.baidu.id': tmp_id})
+                if doc:
+                    tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
+                                'enName': doc['enName'], 'tag': doc['tags'],
+                                'alias': doc['alias']}
+                    locality_list.append(tmp_data)
+                else:
+                    doc = vs_col.find_one({'source.baidu.id': tmp_id})
+                    if doc:
+                        tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
+                                    'enName': doc['enName'], 'tag': doc['tags'],
+                                    'alias': doc['alias']}
+                        viewspot_list.append(tmp_data)
+                    else:
+                        continue
+            data['viewSpotList'] = viewspot_list if viewspot_list else None
+            data['localityList'] = locality_list if locality_list else None
+            yield Request(url='http://www.baidu.com', callback=self.parse_content, meta={'data': data})
+
+    def parse_content(self, response):
+        tmp_data = response.meta['data']
+        nid = tmp_data['source.baidu.id']
+        note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteFloor', 'mongodb-crawler')
+        contents = []
+        for entry in note_col.find({'nid': nid, 'main_post': True}):
+            tmp = {}
+            note = entry['node']
+            sel = Selector(text=note)
+            note_title = sel.xpath(
+                '//div[@class="col-main"]//div[@class="path-wrapper clearfix"]/span/text()').extract()
+            if note_title:
+                tmp['title'] = note_title[0]
+            else:
+                continue
+            note_content = sel.xpath(
+                '//div[@class="col-main"]//div[@class="floor-content"]//div[@class="html-content"]').extract()
+            if note_content:
+                note_content = note_content[0]
+            else:
+                continue
+            # 去除内部所有的链接
+            root = etree.HTML(note_content.decode('utf-8'))
+            content_root = root.xpath('//div[@class="html-content"]')
+            # content_root[0].attrib.pop('class')
+            if len(content_root[0]):
+                if content_root[0][0].tag == 'span' and content_root[0][0].get('class') == 'notes-floor':
+                    del content_root[0][0]
+            for node in content_root[0].iter():
+                if node.tag == 'a':
+                    href = node.get('href')
+                    if href.find('lvyou.baidu.com'):
+                        etree.strip_attributes(node, 'href')
+            tmp['content'] = etree.tostring(content_root[0])
+            contents.append(tmp)
+
+        tmp_data['contents'] = contents
+        item = BaiduNoteItem()
+        item['data'] = tmp_data
+        yield item
+
+
+class BaiduNoteProcSpiderPipeline(AizouPipeline):
+    spiders = [BaiduNoteProcSpider.name]
+    spiders_uuid = [BaiduNoteProcSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        if not data:
+            return item
+
+        col = self.fetch_db_col('travelnote', 'BaiduNote', 'mongodb-general')
+        col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
+        log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
+        return item
