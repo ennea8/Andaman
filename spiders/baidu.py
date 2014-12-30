@@ -2236,6 +2236,20 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
     def __init__(self, *a, **kw):
         super(BaiduNoteProcSpider, self).__init__(*a, **kw)
 
+    # 遍历树,去除内部跳转链接,抽取图片url
+    def walk_tree(self, root):
+        if not root:
+            return None
+        for node in root.iter():
+            if node.tag == 'a':
+                href = node.get('href')
+                match = re.search(r'lvyou\.baidu\.com', href)
+                if match:
+                    etree.strip_attributes(node, 'href')
+            if node.tag == 'img':
+                pic_src = node.get('src')
+                #TODO 调用外部函数
+
     def start_requests(self):
         abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
         loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
@@ -2259,12 +2273,16 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
             price_cost = entry['price_cost'][0]['buildrange'] if 'price_cost' in entry and entry['price_cost'] else None
             data['lowerCost'] = int(price_cost[0]) if price_cost else None
             data['upperCost'] = int(price_cost[1]) if price_cost else None
+            rating = float(entry['rating']) if 'rating' in entry else None
+            data['rating'] = rating / 100 if rating and (0 <= rating <= 100) else None
             # except IndexError:
             # log.msg('nid:%s' % nid, level=log.ERROR)
             covers_list = [tmp['pic_url'] for tmp in entry['album_pic_list']]
             # data['covers'] = utils.images_pro(covers_list)
             data['covers'] = [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % i for i in covers_list}]
+
             vs_list = entry['vs_list'] if 'vs_list' in entry else []
+
             # vs_list去重
             vs_list = [tmp for tmp in set(vs_list)]
             locality_list = []
