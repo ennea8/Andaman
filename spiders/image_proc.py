@@ -66,17 +66,13 @@ class UniversalImageSpider(AizouCrawlSpider):
         cursor = col.find(query, {'_id': 1})
 
         if 'limit' in self.param:
-            limit = int(self.param['limit'][0])
-        else:
-            limit = None
-        if limit:
-            cursor.limit(limit)
+            cursor.limit(int(self.param['limit'][0]))
 
         if 'skip' in self.param:
-            skip = int(self.param['skip'][0])
-        else:
-            skip = 0
-        cursor.skip(skip)
+            cursor.skip(int(self.param['skip'][0]))
+
+        if 'batch-size' in self.param:
+            cursor.batch_size(int(self.param['batch-size'][0]))
 
         tot = cursor.count(with_limit_and_skip=True)
         self.log('%d documents to process...' % tot, log.INFO)
