@@ -101,12 +101,9 @@ class UniversalImageSpider(AizouCrawlSpider):
             walk_tree(entry)
 
             for image_entry in image_items.values():
-                meta = image_entry['metadata']
-                url = image_entry['url']
-                # 查看是否在数据库中已存在
-                key = hashlib.md5(url).hexdigest()
+                key = image_entry['key']
                 key_old = 'assets/images/%s' % key
-
+                # 查看是否在数据库中已 存在
                 ret = col_im.find_one({'key': {'$in': [re.compile(r'^%s' % key_old), key]}}, {'_id': 1})
                 if ret:
                     continue
@@ -117,8 +114,8 @@ class UniversalImageSpider(AizouCrawlSpider):
                 # 不存在，添加item
                 if not ret:
                     item = ImageProcItem()
-                    item['image'] = {'url': url, 'key': key, 'bucket': 'aizou', 'url_hash': key}
-                    for k, v in meta.items():
+                    item['image'] = {'url': image_entry['src'], 'key': key, 'bucket': 'aizou', 'url_hash': key}
+                    for k, v in image_entry['metadata'].items():
                         item['image'][k] = v
 
                     yield item
@@ -319,54 +316,68 @@ class BaiduSceneImageDetector(object):
         return images
 
 
-class BaiduNoteImageDetector(object):
-    name = 'baidu-note'
+class BaiduImageExtractor(object):
+    def __init__(self):
+        def helper(image_id, src):
+            key = hashlib.md5(src).hexdigest()
+            url = 'http://aizou.qiniudn.com/%s' % key
 
-    def __init__(self, spider):
-        self.spider = spider
-
-    @staticmethod
-    def get_images(node):
-        images = []
+            return {'id': image_id, 'metadata': {}, 'src': src, 'url': url, 'key': key, 'url_hash': key}
 
         def f1(src):
             match = re.search(r'hiphotos\.baidu\.com/lvpics/pic/item/([0-9a-f]{40})\.jpg', src)
             if not match:
                 return None
             c = match.group(1)
-            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+            src = 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c
+            return helper(c, src)
 
         def f2(src):
             match = re.search(r'himg\.bdimg\.com/sys/portrait/item/(\w+)\.jpg', src)
             if not match:
                 return None
-            images.append({'id': match.group(1), 'metadata': {}, 'url': src})
+            return helper(match.group(1), src)
 
         def f3(src):
             match = re.search(r'hiphotos\.baidu\.com/lvpics/abpic/item/([0-9a-f]{40})\.jpg', src)
             if not match:
                 return None
             c = match.group(1)
-            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+            src = 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c
+            return helper(c, src)
 
         def f4(src):
             match = re.search(r'hiphotos\.baidu\.com/lvpics/.+sign=[0-9a-f]+/([0-9a-f]{40})\.jpg', src)
             if not match:
                 return None
             c = match.group(1)
-            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+            src = 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c
+            return helper(c, src)
 
-        extractor = [f1, f2, f3, f4]
+        self.extractor = [f1, f2, f3, f4]
+
+    def retrieve_image(self, src):
+        for func in self.extractor:
+            ret = func(src)
+            if ret:
+                return ret
+
+
+class BaiduNoteImageDetector(BaiduImageExtractor):
+    name = 'baidu-note'
+
+    def __init__(self, spider):
+        BaiduImageExtractor.__init__(self)
+        self.spider = spider
+
+    def get_images(self, node):
+        images = []
 
         if isinstance(node, dict):
             for image_src in re.findall(r'<img\s+[^<>]*src="(.+?)"', node['node'] if 'node' in node else ''):
-                for ext_func in extractor:
-                    image_entry = ext_func(image_src)
-                    if not image_entry:
-                        continue
-                    else:
-                        images.append(image_entry)
-                        break
+                ret = self.retrieve_image(image_src)
+                if ret:
+                    images.append(ret)
 
         return images
 
