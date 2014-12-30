@@ -332,20 +332,45 @@ class BaiduNoteImageDetector(object):
     @staticmethod
     def get_images(node):
         images = []
+
+        def f1(src):
+            match = re.search(r'hiphotos\.baidu\.com/lvpics/pic/item/([0-9a-f]{40})\.jpg', src)
+            if not match:
+                return None
+            c = match.group(1)
+            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+
+        def f2(src):
+            match = re.search(r'himg\.bdimg\.com/sys/portrait/item/(\w+)\.jpg', src)
+            if not match:
+                return None
+            images.append({'id': match.group(1), 'metadata': {}, 'url': src})
+
+        def f3(src):
+            match = re.search(r'hiphotos\.baidu\.com/lvpics/abpic/item/([0-9a-f]{40})\.jpg', src)
+            if not match:
+                return None
+            c = match.group(1)
+            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+
+        def f4(src):
+            match = re.search(r'hiphotos\.baidu\.com/lvpics/.+sign=[0-9a-f]+/([0-9a-f]{40})\.jpg', src)
+            if not match:
+                return None
+            c = match.group(1)
+            return {'id': c, 'metadata': {}, 'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c}
+
+        extractor = [f1, f2, f3, f4]
+
         if isinstance(node, dict):
-            candidates = []
-
-            contents = node['node'] if 'node' in node else ''
-
-            for src in re.findall(r'<img\s+[^<>]*src="(.+?)"', contents):
-                match = re.search(r'hiphotos\.baidu\.com/lvpics/pic/item/([0-9a-f]+)\.jpg', src)
-                if match:
-                    candidates.append(match.group(1))
-
-            for c in candidates:
-                if re.search(r'[0-9a-f]{40}', c):
-                    images.append({'id': c, 'metadata': {},
-                                   'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c})
+            for image_src in re.findall(r'<img\s+[^<>]*src="(.+?)"', node['node'] if 'node' in node else ''):
+                for ext_func in extractor:
+                    image_entry = ext_func(image_src)
+                    if not image_entry:
+                        continue
+                    else:
+                        images.append(image_entry)
+                        break
 
         return images
 
@@ -527,7 +552,7 @@ class UniversalImagePipeline(AizouPipeline):
         else:
             col_name = 'ImageCandidates'
 
-        image_id = img.pop('_id')
+        image_id = img.pop('_id') if '_id' in img else None
 
         col_im = self.fetch_db_col('imagestore', col_name, 'mongodb-general')
         if 'itemIds' in img:
@@ -540,7 +565,8 @@ class UniversalImagePipeline(AizouPipeline):
 
         col_im.update({'$or': [{'key': img['key']}, {'url_hash': img['url_hash']}]}, ops, upsert=True)
 
-        col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-        col_cand.remove({'_id': image_id})
+        if image_id:
+            col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+            col_cand.remove({'_id': image_id})
 
         return item
