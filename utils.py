@@ -85,6 +85,7 @@ def images_pro(urls):
         # }]
 
 
+
 def guess_coords(x, y):
     # 可能是墨卡托
     if abs(x) > 180 or abs(y) > 180:
@@ -109,11 +110,11 @@ def guess_coords(x, y):
 # {
 # dvec3 lonLat;
 # double x = mercator.x/20037508.34*180;
-# double y = mercator.y/20037508.34*180;
-# y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
-# lonLat.x = x;
-# lonLat.y = y;
-# return lonLat;
+#     double y = mercator.y/20037508.34*180;
+#     y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
+#     lonLat.x = x;
+#     lonLat.y = y;
+#     return lonLat;
 # }
 
 

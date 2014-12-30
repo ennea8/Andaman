@@ -23,6 +23,7 @@ from scrapy.utils import spider
 
 import conf
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
+from spiders.image_proc import BaiduImageExtractor
 from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
@@ -2226,7 +2227,7 @@ class BaiduNoteItem(Item):
     data = Field()
 
 
-class BaiduNoteProcSpider(AizouCrawlSpider):
+class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
     """
     百度游记数据的清洗
     """
@@ -2234,28 +2235,101 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
     uuid = 'B05E3272-78B1-5F38-3258-5F6E68433F27'
 
     def __init__(self, *a, **kw):
-        super(BaiduNoteProcSpider, self).__init__(*a, **kw)
+        AizouCrawlSpider.__init__(self, *a, **kw)
+        BaiduImageExtractor.__init__(self)
+
+    def f1(self, sub_node):  # 删除br标签
+        n_parent = sub_node.getparent()
+        for j in range(0, len(n_parent)):
+            if n_parent[j].tag == 'br':
+                del n_parent[j]
+                break
+
+    def f2(self, sub_node):  # 处理标签的所有属性
+        sub_node.attrib.clear()
+
+    def f3(self, sub_node):  # 处理a标签
+        if sub_node.attrib.keys():
+            for attr in sub_node.attrib.keys():
+                if attr == 'href':
+                    href = sub_node.get('href')
+                    match = re.search(r'lvyou\.baidu\.com', href)
+                    if match:
+                        sub_node.attrib.pop('href')
+                    else:
+                        continue
+                elif attr != 'target':
+                    sub_node.attrib.pop(attr)
+
+    def f4(self, sub_node):
+        """
+        处理span标签
+        :param sub_node:
+        """
+        if sub_node.attrib.keys():
+            for attr in sub_node.attrib.keys():
+                if attr == 'class':
+                    if sub_node.attrib[attr] == 'des-l':
+                        sub_node.attrib[attr] = 'notes-photo-desc'
+                    elif sub_node.attrib[attr] == 'scene-r':
+                        sub_node.attrib[attr] = 'notes-photo-loc'
+                    else:
+                        sub_node.attrib.pop(attr)
+                else:
+                    sub_node.attrib.pop(attr)
+
+    def f5(self, sub_node):  # 处理img标签
+        if sub_node.attrib.keys():
+            for attr in sub_node.attrib.keys():
+                if attr == 'src':
+                    # log.msg('wait', level=log.INFO)
+                    ret = self.retrieve_image(sub_node.attrib['src'])
+                    if not ret:
+                        continue
+                    else:
+                        sub_node.attrib['photo-id'] = ret['key']
+                        sub_node.attrib.pop('src')
+
+                elif attr == 'class':
+                    if sub_node.attrib['class'] == 'notes-photo-img':
+                        sub_node.attrib['class'] = 'notes-photo'
+                    else:
+                        sub_node.attrib.pop(attr)
+                else:
+                    sub_node.attrib.pop(attr)
 
     # 遍历树,去除内部跳转链接,抽取图片url
     def walk_tree(self, root):
-        if not root:
+        if not len(root):
             return None
         for node in root.iter():
+
             if node.tag == 'a':
-                href = node.get('href')
-                match = re.search(r'lvyou\.baidu\.com', href)
-                if match:
-                    etree.strip_attributes(node, 'href')
-            if node.tag == 'img':
-                pic_src = node.get('src')
-                #TODO 调用外部函数
+                self.f3(node)
+            elif node.tag == 'img':
+                self.f5(node)
+            elif node.tag == 'span':
+                # 楼层单独处理
+                if 'class' in node.attrib.keys() and node.attrib['class'] == 'notes-floor':  # 判断是楼层
+                    parent = node.getparent()
+                    for i in range(0, len(parent)):
+                        if parent[i].tag == 'span' and parent[i].attrib['class'] == 'notes-floor':
+                            del parent[i]
+                            break
+                else:
+                    self.f4(node)
+            elif node.tag == 'p' or node.tag == 'div':
+                self.f2(node)
+            elif node.tag == 'br':
+                self.f1(node)
+
+        return root
 
     def start_requests(self):
         abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
         loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
         vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
         for entry in abs_col.find():
-            # TODO 图片处理
             data = {}
             nid = entry['nid']
             data['source.baidu.id'] = nid
@@ -2275,14 +2349,20 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
             data['upperCost'] = int(price_cost[1]) if price_cost else None
             rating = float(entry['rating']) if 'rating' in entry else None
             data['rating'] = rating / 100 if rating and (0 <= rating <= 100) else None
-            # except IndexError:
-            # log.msg('nid:%s' % nid, level=log.ERROR)
-            covers_list = [tmp['pic_url'] for tmp in entry['album_pic_list']]
-            # data['covers'] = utils.images_pro(covers_list)
-            data['covers'] = [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % i for i in covers_list}]
+            # cover TODO cover_list
+            covers_list = ['http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp['pic_url']
+                           for tmp in entry['album_pic_list']]
+            tmp_cover = []
+            for tmp in covers_list:
+                ret = self.retrieve_image(tmp)
+                if ret:
+                    cover_data = {'url': ret['url']}
+                else:
+                    cover_data = {'url': ret}
+                tmp_cover.append(cover_data)
+            data['covers'] = tmp_cover
 
             vs_list = entry['vs_list'] if 'vs_list' in entry else []
-
             # vs_list去重
             vs_list = [tmp for tmp in set(vs_list)]
             locality_list = []
@@ -2332,15 +2412,9 @@ class BaiduNoteProcSpider(AizouCrawlSpider):
             root = etree.HTML(note_content.decode('utf-8'))
             content_root = root.xpath('//div[@class="html-content"]')
             # content_root[0].attrib.pop('class')
-            if len(content_root[0]):
-                if content_root[0][0].tag == 'span' and content_root[0][0].get('class') == 'notes-floor':
-                    del content_root[0][0]
-            for node in content_root[0].iter():
-                if node.tag == 'a':
-                    href = node.get('href')
-                    if href.find('lvyou.baidu.com'):
-                        etree.strip_attributes(node, 'href')
-            tmp['content'] = etree.tostring(content_root[0], encoding='utf-8').decode('utf-8')
+            tmp_root = content_root[0]
+            proc_root = self.walk_tree(tmp_root)
+            tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
             contents.append(tmp)
 
         tmp_data['contents'] = contents
