@@ -5,10 +5,13 @@ import json
 import re
 import urlparse
 
+from datetime import timedelta
+
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
 from spiders.baidu_mixin import BaiduSugMixin
+from spiders.image_proc import MfwImageExtractor
 import utils
 
 
@@ -17,6 +20,7 @@ __author__ = 'zephyre'
 
 class MafengwoItem(Item):
     data = Field()
+    type = Field()
 
 
 class MafengwoSpider(AizouCrawlSpider):
@@ -558,6 +562,141 @@ class MafengwoProcItem(Item):
     data = Field()
     col_name = Field()
     db_name = Field()
+
+
+class PoiCommentProcessor(AizouCrawlSpider, MfwImageExtractor):
+    name = 'mafengwo-poi-comment'
+    uuid = 'a759ffba-4fd1-4ca7-a193-b6def487ff74'
+
+    def __init__(self, *args, **kwargs):
+        AizouCrawlSpider.__init__(self, *args, **kwargs)
+        MfwImageExtractor.__init__(self)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com')
+
+    def parse(self, response):
+        col = self.fetch_db_col('raw_mfw', 'MafengwoComment', 'mongodb-crawler')
+
+        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        cursor = col.find(query)
+
+        if 'limit' in self.param:
+            cursor.limit(int(self.param['limit'][0]))
+
+        if 'skip' in self.param:
+            cursor.skip(int(self.param['skip'][0]))
+
+        tot = cursor.count(with_limit_and_skip=True)
+        self.log('%d documents to process...' % tot, log.INFO)
+
+        col_vs = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
+        col_dining = self.fetch_db_col('poi', 'Restaurant', 'mongodb-general')
+        col_shopping = self.fetch_db_col('poi', 'Shopping', 'mongodb-general')
+        poi_dbs = {'vs': col_vs, 'dining': col_dining, 'shopping': col_shopping}
+
+        def fetch_poi_item(mfw_id, poi_type):
+            col_poi = poi_dbs[poi_type]
+            tmp = col_poi.find_one({'source.mafengwo.id': mfw_id}, {'_id': 1})
+            if tmp:
+                return {'type': poi_type, 'item_id': tmp['_id']}
+            else:
+                return None
+
+        for entry in cursor:
+            ret = None
+            for v in ['vs', 'dining', 'shopping']:
+                ret = fetch_poi_item(entry['poi_id'], v)
+                if ret:
+                    break
+
+            if not ret:
+                continue
+
+            for item in self.parse_contents(entry['contents']):
+                if item['type'] == 'image':
+                    yield item
+                else:
+                    data = item['data']
+                    data['source'] = {'mafengwo': {'id': entry['comment_id']}}
+                    data['type'] = ret['type']
+                    data['itemId'] = ret['item_id']
+                    yield item
+
+    def parse_contents(self, node):
+        sel = Selector(text=node)
+        avatar = sel.xpath('//span[@class="user-avatar"]/a[@href]/img[@src]/@src').extract()[0]
+        ret = self.retrieve_image(avatar)
+
+        if ret:
+            # 检查是否已经存在于数据库中
+            col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+            col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+
+            img = col_im.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+            if not img:
+                img = col_cand.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+            if not img:
+                # 添加到待抓取列表中
+                item = MafengwoItem()
+                item['data'] = {'key': ret['key'], 'url': ret['src'], 'url_hash': ret['url_hash']}
+                item['type'] = 'image'
+                yield item
+
+            avatar = ret['key']
+        else:
+            avatar = ''
+
+        tmp = sel.xpath('//div[@class="info"]/a[@class="user-name"]/text()').extract()
+        user = tmp[0] if tmp else ''
+
+        tmp = sel.xpath('//span[@class="useful-num"]/text()')
+        try:
+            vote_cnt = int(tmp.extract()[0])
+        except (ValueError, IndexError):
+            vote_cnt = 0
+
+        from lxml import etree
+        from datetime import datetime
+
+        paras = []
+        for content in sel.xpath('//div[@class="c-content"]/p').extract():
+            tmp = ''.join(etree.fromstring(content).itertext()).strip()
+            if tmp:
+                paras.append(tmp)
+        contents = '\n\n'.join(paras)
+
+        time_str = sel.xpath('//span[@class="time"]/text()').extract()[0]
+        ts = long((datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S') - timedelta(seconds=8 * 3600)
+                   - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
+
+        item = MafengwoItem()
+        item['data'] = {'authorName': user, 'authorAvatar': avatar, 'publishTime': ts, 'voteCnt': vote_cnt,
+                        'contents': contents}
+        item['type'] = 'comment'
+        yield item
+
+
+class PoiCommentPipeline(AizouPipeline):
+    spiders = [PoiCommentProcessor.name]
+    spiders_uuid = [PoiCommentProcessor.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+
+        if item['type'] == 'comment':
+            col = spider.fetch_db_col('misc', 'Comment', 'mongodb-general')
+            col.update({'source.mafengwo.id': data['source']['mafengwo']['id']}, {'$set': data}, upsert=True)
+        elif item['type'] == 'image':
+            col = spider.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+            col.update({'key': data['key']}, {'$set': data}, upsert=True)
+        else:
+            assert False, 'Invalid type: %s' % item['type']
+
+        return item
 
 
 class MafengwoProcSpider(AizouCrawlSpider, BaiduSugMixin):

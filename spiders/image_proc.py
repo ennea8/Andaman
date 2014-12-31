@@ -20,8 +20,7 @@ class ImageProcItem(Item):
 
 class UniversalImageSpider(AizouCrawlSpider):
     """
-    将images里面的内容，转换成album
-    调用参数：--col geo:Locality
+    通过调用detector，将collection中的图像找出来，并放在ImageCandidates中。
     """
     name = 'univ-image'
     uuid = '81122b9c-d445-4f89-939f-e3a51c30512f'
@@ -314,6 +313,33 @@ class BaiduSceneImageDetector(object):
                                    'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % c})
 
         return images
+
+
+class MfwImageExtractor(object):
+    def __init__(self):
+        def helper(image_id, src):
+            key = hashlib.md5(src).hexdigest()
+            url = 'http://aizou.qiniudn.com/%s' % key
+
+            return {'id': image_id, 'metadata': {}, 'src': src, 'url': url, 'key': key, 'url_hash': key}
+
+        def f1(src):
+            pattern = r'([^\./]+)\.\w+\.[\w\d]+\.(jpeg|bmp|png)$'
+            match = re.search(pattern, src)
+            if not match:
+                return None
+            c = match.group(1)
+            ext = match.group(2)
+            src = re.sub(pattern, '%s.%s' % (c, ext), src)
+            return helper(c, src)
+
+        self.extractor = [f1]
+
+    def retrieve_image(self, src):
+        for func in self.extractor:
+            ret = func(src)
+            if ret:
+                return ret
 
 
 class BaiduImageExtractor(object):
