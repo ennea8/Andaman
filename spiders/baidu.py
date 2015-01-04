@@ -2335,21 +2335,29 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             data['source.baidu.id'] = nid
             data['authorName'] = entry['uname']
             data['title'] = entry['title']
-            data['authorAvatar'] = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
-            data['publishTime'] = int(entry['create_time'])
-            data['summary'] = entry['content'].strip()
+            authoravatar = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
+            ret = self.retrieve_image(authoravatar)
+            data['authorAvatar'] = ret['key'] if ret else None
+            data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
+            data['summary'] = entry['content'].strip() if 'content' in entry else None
             data['viewCnt'] = int(entry['view_count']) if 'view_count' in entry else None
             data['voteCnt'] = int(entry['recommend_count']) if 'recommend_count' in entry else None
+            data['commentCnt'] = int(entry['common_posts_count']) if 'common_posts_count' in entry else None
             data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
             data['essence'] = True if int(entry['is_praised']) == 1 else False
+            months = []
+            month = int(entry['month']) if 'month' in entry else None
+            if month is not None:
+                months.append(month)
+            data['months'] = months
             data['lowerDays'] = int(entry['days']) if 'days' in entry else None
             data['upperDays'] = data['lowerDays']
             price_cost = entry['price_cost'][0]['buildrange'] if 'price_cost' in entry and entry['price_cost'] else None
             data['lowerCost'] = int(price_cost[0]) if price_cost else None
             data['upperCost'] = int(price_cost[1]) if price_cost else None
-            rating = float(entry['rating']) if 'rating' in entry else None
-            data['rating'] = rating / 100 if rating and (0 <= rating <= 100) else None
-            # cover TODO cover_list
+            rating = float(entry['praise']) if 'praise' in entry else None
+            data['rating'] = rating / 100.0 if rating and (0 <= rating <= 100) else None
+            # cover
             covers_list = ['http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp['pic_url']
                            for tmp in entry['album_pic_list']]
             tmp_cover = []
