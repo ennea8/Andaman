@@ -5,13 +5,12 @@ import json
 from lxml import etree
 import re
 import urlparse
-
-from datetime import timedelta
+import time
+import datetime
 
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
-from spiders.baidu import BaiduNoteProcSpider
 from spiders.baidu_mixin import BaiduSugMixin
 from spiders.image_proc import MfwImageExtractor
 import utils
@@ -669,7 +668,7 @@ class PoiCommentProcessor(AizouCrawlSpider, MfwImageExtractor):
         contents = '\n\n'.join(paras)
 
         time_str = sel.xpath('//span[@class="time"]/text()').extract()[0]
-        ts = long((datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S') - timedelta(seconds=8 * 3600)
+        ts = long((datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S') - datetime.timedelta(seconds=8 * 3600)
                    - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
 
         item = MafengwoItem()
@@ -1617,9 +1616,10 @@ class MafengwoNotePipeline(AizouPipeline):
 
 class MafengwoNoteItem(Item):
     data = Field()
+    type = Field()
 
 
-class MafengwoNoteProc(AizouCrawlSpider):
+class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
     """
     蚂蜂窝游记的清洗
     """
@@ -1628,6 +1628,20 @@ class MafengwoNoteProc(AizouCrawlSpider):
 
     def __init__(self, *a, **kw):
         AizouCrawlSpider.__init__(self, *a, **kw)
+        MfwImageExtractor.__init__(self)
+
+    def image_proc(self, ret):
+        # 检查是否已经存在于数据库中
+        data = {}
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+        col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        img = col_im.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+        if not img:
+            img = col_cand.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+        if not img:
+            # 添加到待抓取列表中
+            data = {'key': ret['key'], 'url': ret['src'], 'url_hash': ret['url_hash']}
+        return data
 
     def f1(self, sub_node):  # 删除br标签
         n_parent = sub_node.getparent()
@@ -1642,7 +1656,12 @@ class MafengwoNoteProc(AizouCrawlSpider):
     def f3(self, sub_node):  # 处理a标签
         if sub_node.attrib.keys():
             for attr in sub_node.attrib.keys():
-                if attr != 'target':
+                if attr == 'href':
+                    url = sub_node.attrib[attr]
+                    ret = urlparse.urlparse(url)
+                    if ret.netloc == '' or ret.netloc == 'www.mafengwo.cn':
+                        sub_node.attrib.pop(attr)
+                elif attr != 'target':
                     sub_node.attrib.pop(attr)
 
     def f4(self, sub_node):
@@ -1654,17 +1673,24 @@ class MafengwoNoteProc(AizouCrawlSpider):
 
     def f5(self, sub_node):  # 处理img标签
         if sub_node.attrib.keys():
+            item = MafengwoNoteItem()
             for attr in sub_node.attrib.keys():
                 if attr == 'src':
                     # log.msg('wait', level=log.INFO)
                     ret = self.retrieve_image(sub_node.attrib['src'])
                     if not ret:
+                        sub_node.attrib.pop(attr)
                         continue
                     else:
+                        image_data = self.image_proc(ret)
                         sub_node.attrib['photo-id'] = ret['key']
                         sub_node.attrib.pop('src')
+                        if image_data:
+                            item['data'] = image_data
+                            item['type'] = 'image'
                 else:
                     sub_node.attrib.pop(attr)
+        return item
 
     # html树的遍历
     def walk_tree(self, root):
@@ -1675,55 +1701,59 @@ class MafengwoNoteProc(AizouCrawlSpider):
             if node.tag == 'a':
                 self.f3(node)
             elif node.tag == 'img':
-                self.f5(node)
+                item = self.f5(node)
             elif node.tag == 'span':
                 self.f4(node)
             elif node.tag == 'p' or node.tag == 'div':
-                if node.tag == 'div' and node.attrib['class'] == 'summary':
-                    parent = node.getparent()
-                    for i in range(0, len(parent)):
-                        if parent[i].tag == 'div' and parent[i].attrib['class'] == 'summary':
-                            del parent[i]
-                            break
-                else:
-                    self.f2(node)
+                self.f2(node)
             elif node.tag == 'br':
                 self.f1(node)
-
-        return root
+            else:
+                self.f2(node)
+        return {'root': root, 'item': item}
 
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com', callback=self.parse_content)
 
-    def parse_content(self):
-        abs_col = self.fetch_db_col('raw_mfw', 'MafengwoNote', 'mongodb-crawler')
-        for entry in abs_col.find({'main_post': True}):
+
+    def parse_content(self, response):
+        note_col = self.fetch_db_col('raw_mfw', 'MafengwoNote', 'mongodb-crawler')
+        for entry in note_col.find({'main_post': True}):
             data = {}
             nid = entry['note_id']
-            data['source.baidu.id'] = nid
+            data['source.mafengwo.id'] = nid
             data['authorName'] = entry['author_name']
             data['title'] = entry['title'] if 'title' in entry else None
-            # todo 所有的图像处理
-            data['authorAvatar'] = entry['author_avatar']
-            # todo 发表时间
-            data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
-            # todo 摘要
-            data['summary'] = entry['content'].strip() if 'content' in entry else None
+            author_avatar = entry['author_avatar'] if 'author_avatar' in entry else None
+            ret = self.retrieve_image(author_avatar)
+            if ret:
+                image_data = self.image_proc(ret)
+                if image_data:
+                    item = MafengwoNoteItem()
+                    item['data'] = image_data
+                    item['type'] = 'image'
+                    yield item
+                data['authorAvatar'] = ret['key']
             data['viewCnt'] = int(entry['view_cnt']) if 'view_cnt' in entry else None
             data['voteCnt'] = int(entry['vote_cnt']) if 'vote_cnt' in entry else None
             data['commentCnt'] = int(entry['comment_cnt']) if 'comment_cnt' in entry else None
-            # todo 旅行出发时间
-            data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
-            # todo 是否为优质贴
-            data['essence'] = True if int(entry['is_praised']) == 1 else False
             data['shareCnt'] = entry['share_cnt'] if 'share_cnt' in entry else None
             data['authorId'] = entry['author_id'] if 'author_id' in entry else None
             data['favorCnt'] = entry['favor_cnt'] if 'favor_cnt' in entry else None
             cover = entry['cover'] if 'cover' in entry else None
-            # if cover:
-            # todo 游记图片的处理
-            data['cover'] = cover
+            if cover:
+                ret = self.retrieve_image(cover)
+                if ret:
+                    image_data = self.image_proc(ret)
+                    if image_data:
+                        item = MafengwoNoteItem()
+                        item['data'] = image_data
+                        item['type'] = 'image'
+                        yield item
+                    data['cover'] = ret['key']
+                else:
+                    data['cover'] = None
             note_content = entry['contents'] if 'contents' in entry else None
             contents = []
             if note_content:
@@ -1734,7 +1764,9 @@ class MafengwoNoteProc(AizouCrawlSpider):
                     '//div[@class="post_item"]//span[@class="date"]/text()').extract()
                 if publish_time:
                     publish_time = publish_time[0]
-                data['publishTime'] = publish_time
+                data['publishTime'] = long(
+                    (datetime.strptime(publish_time, '%Y-%m-%d %H:%M:%S') - datetime.timedelta(seconds=8 * 3600)
+                     - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
                 note_content = sel.xpath(
                     '//div[@class="post_item"]//div[@id="pnl_contentinfo"]').extract()
                 if note_content:
@@ -1742,17 +1774,54 @@ class MafengwoNoteProc(AizouCrawlSpider):
                 else:
                     continue
                 # 去除内部所有的链接
-                tmp['title'] = data['title']
+                tmp['title'] = ''
                 root = etree.HTML(note_content.decode('utf-8'))
                 content_root = root.xpath('//div[@id="pnl_contentinfo"]')
-                # content_root[0].attrib.pop('class')
                 tmp_root = content_root[0]
-                proc_root = self.walk_tree(tmp_root)
+                for i in range(0, len(tmp_root)):
+                    if 'class' in tmp_root[i].attrib.keys() and tmp_root[i].attrib['class'] == 'summary':
+                        parent = tmp_root[i].getparent()
+                        for j in range(0, len(parent)):
+                            if parent[j].tag == 'div' and parent[j].attrib['class'] == 'summary':
+                                del parent[j]
+                                break
+                        break
+                result = self.walk_tree(tmp_root)
+                tmp_item = result['item']
+                if tmp_item:
+                    yield tmp_item
+                proc_root = result['root']
                 tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
                 contents.append(tmp)
 
-        data['contents'] = contents
-        item = MafengwoNoteItem()
-        item['data'] = data
-        yield item
+            data['contents'] = contents
+            item = MafengwoNoteItem()
+            item['data'] = data
+            item['type'] = 'note'
+            yield item
+
+
+class MafengwoNoteProcPipeline(AizouPipeline):
+    spiders = [MafengwoNoteProc.name]
+    spiders_uuid = [MafengwoNoteProc.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        type = item['type']
+        if not data:
+            return item
+
+        if type == 'note':
+            col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
+            col.update({'source.baidu.id': data['source.mafengwo.id']}, {'$set': data}, upsert=True)
+            log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
+        else:
+            col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+            log.msg('image', level=log.INFO)
+            col.update({'key': data['key']}, {'$set': data}, upsert=True)
+        return item
+
 

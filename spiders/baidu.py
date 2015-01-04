@@ -1,6 +1,5 @@
 # coding=utf-8
 import json
-from lxml.html import HtmlElement
 import os
 import random
 import re
@@ -10,14 +9,15 @@ import urllib2
 import socket
 import time
 import math
-
 import MySQLdb
 from MySQLdb.cursors import DictCursor
+import datetime
+from lxml import etree
+
 from bson import ObjectId
 import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
-import datetime
 import pysolr
 from scrapy.utils import spider
 
@@ -28,7 +28,7 @@ from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
-from lxml import etree
+
 
 __author__ = 'zephyre'
 
@@ -2225,18 +2225,32 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
 
 class BaiduNoteItem(Item):
     data = Field()
+    type = Field()
 
 
 class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
     """
     百度游记数据的清洗
     """
-    name = 'note_proc'
+    name = 'baidu_note_proc'
     uuid = 'B05E3272-78B1-5F38-3258-5F6E68433F27'
 
     def __init__(self, *a, **kw):
         AizouCrawlSpider.__init__(self, *a, **kw)
         BaiduImageExtractor.__init__(self)
+
+    def image_proc(self, ret):
+        # 检查是否已经存在于数据库中
+        data = {}
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
+        col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        img = col_im.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+        if not img:
+            img = col_cand.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
+        if not img:
+            # 添加到待抓取列表中
+            data = {'key': ret['key'], 'url': ret['src'], 'url_hash': ret['url_hash']}
+        return data
 
     def f1(self, sub_node):  # 删除br标签
         n_parent = sub_node.getparent()
@@ -2279,6 +2293,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                     sub_node.attrib.pop(attr)
 
     def f5(self, sub_node):  # 处理img标签
+        item = BaiduNoteItem()
         if sub_node.attrib.keys():
             for attr in sub_node.attrib.keys():
                 if attr == 'src':
@@ -2287,6 +2302,10 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                     if not ret:
                         continue
                     else:
+                        image_data = self.image_proc(ret)
+                        if image_data:
+                            item['data'] = image_data
+                            item['type'] = 'image'
                         sub_node.attrib['photo-id'] = ret['key']
                         sub_node.attrib.pop('src')
 
@@ -2297,6 +2316,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                         sub_node.attrib.pop(attr)
                 else:
                     sub_node.attrib.pop(attr)
+        return item
 
     # 遍历树,去除内部跳转链接,抽取图片url
     def walk_tree(self, root):
@@ -2307,7 +2327,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             if node.tag == 'a':
                 self.f3(node)
             elif node.tag == 'img':
-                self.f5(node)
+                item = self.f5(node)
             elif node.tag == 'span':
                 # 楼层单独处理
                 if 'class' in node.attrib.keys() and node.attrib['class'] == 'notes-floor':  # 判断是楼层
@@ -2323,7 +2343,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             elif node.tag == 'br':
                 self.f1(node)
 
-        return root
+        return {'root': root, 'item': item}
 
     def start_requests(self):
         abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
@@ -2337,7 +2357,16 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             data['title'] = entry['title']
             authoravatar = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
             ret = self.retrieve_image(authoravatar)
-            data['authorAvatar'] = ret['key'] if ret else None
+            if ret:
+                image_data = self.image_proc(ret)
+                if image_data:
+                    item = BaiduNoteItem()
+                    item['data'] = image_data
+                    item['type'] = 'image'
+                    yield item
+                data['authorAvatar'] = ret['key']
+            else:
+                data['authorAvatar'] = None
             data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
             data['summary'] = entry['content'].strip() if 'content' in entry else None
             data['viewCnt'] = int(entry['view_count']) if 'view_count' in entry else None
@@ -2365,6 +2394,12 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                 ret = self.retrieve_image(tmp)
                 if ret:
                     cover_data = {'key': ret['key']}
+                    image_data = self.image_proc(ret)
+                    if image_data:
+                        item = BaiduNoteItem()
+                        item['data'] = image_data
+                        item['type'] = 'image'
+                        yield item
                 else:
                     cover_data = {'key': ret}
                 tmp_cover.append(cover_data)
@@ -2404,16 +2439,16 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
         # tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
         # def func(content):
         # selector = Selector(text=content)
-        #     tmp_create_time = selector.xpath(
-        #         '//div[@class="grid-s5m0 position pt20"]//p[@class="post-author"]//span[@class="secondary"]
+        # tmp_create_time = selector.xpath(
+        # '//div[@class="grid-s5m0 position pt20"]//p[@class="post-author"]//span[@class="secondary"]
         # /text()').extract()
-        #     if tmp_create_time:
-        #         create_time = tmp_create_time[0]
-        #     else:
-        #         create_time = None
-        #         return create_time
-        #     if create_time:
-        #         match = re.search(r'[\d]+-[\d]+-[\d]+[ ]+[\d]+:[\d]+', create_time)
+        # if tmp_create_time:
+        # create_time = tmp_create_time[0]
+        # else:
+        # create_time = None
+        # return create_time
+        # if create_time:
+        # match = re.search(r'[\d]+-[\d]+-[\d]+[ ]+[\d]+:[\d]+', create_time)
         #         if match:
         #             create_time = match.group()
         #             create_time = time.mktime(time.strptime(create_time, '%Y-%m-%d %H:%M'))
@@ -2443,7 +2478,11 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             content_root = root.xpath('//div[@class="html-content"]')
             # content_root[0].attrib.pop('class')
             tmp_root = content_root[0]
-            proc_root = self.walk_tree(tmp_root)
+            result = self.walk_tree(tmp_root)
+            proc_root = result['root']
+            tmp_item = result['item']
+            if tmp_item:
+                yield tmp_item
             try:
                 tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
             except TypeError, e:
@@ -2455,6 +2494,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
         tmp_data['contents'] = contents
         item = BaiduNoteItem()
         item['data'] = tmp_data
+        item['type'] = 'note'
         yield item
 
 
@@ -2467,10 +2507,16 @@ class BaiduNoteProcSpiderPipeline(AizouPipeline):
             return item
 
         data = item['data']
+        type = item['type']
         if not data:
             return item
 
-        col = self.fetch_db_col('travelnote', 'BaiduNote', 'mongodb-general')
-        col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
-        # log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
+        if type == 'note':
+            col = self.fetch_db_col('travelnote', 'BaiduNote', 'mongodb-general')
+            col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
+            log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
+        else:
+            col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+            log.msg('image', level=log.INFO)
+            col.update({'key': data['key']}, {'$set': data}, upsert=True)
         return item
