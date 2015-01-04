@@ -2364,9 +2364,9 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             for tmp in covers_list:
                 ret = self.retrieve_image(tmp)
                 if ret:
-                    cover_data = {'url': ret['url']}
+                    cover_data = {'key': ret['key']}
                 else:
-                    cover_data = {'url': ret}
+                    cover_data = {'key': ret}
                 tmp_cover.append(cover_data)
             data['covers'] = tmp_cover
 
@@ -2400,6 +2400,28 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
         nid = tmp_data['source.baidu.id']
         note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteFloor', 'mongodb-crawler')
         contents = []
+
+        # tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
+        # def func(content):
+        # selector = Selector(text=content)
+        #     tmp_create_time = selector.xpath(
+        #         '//div[@class="grid-s5m0 position pt20"]//p[@class="post-author"]//span[@class="secondary"]
+        # /text()').extract()
+        #     if tmp_create_time:
+        #         create_time = tmp_create_time[0]
+        #     else:
+        #         create_time = None
+        #         return create_time
+        #     if create_time:
+        #         match = re.search(r'[\d]+-[\d]+-[\d]+[ ]+[\d]+:[\d]+', create_time)
+        #         if match:
+        #             create_time = match.group()
+        #             create_time = time.mktime(time.strptime(create_time, '%Y-%m-%d %H:%M'))
+        #             return create_time
+        #         else:
+        #             return None
+        # tmp_note_list = sorted(tmp_note_list, key=lambda tmp_note: func(tmp_note['node']))
+
         for entry in note_col.find({'nid': nid, 'main_post': True}):
             tmp = {}
             note = entry['node']
@@ -2422,7 +2444,12 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             # content_root[0].attrib.pop('class')
             tmp_root = content_root[0]
             proc_root = self.walk_tree(tmp_root)
-            tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+            try:
+                tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+            except TypeError, e:
+                log.msg(e.message, level=log.INFO)
+                log.msg('nid:%s' % nid, level=log.INFO)
+                continue
             contents.append(tmp)
 
         tmp_data['contents'] = contents
@@ -2445,5 +2472,5 @@ class BaiduNoteProcSpiderPipeline(AizouPipeline):
 
         col = self.fetch_db_col('travelnote', 'BaiduNote', 'mongodb-general')
         col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
-        log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
+        # log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
         return item

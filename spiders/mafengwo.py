@@ -2,12 +2,14 @@
 import copy
 import hashlib
 import json
+from lxml import etree
 import re
 import urlparse
 
 from scrapy import Item, Request, Field, Selector, log
 
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
+from spiders.baidu import BaiduNoteProcSpider
 from spiders.baidu_mixin import BaiduSugMixin
 import utils
 
@@ -1472,3 +1474,146 @@ class MafengwoNotePipeline(AizouPipeline):
         col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
 
         return item
+
+
+class MafengwoNoteItem(Item):
+    data = Field()
+
+
+class MafengwoNoteProc(AizouCrawlSpider):
+    """
+    蚂蜂窝游记的清洗
+    """
+    name = 'mfw_note_proc'
+    uuid = 'CE274DAA-3977-2BFF-90F1-0AB34B370551'
+
+    def __init__(self, *a, **kw):
+        AizouCrawlSpider.__init__(self, *a, **kw)
+
+    def f1(self, sub_node):  # 删除br标签
+        n_parent = sub_node.getparent()
+        for j in range(0, len(n_parent)):
+            if n_parent[j].tag == 'br':
+                del n_parent[j]
+                break
+
+    def f2(self, sub_node):  # 处理标签的所有属性
+        sub_node.attrib.clear()
+
+    def f3(self, sub_node):  # 处理a标签
+        if sub_node.attrib.keys():
+            for attr in sub_node.attrib.keys():
+                if attr != 'target':
+                    sub_node.attrib.pop(attr)
+
+    def f4(self, sub_node):
+        """
+        处理span标签
+        :param sub_node:
+        """
+        sub_node.attrib.clear()
+
+    def f5(self, sub_node):  # 处理img标签
+        if sub_node.attrib.keys():
+            for attr in sub_node.attrib.keys():
+                if attr == 'src':
+                    # log.msg('wait', level=log.INFO)
+                    ret = self.retrieve_image(sub_node.attrib['src'])
+                    if not ret:
+                        continue
+                    else:
+                        sub_node.attrib['photo-id'] = ret['key']
+                        sub_node.attrib.pop('src')
+                else:
+                    sub_node.attrib.pop(attr)
+
+    # html树的遍历
+    def walk_tree(self, root):
+        if not len(root):
+            return None
+        for node in root.iter():
+
+            if node.tag == 'a':
+                self.f3(node)
+            elif node.tag == 'img':
+                self.f5(node)
+            elif node.tag == 'span':
+                self.f4(node)
+            elif node.tag == 'p' or node.tag == 'div':
+                if node.tag == 'div' and node.attrib['class'] == 'summary':
+                    parent = node.getparent()
+                    for i in range(0, len(parent)):
+                        if parent[i].tag == 'div' and parent[i].attrib['class'] == 'summary':
+                            del parent[i]
+                            break
+                else:
+                    self.f2(node)
+            elif node.tag == 'br':
+                self.f1(node)
+
+        return root
+
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse_content)
+
+    def parse_content(self):
+        abs_col = self.fetch_db_col('raw_mfw', 'MafengwoNote', 'mongodb-crawler')
+        for entry in abs_col.find({'main_post': True}):
+            data = {}
+            nid = entry['note_id']
+            data['source.baidu.id'] = nid
+            data['authorName'] = entry['author_name']
+            data['title'] = entry['title'] if 'title' in entry else None
+            # todo 所有的图像处理
+            data['authorAvatar'] = entry['author_avatar']
+            # todo 发表时间
+            data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
+            # todo 摘要
+            data['summary'] = entry['content'].strip() if 'content' in entry else None
+            data['viewCnt'] = int(entry['view_cnt']) if 'view_cnt' in entry else None
+            data['voteCnt'] = int(entry['vote_cnt']) if 'vote_cnt' in entry else None
+            data['commentCnt'] = int(entry['comment_cnt']) if 'comment_cnt' in entry else None
+            # todo 旅行出发时间
+            data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
+            # todo 是否为优质贴
+            data['essence'] = True if int(entry['is_praised']) == 1 else False
+            data['shareCnt'] = entry['share_cnt'] if 'share_cnt' in entry else None
+            data['authorId'] = entry['author_id'] if 'author_id' in entry else None
+            data['favorCnt'] = entry['favor_cnt'] if 'favor_cnt' in entry else None
+            cover = entry['cover'] if 'cover' in entry else None
+            # if cover:
+            # todo 游记图片的处理
+            data['cover'] = cover
+            note_content = entry['contents'] if 'contents' in entry else None
+            contents = []
+            if note_content:
+                tmp = {}
+                sel = Selector(text=note_content)
+                # 发表时间
+                publish_time = sel.xpath(
+                    '//div[@class="post_item"]//span[@class="date"]/text()').extract()
+                if publish_time:
+                    publish_time = publish_time[0]
+                data['publishTime'] = publish_time
+                note_content = sel.xpath(
+                    '//div[@class="post_item"]//div[@id="pnl_contentinfo"]').extract()
+                if note_content:
+                    note_content = note_content[0]
+                else:
+                    continue
+                # 去除内部所有的链接
+                tmp['title'] = data['title']
+                root = etree.HTML(note_content.decode('utf-8'))
+                content_root = root.xpath('//div[@id="pnl_contentinfo"]')
+                # content_root[0].attrib.pop('class')
+                tmp_root = content_root[0]
+                proc_root = self.walk_tree(tmp_root)
+                tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+                contents.append(tmp)
+
+        data['contents'] = contents
+        item = MafengwoNoteItem()
+        item['data'] = data
+        yield item
+
