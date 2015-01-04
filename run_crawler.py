@@ -5,6 +5,7 @@ import re
 import sys
 import imp
 from time import time
+import traceback
 
 import datetime
 import scrapy
@@ -231,7 +232,13 @@ def main():
             s.pipeline_list = s.crawler.engine.scraper.itemproc.middlewares
 
             for ret in s.start_requests():
-                request_proc(ret, s)
+                try:
+                    request_proc(ret, s)
+                except Exception:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    s.log('Error while processing: %s' % ret)
+                    s.log(''.join(lines), log.ERROR)
         else:
             reactor.run()  # the script will block here until the spider_closed signal was sent
     else:
