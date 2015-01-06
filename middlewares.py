@@ -145,8 +145,8 @@ class ProxySwitchMiddleware(object):
             scheme = entry['scheme']
             port = entry['port']
             proxy = '%s://%s:%d' % (scheme, host, port)
-            if proxy not in self.disabled_proxies:
-                proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
+            # if proxy not in self.disabled_proxies:
+            proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
         return proxy_list
 
     def __init__(self, verifier, latency, recently, count):

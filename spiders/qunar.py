@@ -55,13 +55,19 @@ class QunarSpider(AizouCrawlSpider):
             targets = [{'id': loc_id, 'pinyin': pinyin, 'zh_name': name}]
             tmpl = urljoin(response.url, href) + '-meishi-3-1-%d'
             url = tmpl % 1
-            yield Request(url=url, callback=self.parse_dining, meta={'tmpl': tmpl, 'page': 1,
-                                                                     'data': {'targets': targets}})
+            yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'dining',
+                                                                       'data': {'targets': copy.deepcopy(targets)}})
 
-    def parse_dining(self, response):
+            tmpl = urljoin(response.url, href) + '-gouwu-3-1-%d'
+            url = tmpl % 1
+            yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'shopping',
+                                                                       'data': {'targets': copy.deepcopy(targets)}})
+
+    def parse_poi_list(self, response):
         data = response.meta['data']
         tmpl = response.meta['tmpl']
         page = response.meta['page']
+        poi_type = response.meta['type']
 
         if page == 1:
             # 访问其它页面
@@ -74,8 +80,9 @@ class QunarSpider(AizouCrawlSpider):
             if page_list:
                 for idx in xrange(2, max(page_list) + 1):
                     url = tmpl % idx
-                    yield Request(url=url, callback=self.parse_dining, meta={'tmpl': tmpl, 'page': idx,
-                                                                             'data': copy.deepcopy(data)})
+                    yield Request(url=url, callback=self.parse_poi_list,
+                                  meta={'tmpl': tmpl, 'page': idx, 'type': poi_type,
+                                        'data': copy.deepcopy(data)})
 
         for idx, node in enumerate(response.selector.xpath('//div[@class="listbox"]/ul[contains(@class,"list_item")]'
                                                            '/li[@class="item" and @data-lat and @data-lng]')):
@@ -97,12 +104,13 @@ class QunarSpider(AizouCrawlSpider):
             the_data['pinyin'] = pinyin
             the_data['zh_name'] = zh_name
             the_data['rating'] = rating
-            the_data['pos'] = (page - 1) * 10 + idx
+            the_data['ord'] = (page - 1) * 10 + idx
 
-            yield Request(url=url, callback=self.parse_dining_poi, meta={'data': the_data})
+            yield Request(url=url, callback=self.parse_poi, meta={'data': the_data, 'type': poi_type})
 
-    def parse_dining_poi(self, response):
+    def parse_poi(self, response):
         data = response.meta['data']
+        poi_type = response.meta['type']
 
         tmp = response.selector.xpath('//div[@class="m_scorebox"]//div[@class="time"]/text()').extract()
         if tmp:
@@ -120,16 +128,19 @@ class QunarSpider(AizouCrawlSpider):
 
         item = QunarItem()
         item['data'] = data
-        item['type'] = 'dining'
+        item['type'] = poi_type
         yield item
 
-        url = 'http://travel.qunar.com/place/api/poi/image?offset=0&limit=1000&poiId=%d' % data['poi_id']
-        yield Request(url=url, callback=self.parse_images, meta={'poi_id': data['poi_id'], 'item_type': 'dining'})
+        offset = 0
+        tmpl = 'http://travel.qunar.com/place/api/poi/image?offset=%d&limit=50&poiId=%d'
+        url = tmpl % (offset, data['poi_id'])
+        yield Request(url=url, callback=self.parse_images,
+                      meta={'poi_id': data['poi_id'], 'item_type': poi_type, 'offset': offset, 'tmpl': tmpl})
 
         tmpl = 'http://travel.qunar.com/place/api/html/comments/poi/%d?sortField=1&img=false&pageSize=25&page=%d'
         url = tmpl % (data['poi_id'], 1)
         yield Request(url=url, callback=self.parse_comments,
-                      meta={'poi_id': data['poi_id'], 'item_type': 'dining', 'page': 1, 'tmpl': tmpl})
+                      meta={'poi_id': data['poi_id'], 'item_type': poi_type, 'page': 1, 'tmpl': tmpl})
 
     def parse_images(self, response):
         try:
@@ -148,17 +159,33 @@ class QunarSpider(AizouCrawlSpider):
                 # 重新请求
                 if 'redirect_urls' in response.meta and response.meta['redirect_urls']:
                     url = response.meta['redirect_urls'][0]
-                    meta = {key: response.meta[key] for key in ['poi_id', 'item_type']}
+                    meta = {key: response.meta[key] for key in ['poi_id', 'item_type', 'offset', 'tmpl']}
                     yield Request(url=url, callback=self.parse_images, meta=meta, dont_filter=True)
             return
 
-        for entry in data['data']:
-            url = entry['url']
+        offset = response.meta['offset']
+        poi_type = response.meta['item_type']
+        tmpl = response.meta['tmpl']
+        poi_id = response.meta['poi_id']
 
+        if offset == 0:
+            # 如果有新的图像，继续请求
+            page_num = data['totalCount'] / 50 + 1
+
+            for page_idx in xrange(2, page_num + 1):
+                new_offset = page_idx * 50
+                url = tmpl % (new_offset, poi_id)
+                yield Request(url=url, callback=self.parse_images,
+                              meta={'poi_id': poi_id, 'item_type': poi_type, 'offset': new_offset, 'tmpl': tmpl})
+
+        if data['data'] is None:
+            data['data'] = []
+        for idx, entry in enumerate(data['data']):
+            url = entry['url']
             item = QunarItem()
             item['data'] = {'user_id': entry['userId'], 'user_name': entry['userName'], 'url': url,
                             'poi_id': response.meta['poi_id'], 'poi_type': response.meta['item_type'],
-                            'image_id': entry['id']}
+                            'image_id': entry['id'], 'ord': idx + offset}
             item['type'] = 'image'
             yield item
 
@@ -238,10 +265,8 @@ class QunarPipeline(AizouPipeline):
         elif item['type'] == 'image':
             col = spider.fetch_db_col('raw_qunar', 'Image', 'mongodb-crawler')
             col.update({'image_id': data['image_id']}, {'$set': data}, upsert=True)
-        elif item['type'] == 'dining':
-            pass
         else:
-            assert False, 'Invalid type: %s' % item['type']
+            assert item['type'] in ['dining', 'shopping'], 'Invalid type: %s' % item['type']
 
         return item
 
