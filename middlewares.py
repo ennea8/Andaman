@@ -119,10 +119,10 @@ class ProxySwitchMiddleware(object):
             verifier = 'baidu'
         latency = settings['PROXY_SWITCH_LATENCY']
         if not latency:
-            latency = 5
+            latency = 1
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
-            count = 100
+            count = 10000
         recently = settings['PROXY_SWITCH_RECENTLY']
         if not recently:
             recently = 12
