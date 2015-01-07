@@ -5,8 +5,8 @@ import json
 from lxml import etree
 import re
 import urlparse
-import time
-import datetime
+from datetime import timedelta
+from datetime import datetime
 
 from scrapy import Item, Request, Field, Selector, log
 
@@ -1625,6 +1625,7 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
     """
     name = 'mfw_note_proc'
     uuid = 'CE274DAA-3977-2BFF-90F1-0AB34B370551'
+    item_list = []
 
     def __init__(self, *a, **kw):
         AizouCrawlSpider.__init__(self, *a, **kw)
@@ -1673,7 +1674,6 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
 
     def f5(self, sub_node):  # 处理img标签
         if sub_node.attrib.keys():
-            item = MafengwoNoteItem()
             for attr in sub_node.attrib.keys():
                 if attr == 'src':
                     # log.msg('wait', level=log.INFO)
@@ -1686,11 +1686,12 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                         sub_node.attrib['photo-id'] = ret['key']
                         sub_node.attrib.pop('src')
                         if image_data:
+                            item = MafengwoNoteItem()
                             item['data'] = image_data
                             item['type'] = 'image'
+                            MafengwoNoteProc.item_list.append(item)
                 else:
                     sub_node.attrib.pop(attr)
-        return item
 
     # html树的遍历
     def walk_tree(self, root):
@@ -1701,7 +1702,7 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
             if node.tag == 'a':
                 self.f3(node)
             elif node.tag == 'img':
-                item = self.f5(node)
+                self.f5(node)
             elif node.tag == 'span':
                 self.f4(node)
             elif node.tag == 'p' or node.tag == 'div':
@@ -1710,7 +1711,7 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                 self.f1(node)
             else:
                 self.f2(node)
-        return {'root': root, 'item': item}
+        return root
 
 
     def start_requests(self):
@@ -1729,12 +1730,12 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
             ret = self.retrieve_image(author_avatar)
             if ret:
                 image_data = self.image_proc(ret)
+                data['authorAvatar'] = ret['key']
                 if image_data:
                     item = MafengwoNoteItem()
                     item['data'] = image_data
                     item['type'] = 'image'
                     yield item
-                data['authorAvatar'] = ret['key']
             data['viewCnt'] = int(entry['view_cnt']) if 'view_cnt' in entry else None
             data['voteCnt'] = int(entry['vote_cnt']) if 'vote_cnt' in entry else None
             data['commentCnt'] = int(entry['comment_cnt']) if 'comment_cnt' in entry else None
@@ -1745,13 +1746,13 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
             if cover:
                 ret = self.retrieve_image(cover)
                 if ret:
+                    data['cover'] = ret['key']
                     image_data = self.image_proc(ret)
                     if image_data:
                         item = MafengwoNoteItem()
                         item['data'] = image_data
                         item['type'] = 'image'
                         yield item
-                    data['cover'] = ret['key']
                 else:
                     data['cover'] = None
             note_content = entry['contents'] if 'contents' in entry else None
@@ -1765,7 +1766,7 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                 if publish_time:
                     publish_time = publish_time[0]
                 data['publishTime'] = long(
-                    (datetime.strptime(publish_time, '%Y-%m-%d %H:%M:%S') - datetime.timedelta(seconds=8 * 3600)
+                    (datetime.strptime(publish_time, '%Y-%m-%d %H:%M:%S') - timedelta(seconds=8 * 3600)
                      - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
                 note_content = sel.xpath(
                     '//div[@class="post_item"]//div[@id="pnl_contentinfo"]').extract()
@@ -1786,18 +1787,19 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                                 del parent[j]
                                 break
                         break
-                result = self.walk_tree(tmp_root)
-                tmp_item = result['item']
-                if tmp_item:
-                    yield tmp_item
-                proc_root = result['root']
+                proc_root = self.walk_tree(tmp_root)
                 tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
                 contents.append(tmp)
+                if MafengwoNoteProc.item_list:
+                    for sub_node in MafengwoNoteProc.item_list:
+                        yield sub_node
 
             data['contents'] = contents
             item = MafengwoNoteItem()
             item['data'] = data
             item['type'] = 'note'
+            log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
+
             yield item
 
 
@@ -1816,11 +1818,11 @@ class MafengwoNoteProcPipeline(AizouPipeline):
 
         if type == 'note':
             col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
-            col.update({'source.baidu.id': data['source.mafengwo.id']}, {'$set': data}, upsert=True)
-            log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
+            col.update({'source.mafengwo.id': data['source.mafengwo.id']}, {'$set': data}, upsert=True)
+            #log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
         else:
             col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-            log.msg('image', level=log.INFO)
+            # log.msg('image', level=log.INFO)
             col.update({'key': data['key']}, {'$set': data}, upsert=True)
         return item
 
