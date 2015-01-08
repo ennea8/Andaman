@@ -415,11 +415,19 @@ class ImageCandidatesSpider(AizouCrawlSpider):
     name = 'cand-image'
     uuid = 'c3f718e6-f175-4e72-8056-18b67a11007e'
 
-    def __init__(self, param, *a, **kw):
-        super(ImageCandidatesSpider, self).__init__(param, *a, **kw)
+    def __init__(self, *a, **kw):
+        AizouCrawlSpider.__init__(self, *a, **kw)
 
-        self.min_width = int(self.param['min-width'][0]) if 'min-width' in self.param else 0
-        self.min_height = int(self.param['min-height'][0]) if 'min-height' in self.param else 0
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--skip', type=int, default=0)
+        parser.add_argument('--limit', type=int)
+        parser.add_argument('--min-width', type=int, default=0)
+        parser.add_argument('--min-height', type=int, default=0)
+        parser.add_argument('--query', type=str)
+
+        self.args, leftovers = parser.parse_known_args()
 
         section = conf.global_conf.get('qiniu', {})
         self.ak = section['ak']
@@ -430,15 +438,14 @@ class ImageCandidatesSpider(AizouCrawlSpider):
 
     def parse(self, response):
         col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
 
-        query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+        query = json.loads(self.param['query'][0]) if self.args.query else {}
         cursor = col.find(query, snapshot=True)
 
-        if 'limit' in self.param:
-            cursor.limit(int(self.param['limit'][0]))
-
-        if 'skip' in self.param:
-            cursor.skip(int(self.param['skip'][0]))
+        if self.args.limit:
+            cursor.limit(self.args.limit)
+        cursor.skip(self.args.skip)
 
         tot = cursor.count(with_limit_and_skip=True)
         self.log('%d documents to process...' % tot, log.INFO)
@@ -446,6 +453,16 @@ class ImageCandidatesSpider(AizouCrawlSpider):
             item = ImageProcItem()
             entry['col_name'] = 'Images'
             item['image'] = entry
+
+            # 检查是否已经下载
+            url = entry['url']
+            url_hash = hashlib.md5(url).hexdigest()
+            assert url_hash == entry['url_hash']
+            ret = col_im.find_one({'url_hash': url_hash}, {'_id': 1})
+            if ret:
+                col.remove({'_id': ret['_id']})
+                continue
+
             yield Request(url=entry['url'], callback=self.img_downloaded, meta={'item': item})
 
     def check_img(self, fname=None, data=None):
@@ -469,7 +486,7 @@ class ImageCandidatesSpider(AizouCrawlSpider):
 
             img.load()
             w, h = img.size
-            if w < self.min_width or h < self.min_height:
+            if w < self.args.min_width or h < self.args.min_height:
                 return False
             else:
                 return True
@@ -511,8 +528,6 @@ class ImageCandidatesSpider(AizouCrawlSpider):
             item = meta['item']
             stat = meta['stat']
             img = item['image']
-            bucket = img['bucket']
-            key = img['key']
 
             entry = {'url_hash': img['url_hash'],
                      'cTime': long(time.time() * 1000),
@@ -522,8 +537,7 @@ class ImageCandidatesSpider(AizouCrawlSpider):
                      'fmt': image_info['format'],
                      'size': stat['fsize'],
                      'url': img['url'],
-                     'bucket': bucket,
-                     'key': key,
+                     'key': img['url_hash'],
                      'type': stat['mimeType'],
                      'hash': stat['hash']}
             for k, v in entry.items():
@@ -542,13 +556,10 @@ class ImageCandidatesSpider(AizouCrawlSpider):
                 return
             else:
                 image = meta['item']['image']
-                key = image['key']
-                match = re.search(r'assets/images/([0-9a-f]{32})', key)
-                if match:
-                    key = match.group(1)
-                    image['key'] = key
-                image['bucket'] = 'aizou'
-                bucket = image['bucket']
+                key = image['url_hash']
+                image['key'] = key
+                bucket = 'aizou'
+                image['bucket'] = bucket
                 sc = False
                 self.log('START UPLOADING: %s <= %s' % (key, response.url), log.INFO)
 
@@ -587,15 +598,12 @@ class UniversalImagePipeline(AizouPipeline):
 
         image_id = img.pop('_id') if '_id' in img else None
 
-        col_im = self.fetch_db_col('imagestore', col_name, 'mongodb-general')
-        if 'itemIds' in img:
-            item_ids = img.pop('itemIds')
-        else:
-            item_ids = None
+        item_ids = img.pop('itemIds') if 'itemIds' in img else None
         ops = {'$set': img}
         if item_ids:
             ops['$addToSet'] = {'itemIds': {'$each': item_ids}}
 
+        col_im = self.fetch_db_col('imagestore', col_name, 'mongodb-general')
         col_im.update({'$or': [{'key': img['key']}, {'url_hash': img['url_hash']}]}, ops, upsert=True)
 
         if image_id:
