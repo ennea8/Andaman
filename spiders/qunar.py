@@ -38,30 +38,43 @@ class QunarSpider(AizouCrawlSpider):
         yield Request(url='http://travel.qunar.com/place/', dont_filter=True)
 
     def parse(self, response):
-        for node in response.selector.xpath('//dl[contains(@class,"listbox")]//ul[contains(@class,"list_item")]'
-                                            '/li[contains(@class,"item")]/a[@href]'):
-            href = node.xpath('./@href').extract()[0]
-            # 获得拼音和id
-            match = re.search(r'p-\w{2}(\d+)-(\w+)', href)
-            loc_id = int(match.group(1))
 
+        city_list = []
+        if self.args.city:
             # 如果添加了city限制
-            if self.args.city and loc_id not in self.args.city:
-                continue
+            city_list = [{'id': city_id} for city_id in self.args.city]
+        else:
+            for node in response.selector.xpath('//dl[contains(@class,"listbox")]//ul[contains(@class,"list_item")]'
+                                                '/li[contains(@class,"item")]/a[@href]'):
+                href = node.xpath('./@href').extract()[0]
+                # 获得拼音和id
+                match = re.search(r'p-\w{2}(\d+)-(\w+)', href)
+                loc_id = int(match.group(1))
 
-            pinyin = match.group(2).lower().strip()
-            name = node.xpath('./text()').extract()[0].strip()
+                # 如果添加了city限制
+                if self.args.city and loc_id not in self.args.city:
+                    continue
 
-            targets = [{'id': loc_id, 'pinyin': pinyin, 'zh_name': name}]
-            tmpl = urljoin(response.url, href) + '-meishi-3-1-%d'
-            url = tmpl % 1
-            yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'dining',
-                                                                       'data': {'targets': copy.deepcopy(targets)}})
+                pinyin = match.group(2).lower().strip()
+                name = node.xpath('./text()').extract()[0].strip()
+                city_list.append({'id': loc_id, 'pinyin': pinyin, 'zh_name': name})
 
-            tmpl = urljoin(response.url, href) + '-gouwu-3-1-%d'
-            url = tmpl % 1
-            yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'shopping',
-                                                                       'data': {'targets': copy.deepcopy(targets)}})
+        for city in city_list:
+            yield Request(url='http://travel.qunar.com/p-cs%d' % city['id'], callback=self.parse_city,
+                          meta={'data': {'targets': copy.deepcopy([city])}})
+
+    def parse_city(self, response):
+        data = response.meta['data']
+
+        tmpl = response.url + '-meishi-3-1-%d'
+        url = tmpl % 1
+        yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'dining',
+                                                                   'data': data})
+
+        tmpl = response.url + '-gouwu-3-1-%d'
+        url = tmpl % 1
+        yield Request(url=url, callback=self.parse_poi_list, meta={'tmpl': tmpl, 'page': 1, 'type': 'shopping',
+                                                                   'data': data})
 
     def parse_poi_list(self, response):
         data = response.meta['data']
@@ -236,17 +249,45 @@ class QunarSpider(AizouCrawlSpider):
                 comment['contents'] = ''.join(
                     etree.fromstring(tmp[0].extract(), parser=etree.HTMLParser()).itertext()).strip()
 
+            tmp = node.xpath('.//div[@class="e_comment_usr"]/div[@class="e_comment_usr_pic"]'
+                             '//img[@src]/@src').extract()
+            img_src = tmp[0] if tmp else None
+            tmp = node.xpath('.//div[@class="e_comment_usr"]/div[@class="e_comment_usr_name"]'
+                             '/a[@href]/text()').extract()
+            user_name = tmp[0] if tmp else None
+            if user_name:
+                comment['user_name'] = user_name
+
             item = QunarItem()
             item['data'] = comment
             item['type'] = 'comment'
 
-            yield item
+            if user_name and img_src:
+                yield Request(url=img_src, callback=self.resolve_pic, meta={'item': item})
+            else:
+                yield item
 
         page += 1
         tmpl = response.meta['tmpl']
         url = tmpl % (poi_id, page)
         yield Request(url=url, callback=self.parse_comments,
                       meta={'poi_id': poi_id, 'item_type': item_type, 'page': page, 'tmpl': tmpl})
+
+    @staticmethod
+    def resolve_pic(response):
+        from hashlib import md5
+
+        url = response.url
+        new_url = re.sub(r'_r_\d+[^/]+$', '', url)
+        item = response.meta['item']
+        item['data']['avatar'] = new_url
+        yield item
+
+        # 返回图像
+        item = QunarItem()
+        item['data'] = {'url': new_url, 'image_id': md5(new_url).hexdigest()}
+        item['type'] = 'image'
+        yield item
 
 
 class QunarPipeline(AizouPipeline):
