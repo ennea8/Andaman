@@ -5,6 +5,7 @@ import re
 from scrapy import Item, Field, Request, Selector, log
 from spiders import AizouCrawlSpider, AizouPipeline
 from urlparse import urljoin
+from datetime import datetime, timedelta
 
 __author__ = 'zephyre'
 
@@ -38,7 +39,6 @@ class QunarSpider(AizouCrawlSpider):
         yield Request(url='http://travel.qunar.com/place/', dont_filter=True)
 
     def parse(self, response):
-
         city_list = []
         if self.args.city:
             # 如果添加了city限制
@@ -258,14 +258,23 @@ class QunarSpider(AizouCrawlSpider):
             if user_name:
                 comment['user_name'] = user_name
 
+            for tmp in node.xpath('.//div[@class="e_comment_add_info"]/ul/li/text()').extract():
+                try:
+                    ts = datetime.strptime(tmp, '%Y-%m-%d')
+                    comment['cTime'] = long(
+                        (ts - timedelta(seconds=8 * 3600) - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
+                    break
+                except ValueError:
+                    pass
+
             item = QunarItem()
             item['data'] = comment
             item['type'] = 'comment'
 
+            yield item
+
             if user_name and img_src:
                 yield Request(url=img_src, callback=self.resolve_pic, meta={'item': item})
-            else:
-                yield item
 
         page += 1
         tmpl = response.meta['tmpl']
