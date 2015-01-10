@@ -13,6 +13,27 @@ import conf
 __author__ = 'zephyre'
 
 
+def set_interval(interval):
+    import threading
+
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            stopped = threading.Event()
+
+            def loop():  # executed in another thread
+                while not stopped.wait(interval):  # until stopped
+                    function(*args, **kwargs)
+
+            t = threading.Thread(target=loop)
+            t.daemon = True  # stop if the program exits
+            t.start()
+            return stopped
+
+        return wrapper
+
+    return decorator
+
+
 class GoogleGeocodeMiddleware(object):
     @classmethod
     def from_settings(cls, settings, crawler=None):
@@ -98,10 +119,10 @@ class ProxySwitchMiddleware(object):
             verifier = 'baidu'
         latency = settings['PROXY_SWITCH_LATENCY']
         if not latency:
-            latency = 5
+            latency = 1
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
-            count = 100
+            count = 10000
         recently = settings['PROXY_SWITCH_RECENTLY']
         if not recently:
             recently = 12
@@ -112,23 +133,41 @@ class ProxySwitchMiddleware(object):
     def from_crawler(cls, crawler):
         return cls.from_settings(crawler.settings, crawler)
 
-    def __init__(self, verifier, latency, recently, count):
+    def load_proxy(self, count, latency, recently, verifier):
         response = urllib2.urlopen(
             'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&recently=%d&pageSize=%d' %
             (verifier, latency, recently, count))
         data = json.loads(response.read())
-
         # 加载代理列表
         proxy_list = {}
-
         for entry in data['result']:
             host = entry['host']
             scheme = entry['scheme']
             port = entry['port']
             proxy = '%s://%s:%d' % (scheme, host, port)
+            # if proxy not in self.disabled_proxies:
             proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
+        return proxy_list
 
-        self.proxy_list = proxy_list
+    def __init__(self, verifier, latency, recently, count):
+        self.disabled_proxies = set([])
+        self.proxy_list = self.load_proxy(count, latency, recently, verifier)
+
+        @set_interval(300)
+        def func():
+            self.load_proxy(count, latency, recently, verifier)
+
+        func()
+
+    def deregister(self, proxy):
+        """
+        注销某个代理
+        :param proxy:
+        :return:
+        """
+        if proxy in self.proxy_list:
+            self.proxy_list.pop(proxy)
+            self.disabled_proxies.add(proxy)
 
     def pick_proxy(self):
         proxy_list = filter(lambda val: self.proxy_list[val]['enabled'], self.proxy_list.keys())
@@ -140,6 +179,7 @@ class ProxySwitchMiddleware(object):
         proxy = self.pick_proxy()
         if proxy:
             request.meta['proxy'] = proxy
+            request.meta['proxy_middleware'] = self
             self.proxy_list[proxy]['req'] += 1
 
         return
@@ -177,5 +217,6 @@ class ProxySwitchMiddleware(object):
                 if d['fail'] >= 5:
                     spider.log('PROXY %s IS DISABLED.' % proxy, log.WARNING)
                     d['enabled'] = False
+                    self.disabled_proxies.add(proxy)
 
         return request

@@ -19,14 +19,13 @@ class AizouCrawlSpider(CrawlSpider):
     @classmethod
     def from_crawler(cls, crawler):
         settings = crawler.settings
-        return cls(settings.get("USER_PARAM"))
+        return cls(settings=settings)
 
-    def __init__(self, param, *a, **kw):
+    def __init__(self, *a, **kw):
         super(CrawlSpider, self).__init__(*a, **kw)
-        if param:
-            self.param = param
-        else:
-            self.param = {}
+        settings = kw['settings']
+        self.param = settings['USER_PARAM']
+        self.args = settings['USER_ARGS']
 
         self.col_dict = {}
 
@@ -168,13 +167,7 @@ class AizouPipeline(object):
             self.col_dict[sig] = utils.get_mongodb(db, col, profile)
         return self.col_dict[sig]
 
-    @classmethod
-    def from_crawler(cls, crawler):
-        settings = crawler.settings
-        return cls(settings.get("USER_PARAM"))
-
-    def __init__(self, param):
-        self.param = param
+    def __init__(self):
         self.col_dict = {}
 
     def is_handler(self, item, spider):

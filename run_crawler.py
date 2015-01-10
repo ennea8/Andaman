@@ -83,22 +83,25 @@ def parse_args(args):
     return {'cmd': cmd, 'param': param_dict}
 
 
-def setup_spider(spider_name, param):
+def setup_spider(spider_name, args):
     import conf
 
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
 
     settings = crawler.settings
-    settings.set('USER_PARAM', param)
+    ret = parse_args(sys.argv)
+    settings.set('USER_PARAM', ret['param'])
+    settings.set('USER_ARGS', args)
 
-    if 'proxy' in param:
+    if args.proxy:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
-        settings.set('PROXY_SWITCH_VERIFIER', param['proxy-verifier'][0] if 'proxy-verifier' in param else 'baidu')
+        settings.set('PROXY_SWITCH_VERIFIER',
+                     'baidu')  # args['proxy-verifier'][0] if 'proxy-verifier' in args else 'baidu')
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
-    settings.set('AUTOTHROTTLE_DEBUG', 'debug' in param)
-    settings.set('AUTOTHROTTLE_ENABLED', 'fast' not in param)
+    settings.set('AUTOTHROTTLE_DEBUG', args.debug)
+    settings.set('AUTOTHROTTLE_ENABLED', not args.fast)
 
     if spider_name in conf.global_conf['spiders']:
         spider_class = conf.global_conf['spiders'][spider_name]
@@ -106,7 +109,7 @@ def setup_spider(spider_name, param):
         spider_uuid = spider.uuid
 
         # DRY_RUN: 只抓取，不调用Pipeline
-        if 'dry' not in param:
+        if not args.dry:
             # 查找对应的pipeline
             settings.set('ITEM_PIPELINES', {tmp[0]: 100 for tmp in
                                             filter(lambda p: spider_uuid in p[1], conf.global_conf['pipelines'])})
@@ -209,25 +212,32 @@ def request_proc(req, spider):
 
 
 def main():
-    global ts_checkpoint
-    ret = parse_args(sys.argv)
-    if not ret:
-        return
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('crawler')
+    parser.add_argument('--fast', action='store_true')
+    parser.add_argument('--dry', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--proxy', action='store_true')
+
+    args, leftovers = parser.parse_known_args()
 
     msg = 'SPIDER STARTED: %s' % ' '.join(sys.argv)
 
-    spider_name = ret['cmd']
-    param = ret['param']
-    s = setup_spider(spider_name, param)
+    spider_name = args.crawler
+    # param = ret['param']
+    s = setup_spider(spider_name, args)
     if s:
-        if 'verbose' in param:
+        if args.verbose:
             logfile = None
         else:
             logfile = '/var/log/andaman/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
-        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
+        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
 
-        if 'no-scrapy' in param:
+        if 'no-scrapy' in args:
             ts_checkpoint = time()
             s.pipeline_list = s.crawler.engine.scraper.itemproc.middlewares
 
@@ -242,11 +252,11 @@ def main():
         else:
             reactor.run()  # the script will block here until the spider_closed signal was sent
     else:
-        if 'verbose' in param:
+        if args.verbose:
             logfile = None
         else:
             logfile = './logs/error.log'
-        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if 'debug' in param else scrapy.log.INFO)
+        scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
 
