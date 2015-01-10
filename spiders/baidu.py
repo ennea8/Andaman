@@ -450,88 +450,6 @@ class BaiduPoiImageSpider(CrawlSpider):
                 return
 
 
-class BaiduWeatherSpider(CrawlSpider):
-    name = 'baidu_weather'
-
-    def __init__(self, *a, **kw):
-        super(BaiduWeatherSpider, self).__init__(*a, **kw)
-
-        data = None
-        for retry_idx in xrange(3):
-            try:
-                response = urllib2.urlopen('http://cms.lvxingpai.cn/baidu-key.json')
-                data = json.loads(response.read())
-                break
-            except IOError:
-                if retry_idx < 3:
-                    time.sleep(2)
-                else:
-                    break
-
-        self.baidu_key = data
-
-    def start_requests(self):
-        col = pymongo.MongoClient().geo.Locality
-        all_obj = list(col.find({"level": {"$in": [2, 3]}}, {"zhName": 1, 'coords': 1}))
-        ak_list = self.baidu_key.values() if self.baidu_key else []
-
-        for county_code in all_obj:
-            m = {"county_name": county_code['zhName'], "county_id": county_code["_id"]}
-
-            idx = random.randint(0, len(ak_list) - 1)
-            ak = ak_list[idx]
-
-            s = None
-            if 'coords' in county_code:
-                coords = county_code['coords']
-                if 'blat' in coords and 'blng' in coords:
-                    s = '%f,%f' % (coords['blng'], coords['blat'])
-                elif 'lat' in coords and 'lng' in coords:
-                    s = '%f,%f' % (coords['lng'], coords['lat'])
-            if not s:
-                s = county_code['zhName']
-            yield Request(url='http://api.map.baidu.com/telematics/v3/weather?location=%s&output='
-                              'json&ak=%s' % (s, ak), callback=self.parse, meta={'WeatherData': m})
-
-    def parse(self, response):
-        try:
-            data = json.loads(response.body, encoding='utf-8')
-            if data['status'] != 'success':
-                self.log('ERROR PARSING: %s, RESULT=%s' % (response.url, response.body), level=log.WARNING)
-                return
-        except ValueError:
-            self.log('ERROR PARSING: %s, RESULT=%s' % (response.url, response.body), level=log.WARNING)
-            return
-
-        allInf = response.meta['WeatherData']
-        item = BaiduWeatherItem()
-        item['data'] = data['results'][0]
-        item['loc'] = {'id': allInf['county_id'],
-                       'zhName': allInf['county_name']}
-
-        return item
-
-
-class BaiduWeatherPipeline(object):
-    spiders = [BaiduWeatherSpider.name]
-
-    def process_item(self, item, spider):
-        if not isinstance(item, BaiduWeatherItem):
-            return item
-
-        weather_entry = {'loc': item['loc']}
-        for k in item['data']:
-            weather_entry[k] = item['data'][k]
-
-        col = pymongo.MongoClient().misc.Weather
-        ret = col.find_one({'loc.id': item['loc']['id']}, {'_id': 1})
-        if ret:
-            weather_entry['_id'] = ret['_id']
-
-        col.save(weather_entry)
-        return item
-
-
 class BaiduNoteProcSpider(CrawlSpider):
     """
     对百度游记数据进行清洗
@@ -773,19 +691,33 @@ class BaiduSceneItem(Item):
 
 
 class BaiduSceneSpider(AizouCrawlSpider):
+    """
+    从百度目的地出发，抓取POI、评论、游记等信息
+    """
     name = 'baidu-scene'
     uuid = 'a1cf345b-1f4a-403c-aa01-b7ab81b61b3c'
 
     def __init__(self, *a, **kw):
         super(BaiduSceneSpider, self).__init__(*a, **kw)
-        if 'targets' not in self.param:
-            self.param['targets'] = []
-        if 'all' in self.param['targets']:
-            self.param['targets'] = ['scene', 'scene-comment', 'dining', 'hotel', 'note']
 
     def start_requests(self):
-        start_url = 'http://lvyou.baidu.com/scene/'
-        yield Request(url=start_url, callback=self.parse_url)
+        self.arg_parser.add_argument('--targets', action='append', nargs='*',
+                                     choices=['scene', 'scene-comment', 'dining', 'hotel', 'note', 'all'])
+        self.arg_parser.add_argument('--surl', action='append')
+        self.args = self.arg_parser.parse_args()
+
+        if not self.args.targets:
+            self.args.targets = [['all']]
+
+        targets = set([])
+        for tmp1 in self.args.targets:
+            for tmp2 in tmp1:
+                targets.add(tmp2)
+        self.args.targets = list(targets)
+        if 'all' in self.args.targets:
+            self.args.targets = ['scene', 'scene-comment', 'dining', 'hotel', 'note']
+
+        yield Request(url='http://lvyou.baidu.com/scene/', callback=self.parse_url)
 
     def parse_url(self, response):
         sel = Selector(response)
@@ -798,6 +730,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
         for tmp in node_list:
             url_list.extend([node['surl'] for node in tmp])
         for url in url_list:
+            if self.args.surl and url not in self.args.surl:
+                continue
             yield Request(url='http://lvyou.baidu.com/destination/ajax/jingdian?format=json&surl=%s&cid=0&pn=1' % url,
                           meta={'surl': url, 'page_idx': 1, 'item': BaiduSceneItem()}, callback=self.parse)
 
@@ -839,7 +773,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         item_data['scene_list'].extend(scene_list)
 
         # 如果抓取目标有scene，则需要读取完整的scene_list信息
-        if 'scene' not in self.param['targets'] or not scene_list:
+        if 'scene' not in self.args.targets or not scene_list:
             # 最后一页，或者不需要完整scene
             yield Request(url='http://lvyou.baidu.com/%s' % item['data']['surl'], callback=self.parse_scene,
                           meta={'item': item})
@@ -862,7 +796,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
         item['type'] = 'locality' if u'景点' in nav_list else 'poi'
 
         # 返回scene本身
-        if 'scene' in self.param['targets']:
+        if 'scene' in self.args.targets:
             yield item
 
         sid = item['data']['sid']
@@ -870,13 +804,13 @@ class BaiduSceneSpider(AizouCrawlSpider):
         surl = item['data']['surl']
         base_data = {'sid': sid, 'sname': sname, 'surl': surl}
 
-        if 'scene-comment' in self.param['targets']:
+        if 'scene-comment' in self.args.targets:
             yield Request(url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?xid=%s&score=0&pn=0&rn=500'
                               '&format=ajax' % sid, callback=self.parse_scene_comment, meta={'data': base_data})
 
         # 去哪吃item
         if item['type'] == 'locality':
-            if 'dining' in self.param['targets']:
+            if 'dining' in self.args.targets:
                 # 抓取去哪吃的信息
                 dining_tmpl = 'http://lvyou.baidu.com/destination/ajax/poi/dining?' \
                               'sid=%s&type=&poi=%s&order=overall_rating&flag=0&nn=%d&rn=10&pn=%d'
@@ -889,13 +823,13 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 yield Request(url='http://lvyou.baidu.com/%s/meishi/' % surl, callback=self.parse_cuisine,
                               meta={'data': base_data})
 
-            if 'hotel' in self.param['targets']:
+            if 'hotel' in self.args.targets:
                 # 住宿item
                 yield Request(url='http://lvyou.baidu.com/%s/zhusu' % surl, callback=self.parse_hotel,
                               meta={'data': base_data})
 
             # 抓取游记
-            if 'note' in self.param['targets']:
+            if 'note' in self.args.targets:
                 idx = 0
                 yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
                                   (sname, idx), callback=self.parse_note, meta={'data': base_data, 'idx': idx})

@@ -229,6 +229,7 @@ def main():
     spider_name = args.crawler
     # param = ret['param']
     s = setup_spider(spider_name, args)
+    s.arg_parser = parser
     if s:
         if args.verbose:
             logfile = None
