@@ -1,7 +1,6 @@
 # coding=utf-8
 import json
 import os
-import random
 import re
 import copy
 import hashlib
@@ -9,13 +8,14 @@ import urllib2
 import socket
 import time
 import math
-import MySQLdb
-from MySQLdb.cursors import DictCursor
 import datetime
 from lxml import etree
 import urlparse
-from pysolr import SolrError
 from bson import ObjectId
+
+import MySQLdb
+from MySQLdb.cursors import DictCursor
+from pysolr import SolrError
 import pymongo
 from scrapy import Request, Selector, log, Field, Item
 from scrapy.contrib.spiders import CrawlSpider
@@ -27,7 +27,7 @@ from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
 from spiders.image_proc import BaiduImageExtractor
 from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
-from items import BaiduPoiItem, BaiduWeatherItem, BaiduNoteProcItem, BaiduNoteKeywordItem
+from items import BaiduPoiItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
 
 
@@ -703,19 +703,20 @@ class BaiduSceneSpider(AizouCrawlSpider):
     def start_requests(self):
         self.arg_parser.add_argument('--targets', action='append', nargs='*',
                                      choices=['scene', 'scene-comment', 'dining', 'hotel', 'note', 'all'])
-        self.arg_parser.add_argument('--surl', action='append')
+        self.arg_parser.add_argument('--surl', action='append', nargs='*')
         self.args = self.arg_parser.parse_args()
 
         if not self.args.targets:
             self.args.targets = [['all']]
+        if not self.args.surl:
+            self.args.surl = [[]]
 
-        targets = set([])
-        for tmp1 in self.args.targets:
-            for tmp2 in tmp1:
-                targets.add(tmp2)
-        self.args.targets = list(targets)
+        import itertools
+
+        self.args.targets = list(set(itertools.chain(*self.args.targets)))
         if 'all' in self.args.targets:
             self.args.targets = ['scene', 'scene-comment', 'dining', 'hotel', 'note']
+        self.args.surl = list(set(itertools.chain(*self.args.surl)))
 
         yield Request(url='http://lvyou.baidu.com/scene/', callback=self.parse_url)
 
@@ -797,7 +798,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 返回scene本身
         if 'scene' in self.args.targets:
-            yield item
+            yield Request(url='http://lvyou.baidu.com/%s/tips/' % item['data']['surl'], callback=self.parse_tips,
+                          meta={'item': item})
 
         sid = item['data']['sid']
         sname = item['data']['sname']
@@ -807,6 +809,11 @@ class BaiduSceneSpider(AizouCrawlSpider):
         if 'scene-comment' in self.args.targets:
             yield Request(url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?xid=%s&score=0&pn=0&rn=500'
                               '&format=ajax' % sid, callback=self.parse_scene_comment, meta={'data': base_data})
+
+        # Fetch images
+        image_tmpl = 'http://lvyou.baidu.com/%s/fengjing/?pn=%d'
+        yield Request(url=image_tmpl % (surl, 0), callback=self.parse_images,
+                      meta={'data': base_data, 'page': 0, 'tmpl': image_tmpl})
 
         # 去哪吃item
         if item['type'] == 'locality':
@@ -834,8 +841,94 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
                                   (sname, idx), callback=self.parse_note, meta={'data': base_data, 'idx': idx})
 
-    # 游记解析
+    def parse_images(self, response):
+        data = response.meta['data']
+        page = response.meta['page']
+        tmpl = response.meta['tmpl']
+
+        node_list = response.selector.xpath('//ul[@id="photo-list"]/li[@class="photo-item"]')
+
+        if node_list:
+            # Next page
+            page += 1
+            yield Request(url=tmpl % (data['surl'], 24 * page), callback=self.parse_images,
+                          meta={'data': data, 'page': page, 'tmpl': tmpl})
+
+        for node in node_list:
+            src = node.xpath('./a[contains(@class,"photo-frame")]/img[@src]/@src').extract()[0]
+            image_id = re.search(r'([0-9a-f]{24,})\.jpg', src).group(1)
+            url = 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % image_id
+
+            key = hashlib.md5(url).hexdigest()
+            url_hash = key
+
+            tmp = node.xpath('./a[contains(@class,"photo-frame")]/span[@class="photo-userinfo"]'
+                             '/span[@class="photo-desc"]/text()').extract()
+            user = None
+            if tmp:
+                user = re.sub(ur'^.*来源[:：]\s*', '', tmp[0])
+
+            tmp = node.xpath('.//p[@class="desc-info"]//span[@class="label-text"]/text()').extract()
+            desc = tmp[0] if tmp else None
+
+            item = BaiduSceneItem()
+            item['type'] = 'image'
+            item['data'] = {'key': key, 'url_hash': url_hash, 'image_id': image_id, 'url': url, 'sid': data['sid'],
+                            'surl': data['surl']}
+            if user:
+                item['data']['user'] = user
+            if desc:
+                item['data']['title'] = desc
+
+            yield item
+
+
+    @staticmethod
+    def parse_tips(response):
+        """
+        解析小贴士
+        """
+        item = response.meta['item']
+
+        list_ids = []
+        for href in response.selector.xpath('//dd/a[@href]/@href').extract():
+            match = re.search(r'#(list\d+)', href)
+            if not match:
+                continue
+            else:
+                list_ids.append(match.group(1))
+
+        tips = []
+
+        if list_ids:
+            for lid in list_ids:
+                tmp = response.selector.xpath('//div[@id="%s"]/../../div[@class="subitem-list-item-con"]' % lid)
+                if not tmp:
+                    continue
+                node = tmp[0]
+                tmp = node.xpath('./h3[@title]/text()').extract()
+                if not tmp:
+                    continue
+                title = tmp[0].strip()
+
+                contents = [tmp.extract() for tmp in filter(lambda val: val._root.tag != 'h3', node.xpath('./*'))]
+                tips.append({'title': title, 'contents': ' '.join(contents)})
+        else:
+            tmp = response.selector.xpath('//div[contains(@class,"subview-whole-desc")]//p').extract()
+            if tmp:
+                tips.append({'title': u'小贴士', 'contents': ' '.join(tmp)})
+
+        if tips:
+            item['data']['tips'] = tips
+
+        yield item
+
+        pass
+
     def parse_note(self, response):
+        """
+        游记解析
+        """
         json_data = json.loads(response.body)
         source_data = json_data['data']
         tmp_data = response.meta['data']
@@ -877,11 +970,13 @@ class BaiduSceneSpider(AizouCrawlSpider):
             # meta={'note_id': note_id})
 
             yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, 0),
-                          callback=self.parse_note_floor,
+                          callback=self.parse_note_post,
                           meta={'note_id': note_id, 'main_post': True, 'note_abs': note_abs})
 
-    # 具体论坛抓贴
-    def parse_note_floor(self, response):
+    def parse_note_post(self, response):
+        """
+        抓取具体的帖子
+        """
         note_id = response.meta['note_id']
         sel = Selector(response)
         note_floor = sel.xpath('//div[@id="building-container"]//div[contains(@class,"grid-s5m0")]')
@@ -929,7 +1024,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
             m = {'note_id': note_id}
             if main_post:
                 m['main_post'] = True
-            yield Request(url=self.build_href(response.url, href), callback=self.parse_note_floor, meta=m)
+            yield Request(url=self.build_href(response.url, href), callback=self.parse_note_post, meta=m)
 
     def parse_cuisine(self, response):
         data = response.meta['data']
@@ -1057,7 +1152,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
             item['data'] = entry
             yield item
 
-    def parse_hotel(self, response):
+    @staticmethod
+    def parse_hotel(response):
         rdata = response.meta['data']
 
         match = re.search(r'var\s+opiList\s*=\s*(.+?);\s*var\s+', response.body)
@@ -1093,7 +1189,8 @@ class BaiduScenePipeline(AizouPipeline):
                    'dining-comment': ('BaiduDiningCmt', 'prikey'),
                    'scene-comment': ('BaiduSceneCmt', 'remark_id'),
                    'note_abs': ('BaiduNoteAbs', 'nid'),
-                   'note_floor': ('BaiduNoteMain', 'floor_id')}
+                   'note_floor': ('BaiduNoteMain', 'floor_id'),
+                   'image': ('BaiduImage', 'key')}
 
         if item_type in col_map:
             col_name, pk = col_map[item_type]
