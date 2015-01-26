@@ -2241,7 +2241,7 @@ class NoteUpSolrSpider(AizouCrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.up_to_solr)
 
     def up_to_solr(self, response):
-        note_col = self.fetch_db_col('travelnote', 'BaiduNoteMain', 'mongodb-general')
+        note_col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
         for entry in note_col.find():
             note_id = entry['source']['baidu']['id']
             data = {'id': str(entry['_id']),
@@ -2263,9 +2263,12 @@ class NoteUpSolrSpider(AizouCrawlSpider):
             if not content_list:
                 continue
             data['contents'] = '\n'.join(content_list)
-            item = NoteSolrItem()
-            item['data'] = data
-            yield item
+            if data['contents']:
+                item = NoteSolrItem()
+                item['data'] = data
+                yield item
+            else:
+                continue
 
 
 class BaiduNoteUpSolrPipeline(AizouPipeline):

@@ -6,3 +6,4 @@ logs
 conf/commons.cfg
 baidu_key.cfg
 tmp
+conf/mongo.yaml
