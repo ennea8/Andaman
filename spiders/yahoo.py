@@ -11,7 +11,7 @@ import re
 from scrapy import Request, Selector, Item, Field, log
 from scrapy.contrib.spiders import CrawlSpider
 
-from utils import get_mongodb
+from utils.database import get_mongodb
 
 
 # -----------------------------------define field------------------------
@@ -180,7 +180,7 @@ class YahooCityProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', meta={'countries': countries, 'level': level}, callback=self.parse)
 
     def parse(self, response):
-        col = utils.get_mongodb('raw_data', 'YahooCityInfo', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'YahooCityInfo', profile='mongodb-crawler')
         countries = response.meta['countries']
         level = response.meta['level']
         query = {'$or': [{'country.countrycode': tmp} for tmp in countries]} if countries else {}
@@ -197,7 +197,7 @@ class YahooCityProcSpider(CrawlSpider):
 
             country_code = city['country']['countrycode']
             if country_code not in self.country_map:
-                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
                 country_info = col_country.find_one({'code': country_code})
                 if not country_info:
                     self.log('Unable to find country: %s' % country_code, log.WARNING)
@@ -265,7 +265,7 @@ class YahooCityProcPipeline(object):
         if type(item).__name__ != YahooCityItem.__name__:
             return item
 
-        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col_loc = get_mongodb('geo', 'Locality', profile='mongodb-general')
         data = {}
 
         level = item['level']

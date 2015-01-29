@@ -7,6 +7,7 @@ from scrapy import Request, Selector, Item, Field, log
 from scrapy.contrib.spiders import CrawlSpider
 
 import utils
+from utils.database import get_mongodb
 
 
 __author__ = 'zephyre'
@@ -128,7 +129,7 @@ class QyerCountryProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
-        for entry in utils.get_mongodb('raw_data', 'QyerCountry', profile='mongodb-crawler'):
+        for entry in get_mongodb('raw_data', 'QyerCountry', profile='mongodb-crawler'):
             item = QyerCountryItem()
             item['country_id'] = entry['countryId']
             item['country_zh'] = entry['zhName']
@@ -216,7 +217,7 @@ class GeoNamesProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', meta={'country': param['country']}, callback=self.parse)
 
     def parse(self, response):
-        col = utils.get_mongodb('raw_data', 'GeoNames', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'GeoNames', profile='mongodb-crawler')
         countries = response.meta['country']
 
         query = {'featureClass': 'P', 'population': {'$gt': 0}}
@@ -251,7 +252,7 @@ class GeoNamesProcSpider(CrawlSpider):
             if country_code in GeoNamesProcSpider.country_map:
                 country = GeoNamesProcSpider.country_map[country_code]
             elif country_code not in GeoNamesProcSpider.missed_countries:
-                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
                 country = col_country.find_one({'code': country_code})
                 if not country:
                     self.log('MISSED COUNTRY: %s' % country_code, log.WARNING)
@@ -337,12 +338,12 @@ class GeoNamesProcPipeline(object):
     country_map = {}
 
     def process_item(self, item, spider):
-        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col_loc = get_mongodb('geo', 'Locality', profile='mongodb-general')
 
         # get country
         country_code = item['country_code']
         if country_code not in GeoNamesProcPipeline.country_map:
-            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+            col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
             country = col_country.find_one({'code': country_code})
             assert country != None
             GeoNamesProcPipeline.country_map[country_code] = country
@@ -531,7 +532,7 @@ class TravelGisPipeline(object):
         if type(item).__name__ != CityItem.__name__:
             return item
 
-        col = utils.get_mongodb('raw_data', 'TravelGisCity', 'localhost', 27027)
+        col = get_mongodb('raw_data', 'TravelGisCity', 'localhost', 27027)
 
         ret = col.find_one({'name': item['city'], 'countryCode': item['code']})
         if not ret:
@@ -559,7 +560,7 @@ class GeoNamesPipeline(object):
         if type(item).__name__ != CityItem.__name__:
             return item
 
-        col = utils.get_mongodb('raw_data', 'GeoNamesCity', 'localhost', 27027)
+        col = get_mongodb('raw_data', 'GeoNamesCity', 'localhost', 27027)
 
         ret = col.find_one({'_id': item['city_id']})
         if not ret:
@@ -598,7 +599,7 @@ class QyerCityProcSpider(CrawlSpider):
         yield Request(url='http://www.baidu.com', meta={'country': param['country']}, callback=self.parse)
 
     def parse(self, response):
-        col = utils.get_mongodb('raw_data', 'QyerCity', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'QyerCity', profile='mongodb-crawler')
         countries = response.meta['country']
 
         query = {}
@@ -624,7 +625,7 @@ class QyerCityProcSpider(CrawlSpider):
             if country_name in QyerCityProcSpider.country_map:
                 country = QyerCityProcSpider.country_map[country_name]
             elif country_name not in QyerCityProcSpider.missed_countries:
-                col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+                col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
                 country = col_country.find_one({'alias': country_name})
                 if not country:
                     self.log('MISSED COUNTRY: %s' % country_name, log.WARNING)
@@ -717,12 +718,12 @@ class QyerCityProcPipeline(object):
     country_map = {}
 
     def process_item(self, item, spider):
-        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col_loc = get_mongodb('geo', 'Locality', profile='mongodb-general')
 
         # get country
         country_code = item['country_code']
         if country_code not in QyerCityProcPipeline.country_map:
-            col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+            col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
             country = col_country.find_one({'code': country_code})
             assert country != None
             QyerCityProcPipeline.country_map[country_code] = country
