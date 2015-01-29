@@ -7,36 +7,8 @@ from math import radians, cos, sin, asin, sqrt
 
 from lxml.html import HtmlElement
 
-import conf
-
 
 __author__ = 'zephyre'
-
-
-def get_mongodb(db_name, col_name, profile=None, host='localhost', port=27017, user=None, passwd=None):
-    """
-    建立MongoDB的连接。
-
-    :param host:
-    :param port:
-    :param db_name:
-    :param col_name:
-    :return:
-    """
-    if profile:
-        section = conf.global_conf.get(profile, None)
-        host = section.get('host', 'localhost')
-        port = int(section.get('port', '27017'))
-        user = section.get('user', None)
-        passwd = section.get('passwd', None)
-
-    from pymongo import MongoClient
-
-    mongo_conn = MongoClient(host, port)
-    db = mongo_conn[db_name]
-    if user and passwd:
-        db.authenticate(name=user, password=passwd)
-    return db[col_name]
 
 
 def haversine(lon1, lat1, lon2, lat2):
