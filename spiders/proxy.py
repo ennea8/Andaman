@@ -1,9 +1,9 @@
 # coding=utf-8
 import copy
 import re
-
 import datetime
-from scrapy import Item, Field, Request, Selector
+
+from scrapy import Item, Field, Request, Selector, log
 
 from middlewares import ProxySwitchMiddleware
 from spiders import AizouCrawlSpider, AizouPipeline
@@ -32,6 +32,47 @@ class ProxyItem(Item):
 
     # 是否通过验证
     verified = Field()
+
+
+class ProxyVerifier(object):
+    """
+    代理验证器的基类
+    """
+
+    def __init__(self, url, status_codes, text_list):
+        self.url = url
+        self.status_codes = status_codes
+        self.text_list = text_list
+
+    def verify(self, response):
+        if response.status not in self.status_codes:
+            return False
+
+        for t in self.text_list:
+            if t not in response.body:
+                return False
+
+        return True
+
+
+class ProxyVerifierFactory(object):
+    """
+    通过配置文件生成一系列验证器
+    """
+
+    @staticmethod
+    def generate():
+        from conf import load_yaml
+
+        def func(cfg_entry):
+            return ProxyVerifier(url=cfg_entry['url'], status_codes=cfg_entry['status'],
+                                 text_list=cfg_entry['contains'])
+
+        config = load_yaml()
+        try:
+            return map(func, config['proxy-verifier'])
+        except KeyError:
+            return []
 
 
 class BaseProxySpider(AizouCrawlSpider):
@@ -114,6 +155,11 @@ class YoudailiProxySpider(BaseProxySpider):
     name = 'youdaili-proxy'
     uuid = '8201b0c5-cbcc-4426-9b05-d24e79619809'
 
+    def __init__(self, *args, **kwargs):
+        BaseProxySpider.__init__(self, *args, **kwargs)
+
+        self._proxy_list = set([])
+
     def start_requests(self):
         verifier = []
         if 'verify' in self.param:
@@ -193,8 +239,63 @@ class YoudailiProxySpider(BaseProxySpider):
 
             proxy = '%s://%s:%d' % (item['scheme'], host, port)
 
-            meta = {'item': item, 'proxy': proxy, 'verifier': response.meta['verifier']}
-            yield self.next_req(meta)
+            if proxy in self._proxy_list:
+                continue
+            self._proxy_list.add(proxy)
+
+            verifier = ProxyVerifierFactory.generate()
+            meta = {'item': item, 'proxy': proxy, 'verifier2': verifier, 'latency': []}
+            url = verifier[0].url
+            self.log('Start verifying %s' % proxy, level=log.DEBUG)
+            yield Request(url=url, meta=meta, callback=self.verify, dont_filter=True, errback=self.verifail)
+
+    def verify(self, response):
+        """
+        返回response以后，进行验证
+        :param response:
+        :return:
+        """
+        item = response.request.meta['item']
+        proxy = response.request.meta['proxy']
+        verifier = response.request.meta['verifier2']
+        latency = response.request.meta['latency']
+
+        # 对代理进行验证
+        v = verifier[0]
+        verifier = verifier[1:]
+        if not v.verify(response):
+            self.log('%s: verification on %s failed' % (proxy, response.url), log.DEBUG)
+            return self.verifail(response)
+
+        l = response.meta['download_latency']
+        latency.append(l)
+        self.log('%s: verification on %s passed, with latency of %fs' % (proxy, response.url, l), log.DEBUG)
+
+        if not verifier:
+            # 没有更多的验证项目
+            item['latency'] = {'all': sum(latency) / len(latency)}
+            item['verified'] = {'all': True}
+            item['verifiedTime'] = datetime.datetime.utcnow()
+            self.log('%s: all the verification have been passed' % proxy, log.DEBUG)
+            return item
+
+        meta = {'item': item, 'proxy': proxy, 'verifier2': verifier, 'latency': latency}
+        url = verifier[0].url
+
+        return Request(url=url, callback=self.verify, meta=meta, dont_filter=True, errback=self.verifail)
+
+    def verifail(self, response):
+        """
+        验证失败
+        :param response:
+        :return:
+        """
+        item = response.request.meta['item']
+
+        item['verifiedTime'] = datetime.datetime.utcnow()
+        item['verified'] = {'all': False}
+
+        yield item
 
 
 class DBProxySpider(BaseProxySpider):
@@ -294,9 +395,7 @@ class FreeListProxySpider(BaseProxySpider):
             item['port'] = port
             item['desc'] = desc
             item['scheme'] = 'http'
-
             proxy = '%s://%s:%d' % (item['scheme'], host, port)
-
             meta = {'item': item, 'proxy': proxy, 'verifier': response.meta['verifier']}
             yield self.next_req(meta)
 
@@ -312,36 +411,8 @@ class ProxyPipeline(AizouPipeline):
             return item
 
         col = self.fetch_db_col('misc', 'Proxy', 'mongodb-general')
-        data = col.find_one({'host': item['host'], 'port': item['port']})
-        if not data:
-            data = {}
-
-        # 和原有数据合并
-        for k in item:
-            if k == 'latency':
-                if k in data:
-                    for latency_key in item[k]:
-                        data[k][latency_key] = item[k][latency_key]
-                else:
-                    data[k] = item[k]
-            elif k == 'verifyMethods':
-                if k in data:
-                    method_set = set(data[k])
-                    for m in item[k]:
-                        method_set.add(m)
-                    data[k] = list(method_set)
-                else:
-                    data[k] = item[k]
-            elif k == 'verified':
-                if k in data:
-                    for verifier in item[k]:
-                        data[k][verifier] = item[k][verifier]
-                else:
-                    data[k] = item[k]
-            else:
-                data[k] = item[k]
-
-        col.save(data)
+        col.update({'host': item['host'], 'port': item['port']}, {'$set': {k: item[k] for k in item.keys()}},
+                   upsert=True)
 
         return item
 
