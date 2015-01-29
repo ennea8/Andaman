@@ -233,6 +233,10 @@ def main():
         if args.verbose:
             logfile = None
         else:
+            try:
+                os.mkdir('/var/log/andaman/')
+            except OSError:
+                pass
             logfile = '/var/log/andaman/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
