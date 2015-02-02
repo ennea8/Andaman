@@ -14,6 +14,12 @@ __author__ = 'zephyre'
 
 
 def set_interval(interval):
+    """
+    定时执行某个函数
+    :param interval:
+    :return:
+    """
+
     import threading
 
     def decorator(function):
@@ -114,12 +120,9 @@ class GoogleGeocodeMiddleware(object):
 class ProxySwitchMiddleware(object):
     @classmethod
     def from_settings(cls, settings, crawler=None):
-        verifier = settings['PROXY_SWITCH_VERIFIER']
-        if not verifier:
-            verifier = 'baidu'
         latency = settings['PROXY_SWITCH_LATENCY']
         if not latency:
-            latency = 1
+            latency = 0.8
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
             count = 10000
@@ -127,16 +130,17 @@ class ProxySwitchMiddleware(object):
         if not recently:
             recently = 12
 
-        return cls(verifier, latency, recently, count)
+        return cls(latency, recently, count)
 
     @classmethod
     def from_crawler(cls, crawler):
         return cls.from_settings(crawler.settings, crawler)
 
-    def load_proxy(self, count, latency, recently, verifier):
+    @staticmethod
+    def load_proxy(count, latency, recently):
         response = urllib2.urlopen(
-            'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&recently=%d&pageSize=%d' %
-            (verifier, latency, recently, count))
+            'http://api.taozilvxing.cn/core/misc/proxies?verifier=all&latency=%d&recently=%d&pageSize=%d' %
+            (latency, recently, count))
         data = json.loads(response.read())
         # 加载代理列表
         proxy_list = {}
@@ -149,15 +153,17 @@ class ProxySwitchMiddleware(object):
             proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
         return proxy_list
 
-    def __init__(self, verifier, latency, recently, count):
+    def __init__(self, latency, recently, count, crawler):
+        self._crawler = crawler
         self.disabled_proxies = set([])
-        self.proxy_list = self.load_proxy(count, latency, recently, verifier)
+        self.proxy_list = self.load_proxy(count, latency, recently)
 
-        @set_interval(300)
+        # 每小时更新一下代理池
+        @set_interval(3600)
         def func():
-            self.load_proxy(count, latency, recently, verifier)
+            self.proxy_list = self.load_proxy(count, latency, recently)
 
-        func()
+        # func()
 
     def deregister(self, proxy):
         """
@@ -170,6 +176,10 @@ class ProxySwitchMiddleware(object):
             self.disabled_proxies.add(proxy)
 
     def pick_proxy(self):
+        """
+        从代理池中随机选择一个代理
+        :return:
+        """
         proxy_list = filter(lambda val: self.proxy_list[val]['enabled'], self.proxy_list.keys())
         if not proxy_list:
             return None
