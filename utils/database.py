@@ -17,10 +17,8 @@ def get_mongodb(db_name, col_name, profile):
 
     if profile in cached:
         client = cached[profile]['client']
-        db_set = cached[profile]['dbset']
     else:
         client = None
-        db_set = None
 
     if not client:
         cfg = load_yaml()
@@ -43,33 +41,17 @@ def get_mongodb(db_name, col_name, profile):
 
             client = MongoClient(host, port)
 
+        # authentication
+        user = section.get('user')
+        passwd = section.get('passwd')
+        credb = section.get('credb')
+        if user and passwd and credb:
+            client[credb].authenticate(name=user, password=passwd)
+
         cached[profile] = {'client': client}
         setattr(get_mongodb, 'cached', cached)
 
-    db = client[db_name]
-
-    if not db_set:
-        db_set = set([])
-    if db_name not in db_set:
-        cfg = load_yaml()
-        section = filter(lambda v: v['profile'] == profile, cfg['mongodb'])[0]
-
-        auth = section.get('auth')
-        if auth:
-            db_auth = filter(lambda v: db_name in v['database'], auth)
-            if db_auth:
-                db_auth = db_auth[0]
-                user = db_auth['user']
-                passwd = db_auth['passwd']
-                credb = client[getattr(auth, 'credb', 'admin')]
-                if user and passwd:
-                    credb.authenticate(name=user, password=passwd)
-
-        db_set.add(db_name)
-        cached[profile]['dbset'] = db_set
-        setattr(get_mongodb, 'cached', cached)
-
-    return db[col_name]
+    return client[db_name][col_name]
 
 
 def get_mysql_db(db_name, user=None, passwd=None, profile=None, host='localhost', port=3306):
