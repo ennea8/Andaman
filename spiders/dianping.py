@@ -96,6 +96,13 @@ class DianpingSpider(AizouCrawlSpider):
 
         m = copy.deepcopy(response.meta['data'])
         m['city_id'] = city_id
+
+        # 获得city item
+        item = DianpingItem()
+        item['type'] = 'city'
+        item['data'] = m
+        yield item
+
         yield Request(url='http://www.dianping.com/search/category/%d/10/g0r0' % city_id, meta={'data': m},
                       callback=self.parse_dining_search)
 
@@ -255,6 +262,13 @@ class DianpingSpider(AizouCrawlSpider):
                             '/a[@class="item" and @title]/@title').extract()
             special_dishes = set(filter(lambda v: v, [tmp.strip() for tmp in tmp]))
 
+        lat = None
+        lng = None
+        match = re.search(r'lng:(\d+\.\d+),lat:(\d+\.\d+)', response.body)
+        if match:
+            lng = float(match.group(1))
+            lat = float(match.group(2))
+
         m = copy.deepcopy(response.meta['data'])
         m['shop_id'] = shop_id
         m['taste_rating'] = taste_rating
@@ -265,6 +279,8 @@ class DianpingSpider(AizouCrawlSpider):
         m['desc'] = desc
         m['special_dishes'] = special_dishes
         m['tags'] = tags
+        m['lat'] = lat
+        m['lng'] = lng
 
         template = 'http://www.dianping.com/ajax/json/shop/wizard/getReviewListFPAjax?' \
                    'act=getreviewfilters&shopId=%d&tab=all'
@@ -299,13 +315,29 @@ class DianpingPipeline(AizouPipeline):
     spiders_uuid = [DianpingSpider.uuid]
 
     @staticmethod
-    def process_item(item, spider):
+    def process_dining_item(item, spider):
         data = item['data']
         data['special_dishes'] = list(data['special_dishes'])
         data['tags'] = list(data['tags'])
         col = get_mongodb('raw_dianping', 'Dining', 'mongo-raw')
         col.update({'shop_id': data['shop_id']}, {'$set': data}, upsert=True)
+        return item
 
+    @staticmethod
+    def process_city_item(item, spider):
+        data = item['data']
+        col = get_mongodb('raw_dianping', 'City', 'mongo-raw')
+        col.update({'city_id': data['city_id']}, {'$set': data}, upsert=True)
+        return item
+
+    @staticmethod
+    def process_item(item, spider):
+        if item['type'] == 'dining':
+            return DianpingPipeline.process_dining_item(item, spider)
+        elif item['type'] == 'city':
+            return DianpingPipeline.process_city_item(item, spider)
+        else:
+            return item
 
 
 
