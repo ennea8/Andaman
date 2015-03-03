@@ -207,8 +207,10 @@ class ProxySwitchMiddleware(object):
             spider.log('Set proxy %s for request: %s' % (proxy, request.url), log.DEBUG)
             request.meta['proxy'] = proxy
             request.meta['proxy_middleware'] = self
-            if 'proxySwitchStat' not in request.meta:
-                request.meta['proxySwitchStat'] = {'reqCount': 0}
+            if 'proxy_switch_ctx' not in request.meta:
+                request.meta['proxy_switch_ctx'] = {}
+            if 'request_cnt' not in request.meta['proxy_switch_ctx']:
+                request.meta['proxy_switch_ctx']['request_cnt'] = 0
             self.proxy_list[proxy]['req'] += 1
 
     def process_response(self, request, response, spider):
@@ -216,11 +218,18 @@ class ProxySwitchMiddleware(object):
             return response
         proxy = request.meta['proxy']
 
+        ctx = request.meta['proxy_switch_ctx']
+
+        if 'validator' in ctx and ctx['validator']:
+            is_valid = ctx['validator'](response)
+        else:
+            is_valid = response.status == 200 or response.status not in (301, 302)
+
         # 如果返回代码不为200，则表示出错
-        if response.status != 200 and response.status not in (301, 302):
-            request.meta['proxySwitchStat']['reqCount'] += 1
+        if not is_valid:
+            request.meta['proxy_switch_ctx']['request_cnt'] += 1
             self.add_fail_cnt(proxy, spider)
-            if request.meta['proxySwitchStat']['reqCount'] < self.max_retry_cnt:
+            if request.meta['proxy_switch_ctx']['request_cnt'] < self.max_retry_cnt:
                 return request
             else:
                 return response
@@ -233,8 +242,8 @@ class ProxySwitchMiddleware(object):
         if 'proxy' not in request.meta:
             return
 
-        request.meta['proxySwitchStat']['reqCount'] += 1
+        request.meta['proxy_switch_ctx']['request_cnt'] += 1
         proxy = request.meta['proxy']
         self.add_fail_cnt(proxy, spider)
-        if request.meta['proxySwitchStat']['reqCount'] < self.max_retry_cnt:
+        if request.meta['proxy_switch_ctx']['request_cnt'] < self.max_retry_cnt:
             return request
