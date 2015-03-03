@@ -188,7 +188,8 @@ class DianpingSpider(AizouCrawlSpider):
         解析餐厅的详情页面，如：http://www.dianping.com/shop/3578044
         """
         # 保证这是一个餐厅页面
-        if u'餐厅' not in response.xpath('//div[@class="breadcrumb"]/a[@href]/text()').extract()[0]:
+        tmp = response.xpath('//div[@class="breadcrumb"]/a[@href]/text()').extract()
+        if not tmp or u'餐厅' not in tmp[0]:
             return
 
         basic_info_node = response.xpath('//div[@id="basic-info"]')[0]
@@ -263,6 +264,7 @@ class DianpingSpider(AizouCrawlSpider):
         m['open_time'] = open_time
         m['desc'] = desc
         m['special_dishes'] = special_dishes
+        m['tags'] = tags
 
         template = 'http://www.dianping.com/ajax/json/shop/wizard/getReviewListFPAjax?' \
                    'act=getreviewfilters&shopId=%d&tab=all'
@@ -291,6 +293,7 @@ class DianpingPipeline(AizouPipeline):
     def process_item(item, spider):
         data = item['data']
         data['special_dishes'] = list(data['special_dishes'])
+        data['tags'] = list(data['tags'])
         col = get_mongodb('raw_dianping', 'Dining', 'mongo-raw')
         col.update({'shop_id': data['shop_id']}, {'$set': data}, upsert=True)
 
