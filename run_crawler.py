@@ -94,6 +94,8 @@ def setup_spider(spider_name, args):
     settings.set('USER_PARAM', ret['param'])
     settings.set('USER_ARGS', args)
 
+    settings.set('USER_AGENT', 'Aizou Chrome')
+
     if args.proxy:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
         settings.set('PROXY_SWITCH_VERIFIER',
