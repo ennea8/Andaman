@@ -268,7 +268,16 @@ class DianpingSpider(AizouCrawlSpider):
 
         template = 'http://www.dianping.com/ajax/json/shop/wizard/getReviewListFPAjax?' \
                    'act=getreviewfilters&shopId=%d&tab=all'
-        yield Request(url=template % shop_id, meta={'data': m}, callback=self.parse_review_stat)
+        yield Request(url=template % shop_id, meta={'data': m, 'proxy_switch_ctx': {'validator': self.json_validator}},
+                      callback=self.parse_review_stat)
+
+    @staticmethod
+    def json_validator(response):
+        try:
+            data = json.loads(response.body)
+            return data['code'] == 200 and 'msg' in data
+        except (ValueError, KeyError):
+            return False
 
     @staticmethod
     def parse_review_stat(response):
