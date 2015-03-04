@@ -7,6 +7,7 @@ from scrapy import Item, Field, Request, Selector, log
 
 from middlewares import ProxySwitchMiddleware
 from spiders import AizouCrawlSpider, AizouPipeline
+from utils.database import get_mongodb
 
 
 __author__ = 'zephyre'
@@ -48,9 +49,12 @@ class ProxyVerifier(object):
         if response.status not in self.status_codes:
             return False
 
-        for t in self.text_list:
-            if t not in response.body:
-                return False
+        try:
+            for t in self.text_list:
+                if t not in response.body:
+                    return False
+        except UnicodeDecodeError:
+            return False
 
         return True
 
@@ -410,7 +414,7 @@ class ProxyPipeline(AizouPipeline):
         if not self.is_handler(item, spider):
             return item
 
-        col = self.fetch_db_col('misc', 'Proxy', 'mongodb-general')
+        col = get_mongodb('misc', 'Proxy', 'mongo')
         col.update({'host': item['host'], 'port': item['port']}, {'$set': {k: item[k] for k in item.keys()}},
                    upsert=True)
 
