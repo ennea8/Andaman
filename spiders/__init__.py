@@ -13,20 +13,20 @@ import re
 from scrapy.contrib.spiders import CrawlSpider
 
 import utils
+from utils.database import get_mongodb
 
 
 class AizouCrawlSpider(CrawlSpider):
     @classmethod
     def from_crawler(cls, crawler):
         settings = crawler.settings
-        return cls(settings.get("USER_PARAM"))
+        return cls(settings=settings)
 
-    def __init__(self, param, *a, **kw):
+    def __init__(self, *a, **kw):
         super(CrawlSpider, self).__init__(*a, **kw)
-        if param:
-            self.param = param
-        else:
-            self.param = {}
+        settings = kw['settings']
+        self.param = settings['USER_PARAM']
+        self.args = settings['USER_ARGS']
 
         self.col_dict = {}
 
@@ -46,7 +46,7 @@ class AizouCrawlSpider(CrawlSpider):
     def fetch_db_col(self, db, col, profile):
         sig = '%s.%s.%s' % (db, col, profile)
         if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col, profile)
+            self.col_dict[sig] = get_mongodb(db, col, profile)
         return self.col_dict[sig]
 
 
@@ -162,19 +162,11 @@ class AizouPipeline(object):
     spiders = []
     spiders_uuid = []
 
-    def fetch_db_col(self, db, col, profile):
-        sig = '%s.%s.%s' % (db, col, profile)
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col, profile)
-        return self.col_dict[sig]
+    @staticmethod
+    def fetch_db_col(db, col, profile):
+        return get_mongodb(db, col, profile)
 
-    @classmethod
-    def from_crawler(cls, crawler):
-        settings = crawler.settings
-        return cls(settings.get("USER_PARAM"))
-
-    def __init__(self, param):
-        self.param = param
+    def __init__(self):
         self.col_dict = {}
 
     def is_handler(self, item, spider):

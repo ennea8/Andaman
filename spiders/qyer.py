@@ -5,6 +5,7 @@ import scrapy
 
 from spiders import AizouCrawlSpider, AizouPipeline
 import utils
+from utils.database import get_mongodb
 
 
 __author__ = 'zwh'
@@ -261,7 +262,7 @@ class QyerVsPipeline(object):
     spiders = [QyerVsSpot.name]
 
     def process_item(self, item, spider):
-        col = utils.get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
         data = col.find_one({'poi_id': item['poi_id']})
         if not data:
             data = {}
@@ -288,7 +289,7 @@ class QyerVsProcSpider(CrawlSpider):
 
     def parse(self, response):
         meta = response.meta
-        col_raw = utils.get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
+        col_raw = get_mongodb('raw_data', 'QyerSpot', profile='mongodb-crawler')
 
         for country in meta['countries']:
             # 查找指定国家的POI
@@ -382,7 +383,7 @@ class QyerVsProcSpider(CrawlSpider):
     def update_country(self, item):
         country_name = item['country_info']
         # lookup the country
-        col_country = utils.get_mongodb('geo', 'Country', profile='mongodb-general')
+        col_country = get_mongodb('geo', 'Country', profile='mongodb-general')
         ret = col_country.find_one({'alias': country_name.lower()}, {'zhName': 1, 'enName': 1})
         if not ret:
             self.log('Failed to find country: %s' % country_name, log.WARNING)
@@ -395,7 +396,7 @@ class QyerVsProcSpider(CrawlSpider):
         country_info = item['country_info']
         # lookup the city
         city = None
-        col_loc = utils.get_mongodb('geo', 'Locality', profile='mongodb-general')
+        col_loc = get_mongodb('geo', 'Locality', profile='mongodb-general')
         for city_name in city_candidates:
             city_list = list(col_loc.find({'country.id': country_info['_id'],
                                            'alias': re.compile(r'^%s' % city_name.lower()),
@@ -438,7 +439,7 @@ class QyerSpotProcPipeline(object):
         country_info = item['country_info']
 
         # lookup the poi
-        col_vs = utils.get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
+        col_vs = get_mongodb('poi', 'ViewSpot', profile='mongodb-general')
         vs = col_vs.find_one({'source.qyer.id': item['poi_id']})
         if not vs:
             vs = {}

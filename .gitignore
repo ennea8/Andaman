@@ -3,7 +3,7 @@
 *.jpg
 private.cfg
 logs
-conf/commons.cfg
 baidu_key.cfg
 tmp
-conf/mongo.yaml
+common.cfg
+*.yaml

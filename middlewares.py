@@ -13,6 +13,33 @@ import conf
 __author__ = 'zephyre'
 
 
+def set_interval(interval):
+    """
+    定时执行某个函数
+    :param interval:
+    :return:
+    """
+
+    import threading
+
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            stopped = threading.Event()
+
+            def loop():  # executed in another thread
+                while not stopped.wait(interval):  # until stopped
+                    function(*args, **kwargs)
+
+            t = threading.Thread(target=loop)
+            t.daemon = True  # stop if the program exits
+            t.start()
+            return stopped
+
+        return wrapper
+
+    return decorator
+
+
 class GoogleGeocodeMiddleware(object):
     @classmethod
     def from_settings(cls, settings, crawler=None):
@@ -93,45 +120,83 @@ class GoogleGeocodeMiddleware(object):
 class ProxySwitchMiddleware(object):
     @classmethod
     def from_settings(cls, settings, crawler=None):
-        verifier = settings['PROXY_SWITCH_VERIFIER']
-        if not verifier:
-            verifier = 'baidu'
         latency = settings['PROXY_SWITCH_LATENCY']
         if not latency:
-            latency = 5
+            latency = 0.8
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
-            count = 100
+            count = 10000
         recently = settings['PROXY_SWITCH_RECENTLY']
         if not recently:
             recently = 12
 
-        return cls(verifier, latency, recently, count)
+        return cls(latency, recently, count, crawler)
 
     @classmethod
     def from_crawler(cls, crawler):
         return cls.from_settings(crawler.settings, crawler)
 
-    def __init__(self, verifier, latency, recently, count):
+    @staticmethod
+    def load_proxy(count, latency, recently):
         response = urllib2.urlopen(
-            'http://api.lvxingpai.cn/core/misc/proxies?verifier=%s&latency=%d&recently=%d&pageSize=%d' %
-            (verifier, latency, recently, count))
+            'http://api2.taozilvxing.cn/core/misc/proxies?verifier=all&latency=%f&recently=%d&pageSize=%d' %
+            (latency, recently, count))
         data = json.loads(response.read())
-
         # 加载代理列表
         proxy_list = {}
-
         for entry in data['result']:
             host = entry['host']
             scheme = entry['scheme']
             port = entry['port']
             proxy = '%s://%s:%d' % (scheme, host, port)
+            # if proxy not in self.disabled_proxies:
             proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
+        return proxy_list
 
-        self.proxy_list = proxy_list
+    def __init__(self, latency, recently, count, crawler):
+        self._crawler = crawler
+        self.disabled_proxies = set([])
+        self.proxy_list = dict(filter(lambda item: item[0] not in self.disabled_proxies,
+                                      self.load_proxy(count, latency, recently).items()))
+        self.max_fail_cnt = 5
+        self.max_retry_cnt = 10
+
+        # 每小时更新一下代理池
+        @set_interval(3600)
+        def func():
+            self.proxy_list = self.load_proxy(count, latency, recently)
+
+    def deregister(self, proxy, spider):
+        """
+        注销某个代理
+        """
+        if proxy in self.proxy_list:
+            self.proxy_list.pop(proxy)
+            self.disabled_proxies.add(proxy)
+            spider.log('Proxy %s disabled' % proxy, log.WARNING)
+
+    def add_fail_cnt(self, proxy, spider):
+        """
+        登记某个代理的失败次数
+        """
+        if proxy in self.proxy_list:
+            self.proxy_list[proxy]['fail'] += 1
+            if self.proxy_list[proxy]['fail'] > self.max_fail_cnt:
+                self.deregister(proxy, spider)
+
+    def reset_fail_cnt(self, proxy, spider):
+        """
+        重置某个代理的失败次数统计
+        """
+        if proxy in self.proxy_list:
+            self.proxy_list[proxy]['fail'] = 0
 
     def pick_proxy(self):
-        proxy_list = filter(lambda val: self.proxy_list[val]['enabled'], self.proxy_list.keys())
+        """
+        从代理池中随机选择一个代理
+        :return:
+        """
+        proxy_list = self.proxy_list.keys()
         if not proxy_list:
             return None
         return proxy_list[random.randint(0, len(proxy_list) - 1)]
@@ -139,43 +204,46 @@ class ProxySwitchMiddleware(object):
     def process_request(self, request, spider):
         proxy = self.pick_proxy()
         if proxy:
+            spider.log('Set proxy %s for request: %s' % (proxy, request.url), log.DEBUG)
             request.meta['proxy'] = proxy
+            request.meta['proxy_middleware'] = self
+            if 'proxy_switch_ctx' not in request.meta:
+                request.meta['proxy_switch_ctx'] = {}
+            if 'request_cnt' not in request.meta['proxy_switch_ctx']:
+                request.meta['proxy_switch_ctx']['request_cnt'] = 0
             self.proxy_list[proxy]['req'] += 1
 
-        return
-
     def process_response(self, request, response, spider):
-        # # 如果返回代码不为200，则表示出错
-        # if response.status != 200 and response.status not in (301, 302, 404, 500, 503):
-        # # request.meta['proxySwitchStat']['reqCount'] += 1
-        # # 代理失败统计
-        # if 'proxy' in request.meta:
-        # proxy = request.meta['proxy']
-        # if proxy in self.proxy_list:
-        # d = self.proxy_list[proxy]
-        # d['fail'] += 1
-        # # 代理是否存活？
-        # if float(d['fail']) / float(d['req']) > 0.7:
-        # d['enabled'] = False
-        #
-        # return request
+        if 'proxy' not in request.meta:
+            return response
+        proxy = request.meta['proxy']
 
-        if 'proxy' in request.meta:
-            proxy = request.meta['proxy']
-            if proxy in self.proxy_list:
-                self.proxy_list[proxy]['fail'] = 0
+        ctx = request.meta['proxy_switch_ctx']
 
-        return response
+        if 'validator' in ctx and ctx['validator']:
+            is_valid = ctx['validator'](response)
+        else:
+            is_valid = response.status == 200 or response.status not in (301, 302)
+
+        # 如果返回代码不为200，则表示出错
+        if not is_valid:
+            request.meta['proxy_switch_ctx']['request_cnt'] += 1
+            self.add_fail_cnt(proxy, spider)
+            if request.meta['proxy_switch_ctx']['request_cnt'] < self.max_retry_cnt:
+                return request
+            else:
+                return response
+        else:
+            self.reset_fail_cnt(proxy, spider)
+            return response
 
     def process_exception(self, request, exception, spider):
         # 代理失败统计
-        if 'proxy' in request.meta:
-            proxy = request.meta['proxy']
-            if proxy in self.proxy_list:
-                d = self.proxy_list[proxy]
-                d['fail'] += 1
-                if d['fail'] >= 5:
-                    spider.log('PROXY %s IS DISABLED.' % proxy, log.WARNING)
-                    d['enabled'] = False
+        if 'proxy' not in request.meta:
+            return
 
-        return request
+        request.meta['proxy_switch_ctx']['request_cnt'] += 1
+        proxy = request.meta['proxy']
+        self.add_fail_cnt(proxy, spider)
+        if request.meta['proxy_switch_ctx']['request_cnt'] < self.max_retry_cnt:
+            return request
