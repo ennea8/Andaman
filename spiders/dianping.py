@@ -78,7 +78,7 @@ class DianpingSpider(AizouCrawlSpider):
         获得city_id
         """
         for script in response.xpath('//script/text()').extract():
-            match = re.search(r'_setCityId.+(\d+)', script)
+            match = re.search(r'_setCityId.+?(\d+)', script)
             if not match:
                 continue
             return int(match.group(1))
@@ -249,10 +249,11 @@ class DianpingSpider(AizouCrawlSpider):
                 for tag in tmp:
                     tags.add(tag.strip())
             elif info_name.startswith(u'餐厅简介'):
-                tmp = other_info_node.xpath('./span[@class="item"]/text()').extract()
+                tmp = '\n'.join(filter(lambda v: v,
+                                       (tmp.strip() for tmp in other_info_node.xpath('./text()').extract()))).strip()
                 if not tmp:
                     continue
-                desc = tmp[0].strip()
+                desc = tmp
 
         special_dishes = set([])
         tmp = response.xpath('//div[@id="shop-tabs"]/script/text()').extract()
