@@ -362,7 +362,9 @@ class DianpingPipeline(AizouPipeline):
                 add_set_ops[key] = {'$each': elements}
 
         col = get_mongodb('raw_dianping', 'Dining', 'mongo-raw')
-        ops = {'$set': data, '$addToSet': add_set_ops}
+        ops = {'$set': data}
+        if add_set_ops:
+            ops['$addToSet'] = add_set_ops
         col.update({'shop_id': data['shop_id']}, ops, upsert=True)
         return item
 
