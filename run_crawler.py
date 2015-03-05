@@ -6,8 +6,8 @@ import sys
 import imp
 from time import time
 import traceback
-
 import datetime
+
 import scrapy
 from scrapy import signals, Request, Item, log
 from scrapy.crawler import Crawler
@@ -98,8 +98,8 @@ def setup_spider(spider_name, args):
 
     if args.proxy:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
-        settings.set('PROXY_SWITCH_VERIFIER',
-                     'baidu')  # args['proxy-verifier'][0] if 'proxy-verifier' in args else 'baidu')
+        settings.set('PROXY_SWITCH_VERIFIER', 'baidu')
+        settings.set('PROXY_SWITCH_REFRESH_INTERVAL', 3600)
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', args.debug)
