@@ -81,7 +81,7 @@ class DianpingSpider(AizouCrawlSpider):
                 if city_list and (city_name not in city_list and city_pinyin not in city_list):
                     continue
 
-                yield Request(url=url, meta={'city_name': city_name, 'city_pinyin': city_pinyin},
+                yield Request(url=url, meta={'data': {'city_name': city_name, 'city_pinyin': city_pinyin}},
                               callback=self.parse_city_main)
 
     def parse_city_main(self, response):
@@ -130,6 +130,7 @@ class DianpingSpider(AizouCrawlSpider):
         """
         解析美食的搜索页面，如：http://www.dianping.com/search/category/2/10/g0r0
         """
+        # 按照类别进行细分
         for cat_node in response.xpath('//div[@id="classfy"]/a[@href]'):
             tmp = cat_node.xpath('./span/text()').extract()
             if not tmp:
@@ -144,10 +145,12 @@ class DianpingSpider(AizouCrawlSpider):
             if url[-1] == '/':
                 url = url[:-1]
             m = copy.deepcopy(response.meta['data'])
-            m['cat_name'] = cat_name
-            m['cat_id'] = cat_id
+
+            if u'其他' not in cat_name and u'其它' not in cat_name:
+                m['cat_name'] = cat_name
+                m['cat_id'] = cat_id
+
             page = 1
-            m['page'] = page
             url_template = url + 'p%d'
             m['url_template'] = url_template
             url = url_template % page
@@ -169,7 +172,6 @@ class DianpingSpider(AizouCrawlSpider):
             max_page = sorted(page_list)[-1]
             for page in xrange(2, max_page + 1):
                 m = copy.deepcopy(response.meta['data'])
-                m['page'] = page
                 yield Request(url=url_template % page, meta={'data': m}, callback=self.parse_dining_list)
 
     def parse_dining_list(self, response):
@@ -208,7 +210,7 @@ class DianpingSpider(AizouCrawlSpider):
             m['addr'] = addr
             m['cover_image'] = image_src
             url = self.build_href(response.url, href)
-            yield Request(url=url, meta={'data': m}, callback=self.parse_dining_details)
+            yield Request(url=url, meta={'data': m}, callback=self.parse_dining_details, dont_filter=True)
 
     def parse_dining_details(self, response):
         """
@@ -336,12 +338,32 @@ class DianpingPipeline(AizouPipeline):
     spiders_uuid = [DianpingSpider.uuid]
 
     @staticmethod
+    def add_to_set(data, key):
+        """
+        有一类key，比如tags这一类的，应该是set类型。所以，在处理这类数据的时候，应该采用$addToSet，而不是$set
+        """
+        try:
+            elements = data.pop(key)
+            if not elements:
+                return []
+            else:
+                return list(set(elements))
+        except KeyError:
+            return []
+
+    @staticmethod
     def process_dining_item(item, spider):
         data = item['data']
-        data['special_dishes'] = list(data['special_dishes'])
-        data['tags'] = list(data['tags'])
+
+        add_set_ops = {}
+        for key in ['special_dishes', 'tags']:
+            elements = DianpingPipeline.add_to_set(data, key)
+            if elements:
+                add_set_ops[key] = {'$each': elements}
+
         col = get_mongodb('raw_dianping', 'Dining', 'mongo-raw')
-        col.update({'shop_id': data['shop_id']}, {'$set': data}, upsert=True)
+        ops = {'$set': data, '$addToSet': add_set_ops}
+        col.update({'shop_id': data['shop_id']}, ops, upsert=True)
         return item
 
     @staticmethod
