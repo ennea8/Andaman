@@ -20,49 +20,69 @@ class DianpingItem(Item):
 class DianpingSpider(AizouCrawlSpider):
     """
     抓取大众点评
+
+    参数：
+    * --city: 指定需要抓取的城市
+    * --region: 可选值：abroad（抓取国外数据），domestic（抓取国外数据）
     """
 
     name = 'dianping'
     uuid = '9473fbd6-1af1-4037-945e-83043a5f298d'
 
-    def start_requests(self):
+    @staticmethod
+    def process_arguments():
         import argparse
 
         parser = argparse.ArgumentParser()
-        parser.add_argument('--city', required=True, type=str, nargs='*')
+        parser.add_argument('--city', type=str, nargs='*')
+        parser.add_argument('--region', choices=['abroad', 'domestic'])
         args, leftovers = parser.parse_known_args()
-        city_list = set((unicode(tmp) for tmp in args.city))
+        city_list = set((unicode(tmp) for tmp in args.city)) if args.city else set([])
+        region = args.region
 
-        yield Request(url='http://www.dianping.com/citylist', callback=self.parse_city_list,
-                      meta={'city_list': city_list})
+        return {'city_list': city_list, 'region': region}
+
+    def start_requests(self):
+        yield Request(url='http://www.dianping.com/citylist', callback=self.parse_city_list)
 
     def parse_city_list(self, response):
-        city_list = response.meta['city_list']
+        """
+        处理城市列表，如：http://www.dianping.com/citylist
+        """
+        arguments = self.process_arguments()
+        city_list = arguments['city_list']
+        region = arguments['region']
 
-        city_candidates = {}
-        for node in response.xpath(r'//*[contains(@class,"terms")]//a[@href and @onclick]'):
-            if not re.search(r'pageTracker\._trackPageview', node.xpath('./@onclick').extract()[0]):
-                continue
+        # 根据region判断是抓取国内还是国外的城市
+        domestict_list, abroad_list = response.xpath('//ul[@id="divArea"]')[:2]
+        if not region:
+            region_list = [domestict_list, abroad_list]
+        elif region == 'domestic':
+            region_list = [domestict_list]
+        else:
+            region_list = [abroad_list]
 
-            href = node.xpath('./@href').extract()[0]
-            url = self.build_href(response.url, href)
-            match = re.search(r'^/(\w+)$', href)
-            if not match:
-                continue
-            city_pinyin = match.group(1)
+        for region_node in region_list:
+            for node in region_node.xpath(r'.//*[contains(@class,"terms")]'
+                                          r'//a[@href and contains(@onclick,"pageTracker._trackPageview")]'):
+                href = node.xpath('./@href').extract()[0]
+                url = self.build_href(response.url, href)
+                match = re.search(r'^/(\w+)$', href)
+                if not match:
+                    continue
+                city_pinyin = match.group(1)
 
-            tmp = list(filter(lambda v: v, (tmp.strip() for tmp in node.xpath('.//text()').extract())))
-            if not tmp:
-                continue
-            city_name = tmp[0]
-            city_candidates[city_pinyin] = {'city_name': city_name, 'city_pinyin': city_pinyin, 'url': url}
+                tmp = list(filter(lambda v: v, (tmp.strip() for tmp in node.xpath('.//text()').extract())))
+                if not tmp:
+                    continue
+                city_name = tmp[0]
 
-        for c in city_candidates.values():
-            if c['city_name'] not in city_list and c['city_pinyin'] not in city_list:
-                continue
+                # 根据city_list进行筛选
+                if city_list and (city_name not in city_list and city_pinyin not in city_list):
+                    continue
 
-            url = c.pop('url')
-            yield Request(url=url, meta={'data': c}, callback=self.parse_city_main)
+                yield Request(url=url, meta={'city_name': city_name, 'city_pinyin': city_pinyin},
+                              callback=self.parse_city_main)
 
     def parse_city_main(self, response):
         main_url = response.url
