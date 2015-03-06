@@ -212,6 +212,31 @@ class DianpingSpider(AizouCrawlSpider):
             url = self.build_href(response.url, href)
             yield Request(url=url, meta={'data': m}, callback=self.parse_dining_details, dont_filter=True)
 
+    @staticmethod
+    def get_dishes(html):
+        """
+        获得推荐菜品
+        """
+        dishes = []
+        sel = Selector(text=html)
+        tmp = sel.xpath('//div[contains(@class,"shop-tab-recommend")]/p[@class="recommend-name"]'
+                        '/a[@class="item" and @title]')
+        if tmp:
+            dish_name = tmp.xpath('./@title').extract()[0].strip()
+            # 去除首尾可能出现的句点
+            dish_name = re.sub(r'\s*\.$', '', dish_name)
+            dish_name = re.sub(r'^\.\s*', '', dish_name)
+            recommend_cnt = 0
+
+            tmp = tmp.xpath('./em[@class="count"]/text()').extract()
+            if tmp:
+                match = re.search(r'\d+', tmp[0])
+                if match:
+                    recommend_cnt = int(match.group())
+            dishes.append({'name': dish_name, 'recommend_cnt': recommend_cnt})
+
+        return dishes
+
     def parse_dining_details(self, response):
         """
         解析餐厅的详情页面，如：http://www.dianping.com/shop/3578044
@@ -277,13 +302,11 @@ class DianpingSpider(AizouCrawlSpider):
                     continue
                 desc = tmp
 
-        special_dishes = set([])
         tmp = response.xpath('//div[@id="shop-tabs"]/script/text()').extract()
         if tmp:
-            sel = Selector(text=tmp[0])
-            tmp = sel.xpath('//div[contains(@class,"shop-tab-recommend")]/p[@class="recommend-name"]'
-                            '/a[@class="item" and @title]/@title').extract()
-            special_dishes = set(filter(lambda v: v, [tmp.strip() for tmp in tmp]))
+            dishes = self.get_dishes(tmp[0])
+        else:
+            dishes = []
 
         lat = None
         lng = None
@@ -300,7 +323,7 @@ class DianpingSpider(AizouCrawlSpider):
         m['tel'] = tel
         m['open_time'] = open_time
         m['desc'] = desc
-        m['special_dishes'] = special_dishes
+        m['dishes'] = dishes
         m['tags'] = tags
         m['lat'] = lat
         m['lng'] = lng
@@ -356,7 +379,7 @@ class DianpingPipeline(AizouPipeline):
         data = item['data']
 
         add_set_ops = {}
-        for key in ['special_dishes', 'tags']:
+        for key in ['tags']:
             elements = DianpingPipeline.add_to_set(data, key)
             if elements:
                 add_set_ops[key] = {'$each': elements}
