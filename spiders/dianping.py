@@ -348,7 +348,7 @@ class DianpingSpider(AizouCrawlSpider):
         """
         data = json.loads(response.body)
         m = copy.deepcopy(response.meta['data'])
-        m['reivew_stat'] = data['msg']
+        m['review_stat'] = data['msg']
 
         item = DianpingItem()
         item['type'] = 'dining'
