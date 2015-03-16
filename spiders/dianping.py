@@ -390,7 +390,13 @@ class DianpingPipeline(AizouPipeline):
         ops = {'$set': data}
         if add_set_ops:
             ops['$addToSet'] = add_set_ops
-        col.update({'shop_id': data['shop_id']}, ops, upsert=True)
+
+        from pymongo.errors import OperationFailure
+
+        try:
+            col.update({'shop_id': data['shop_id']}, ops, upsert=True)
+        except OperationFailure as e:
+            spider.log(e.message, level=log.ERROR)
         return item
 
     @staticmethod
