@@ -44,7 +44,7 @@ class DianpingSpider(AizouCrawlSpider):
 
     def start_requests(self):
         yield Request(url='http://www.dianping.com/citylist', callback=self.parse_city_list,
-                      meta={'proxy_middleware': {'enabled': False}})
+                      meta={'proxy_switch_ctx': {'enabled': False}})
 
     def parse_city_list(self, response):
         """
@@ -83,7 +83,7 @@ class DianpingSpider(AizouCrawlSpider):
                     continue
 
                 yield Request(url=url, meta={'data': {'city_name': city_name, 'city_pinyin': city_pinyin},
-                                             'proxy_middleware': {'enabled': False}},
+                                             'proxy_switch_ctx': {'enabled': False}},
                               callback=self.parse_city_main)
 
     def parse_city_main(self, response):
