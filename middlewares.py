@@ -232,6 +232,11 @@ class ProxySwitchMiddleware(object):
         return proxy_list[random.randint(0, len(proxy_list) - 1)]
 
     def process_request(self, request, spider):
+        # 如何临时性禁用proxy middleware: 将meta['proxy_middleware']['enabled']设置为False
+        mw_key = 'proxy_middleware'
+        if mw_key in request.meta and request.meta[mw_key]['enabled'] is False:
+            return
+
         proxy = self.pick_proxy()
         if proxy:
             spider.log('Set proxy %s for request: %s' % (proxy, request.url), log.DEBUG)
@@ -246,6 +251,10 @@ class ProxySwitchMiddleware(object):
     def process_response(self, request, response, spider):
         if 'proxy' not in request.meta:
             return response
+        mw_key = 'proxy_middleware'
+        if mw_key in request.meta and request.meta[mw_key]['enabled'] is False:
+            return response
+
         proxy = request.meta['proxy']
 
         ctx = request.meta['proxy_switch_ctx']
