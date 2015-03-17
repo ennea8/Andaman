@@ -255,6 +255,7 @@ def main():
         logfile = None
 
     s = setup_spider(spider_name, args)
+    s.arg_parser = parser
     if s:
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)

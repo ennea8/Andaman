@@ -1,6 +1,5 @@
 # coding=utf-8
 import ConfigParser
-import hashlib
 import os
 import re
 from math import radians, cos, sin, asin, sqrt
@@ -9,7 +8,6 @@ from lxml.html import HtmlElement
 
 
 __author__ = 'zephyre'
-
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -46,15 +44,7 @@ def mercator2wgs(mx, my):
 
 
 def images_pro(urls):
-    if urls:
-        hash_list = [hashlib.md5('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp for tmp in urls).hexdigest()]
-        return [{'url': 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s'} % tmp for tmp in hash_list]
-    else:
-        return None
-        # hash_list = [hashlib.md5('http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg').hexdigest() % tmp for tmp in
-        # (urls if urls else []]
-        # return [{'url': 'http://lvxingpai-img-store.qiniudn.com/assets/images/%s' %
-        # }]
+    return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
 
 
 def guess_coords(x, y):
@@ -74,6 +64,19 @@ def guess_coords(x, y):
         return
 
     return rx, ry
+
+
+# //Web墨卡托转经纬度
+# dvec3 CMathEngine::WebMercator2lonLat( dvec3   mercator )
+# {
+# dvec3 lonLat;
+# double x = mercator.x/20037508.34*180;
+#     double y = mercator.y/20037508.34*180;
+#     y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
+#     lonLat.x = x;
+#     lonLat.y = y;
+#     return lonLat;
+# }
 
 
 def get_short_loc(name):
@@ -177,3 +180,111 @@ def parse_etree(node, rules):
         return node
 
     return func(dom)
+
+
+def load_yaml():
+    """
+    Load YAML-format configuration files
+    :return:
+    """
+
+    config = getattr(load_yaml, 'config', None)
+    if config:
+        return config
+
+    from yaml import load
+    import os
+    from glob import glob
+
+    cfg_dir = os.path.abspath(os.path.join(os.path.split(__file__)[0], './conf/'))
+    cfg_file = os.path.join(cfg_dir, 'andaman.yaml')
+    with open(cfg_file) as f:
+        config = load(f)
+
+    # Resolve includes
+    if 'include' in config:
+        for entry in config['include']:
+            for fname in glob(os.path.join(cfg_dir, entry)):
+                if fname == cfg_file:
+                    continue
+                try:
+                    with open(fname) as f:
+                        include_data = load(f)
+                        for k, v in include_data.items():
+                            config[k] = v
+                except IOError:
+                    continue
+
+    setattr(load_yaml, 'config', config)
+    return config
+
+
+def get_mongodb(db_name, col_name, profile):
+    """
+    建立MongoDB的连接。
+    :param host:
+    :param port:
+    :param db_name:
+    :param col_name:
+    :return:
+    """
+
+    cached = getattr(get_mongodb, 'cached', {})
+
+    if profile in cached:
+        client = cached[profile]['client']
+        db_set = cached[profile]['dbset']
+    else:
+        client = None
+        db_set = None
+
+    if not client:
+        cfg = load_yaml()
+        section = filter(lambda v: v['profile'] == profile, cfg['mongodb'])[0]
+
+        host = section.get('host', 'localhost')
+        port = int(section.get('port', '27017'))
+
+        if section.get('replica', False):
+            from pymongo import MongoReplicaSetClient
+            from pymongo import ReadPreference
+
+            client = MongoReplicaSetClient('%s:%d' % (host, port), replicaSet=section.get('replName'))
+
+            pref = section.get('readPref', 'PRIMARY')
+            client.read_preference = getattr(ReadPreference, pref)
+
+        else:
+            from pymongo import MongoClient
+
+            client = MongoClient(host, port)
+
+        cached[profile] = {'client': client}
+        setattr(get_mongodb, 'cached', cached)
+
+    db = client[db_name]
+
+    if not db_set:
+        db_set = set([])
+    if db_name not in db_set:
+        cfg = load_yaml()
+        section = filter(lambda v: v['profile'] == profile, cfg['mongodb'])[0]
+
+        auth = section.get('auth')
+        if auth:
+            db_auth = filter(lambda v: db_name in v['database'], auth)
+            if db_auth:
+                db_auth = db_auth[0]
+                user = db_auth['user']
+                passwd = db_auth['passwd']
+                credb = client[getattr(auth, 'credb', 'admin')]
+                if user and passwd:
+                    credb.authenticate(name=user, password=passwd)
+
+        db_set.add(db_name)
+        cached[profile]['dbset'] = db_set
+        setattr(get_mongodb, 'cached', cached)
+
+    return db[col_name]
+
+
