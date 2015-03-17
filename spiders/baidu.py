@@ -24,13 +24,6 @@ from scrapy.utils import spider
 import conf
 from spiders import AizouCrawlSpider, AizouPipeline
 
-
-
-
-
-
-# from spiders.youji_mixin import BaiduDomTreeProc
-# from mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
@@ -775,6 +768,10 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
     def parse_scene(self, response):
         item = response.meta['item']
+        sid = item['data']['sid']
+        sname = item['data']['sname']
+        surl = item['data']['surl']
+        base_data = {'sid': sid, 'sname': sname, 'surl': surl}
 
         # 解析原网页，判断是poi还是目的地
         sel = Selector(response)
@@ -788,22 +785,16 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         # 返回scene本身
         if 'scene' in self.args.targets:
+            # Fetch images
+            image_tmpl = 'http://lvyou.baidu.com/%s/fengjing/?pn=%d'
+            yield Request(url=image_tmpl % (surl, 0), callback=self.parse_images,
+                          meta={'data': base_data, 'page': 0, 'tmpl': image_tmpl})
             yield Request(url='http://lvyou.baidu.com/%s/tips/' % item['data']['surl'], callback=self.parse_tips,
                           meta={'item': item})
-
-        sid = item['data']['sid']
-        sname = item['data']['sname']
-        surl = item['data']['surl']
-        base_data = {'sid': sid, 'sname': sname, 'surl': surl}
 
         if 'scene-comment' in self.args.targets:
             yield Request(url='http://lvyou.baidu.com/user/ajax/remark/getsceneremarklist?xid=%s&score=0&pn=0&rn=500'
                               '&format=ajax' % sid, callback=self.parse_scene_comment, meta={'data': base_data})
-
-        # Fetch images
-        image_tmpl = 'http://lvyou.baidu.com/%s/fengjing/?pn=%d'
-        yield Request(url=image_tmpl % (surl, 0), callback=self.parse_images,
-                      meta={'data': base_data, 'page': 0, 'tmpl': image_tmpl})
 
         # 去哪吃item
         if item['type'] == 'locality':
@@ -1241,7 +1232,7 @@ class BaiduSceneProItem(Item):
 # uuid = '3d66f9ad-4190-4d7e-a392-e11e29e9b670'
 #
 # def __init__(self, *a, **kw):
-#         super(BaiduSceneProcSpider, self).__init__(*a, **kw)
+# super(BaiduSceneProcSpider, self).__init__(*a, **kw)
 #
 #     def start_requests(self):
 #         yield Request(url='http://www.baidu.com', callback=self.parse)
