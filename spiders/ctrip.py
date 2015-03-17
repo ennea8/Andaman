@@ -1,7 +1,7 @@
 # coding=utf-8
 from scrapy import Item, Field, Request, Selector, log
 from spiders import AizouCrawlSpider, AizouPipeline
-from utils import get_mongodb
+from utils.database import get_mongodb
 
 __author__ = 'lxf'
 
