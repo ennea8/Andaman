@@ -9,6 +9,7 @@ from scrapy import Item, Field, Request, Selector
 from scrapy.contrib.spiders import CrawlSpider
 
 import utils
+from utils.database import get_mongodb
 
 
 __author__ = 'zephyre'
@@ -124,7 +125,7 @@ class ChangtuBusStationPipeline(object):
         if type(item).__name__ != BusStatoinItem.__name__:
             return item
 
-        col = utils.get_mongodb('raw_data', 'BusStation', 'localhost', 27027)
+        col = get_mongodb('raw_data', 'BusStation', 'localhost', 27027)
 
         ret = col.find_one({'stationId': item['station_id']})
         if not ret:

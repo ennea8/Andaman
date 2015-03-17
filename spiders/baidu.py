@@ -29,6 +29,7 @@ from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
+from utils.database import get_mongodb
 
 
 __author__ = 'zephyre'
@@ -457,14 +458,14 @@ class BaiduNoteProcSpider(CrawlSpider):
     name = 'baidu_note_proc'  # name of spider
 
     def __init__(self, *a, **kw):
-        super(BaiduNoteProcSpider, self).__init__(*a, **kw)
+        CrawlSpider.__init__(self, *a, **kw)
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com', callback=self.parse)
 
     def parse(self, response):
         item = BaiduNoteProcItem()
-        col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
         part = col.find()
         for entry in part:
             content_list = []
@@ -640,7 +641,7 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 
     def parse(self, response):
         item = BaiduNoteKeywordItem()
-        col = utils.get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'BaiduNote', profile='mongodb-crawler')
         part = col.find()
         i = 1
         for entry in part:
@@ -676,7 +677,7 @@ class BaiduNoteKeywordSpider(CrawlSpider):
 # if type(item).__name__ != BaiduNoteKeywordItem.__name__:
 # return item
 #
-# col = utils.get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
+# col = get_mongodb('clean_data', 'BaiduView', profile='mongodb-general')
 # view = {}
 # view['title'] = item['title']
 # view['keyword'] = item['keyword']

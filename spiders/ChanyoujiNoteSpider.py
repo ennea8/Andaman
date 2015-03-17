@@ -1,13 +1,12 @@
 # -*- coding: UTF-8 -*-
 import conf
+from utils.database import get_mongodb
 
 __author__ = 'wdx'
 
 import json
 import re
-import utils
 import pysolr
-import time
 import datetime
 
 from scrapy import Request, Selector
@@ -16,6 +15,7 @@ from scrapy.contrib.spiders import CrawlSpider
 from items import ChanyoujiYoujiItem, ChanyoujiNoteProcItem
 
 import sys
+
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
@@ -107,7 +107,7 @@ class ChanyoujiYoujiPipline(object):
         if not isinstance(item, ChanyoujiYoujiItem):
             return item
 
-        col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         note = {'noteId': item['trips_id'],
                 'title': item['title'],
                 'authorName': item['authorName'],
@@ -139,9 +139,9 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
 
     def parse(self, response):
         item = ChanyoujiNoteProcItem()
-        col = utils.get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
+        col = get_mongodb('raw_data', 'ChanyoujiNote1', profile='mongodb-crawler')
         part = col.find()
-        content_m=[]
+        content_m = []
         for entry in part:
             contents = []
             toLoc = []
@@ -164,13 +164,12 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
                         toLoc.append(content_m[i]['entry']['name_zh_cn'])
 
                 if 'description' in content_m[i]:
-                    if  content_m[i]['description']:
+                    if content_m[i]['description']:
                         contents.append(content_m[i]['description'])
 
                 if 'photo' in content_m[i]:
                     if 'src' in content_m[i]['photo']:
                         contents.append(content_m[i]['photo']['src'])
-
 
             item['id'] = entry['_id']
             item['title'] = entry['title']
@@ -193,16 +192,16 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
             item['contents'] = contents
             item['toLoc'] = toLoc
             item['fromLoc'] = None
-            if (item['viewCnt']>1500) and (len(item['contents'])>150) or item['favorCnt']>100:
+            if (item['viewCnt'] > 1500) and (len(item['contents']) > 150) or item['favorCnt'] > 100:
                 item['elite'] = True
-            else :
+            else:
                 item['elite'] = False
             if date_num[0]:
-                date0=date_num[0].replace("-0","-")
+                date0 = date_num[0].replace("-0", "-")
                 startDate_v = re.split('[-]', date0)
                 item['startDate'] = datetime.datetime(int(startDate_v[0]), int(startDate_v[1]), int(startDate_v[2]))
             if date_num[-1]:
-                date1=date_num[-1].replace("-0","-")
+                date1 = date_num[-1].replace("-0", "-")
                 endDate_v = re.split('[-]', date1)
                 item['endDate'] = datetime.datetime(int(endDate_v[0]), int(endDate_v[1]), int(endDate_v[2]))
             yield item
@@ -213,7 +212,6 @@ class ChanyoujiNoteProcSpider(CrawlSpider):
 
 
             # items.append(item)
-
 
 
 class ChanyoujiNoteProcPipeline(object):

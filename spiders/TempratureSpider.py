@@ -5,7 +5,7 @@ __author__ = 'lxf'
 # from os import *
 from scrapy import Request, Selector, Item, Field
 from scrapy.contrib.spiders import CrawlSpider
-from utils import get_mongodb
+from utils.database import get_mongodb
 # import datetime, time
 
 

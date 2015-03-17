@@ -13,6 +13,7 @@ import re
 from scrapy.contrib.spiders import CrawlSpider
 
 import utils
+from utils.database import get_mongodb
 
 
 class AizouCrawlSpider(CrawlSpider):
@@ -46,7 +47,7 @@ class AizouCrawlSpider(CrawlSpider):
     def fetch_db_col(self, db, col, profile):
         sig = '%s.%s.%s' % (db, col, profile)
         if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col, profile)
+            self.col_dict[sig] = get_mongodb(db, col, profile)
         return self.col_dict[sig]
 
 
@@ -162,11 +163,9 @@ class AizouPipeline(object):
     spiders = []
     spiders_uuid = []
 
-    def fetch_db_col(self, db, col, profile):
-        sig = '%s.%s.%s' % (db, col, profile)
-        if sig not in self.col_dict:
-            self.col_dict[sig] = utils.get_mongodb(db, col, profile)
-        return self.col_dict[sig]
+    @staticmethod
+    def fetch_db_col(db, col, profile):
+        return get_mongodb(db, col, profile)
 
     def __init__(self):
         self.col_dict = {}

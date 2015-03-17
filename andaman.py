@@ -6,8 +6,8 @@ import sys
 import imp
 from time import time
 import traceback
-
 import datetime
+
 import scrapy
 from scrapy import signals, Request, Item, log
 from scrapy.crawler import Crawler
@@ -83,21 +83,37 @@ def parse_args(args):
     return {'cmd': cmd, 'param': param_dict}
 
 
+def proc_crawler_settings(crawler):
+    """
+    读取配置文件，进行相应的设置
+    """
+    settings = crawler.settings
+
+    config = conf.load_yaml()
+    if 'scrapy' in config:
+        for key, value in config['scrapy'].items():
+            settings.set(key, value)
+
+
 def setup_spider(spider_name, args):
     import conf
 
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
 
+    proc_crawler_settings(crawler)
+
     settings = crawler.settings
     ret = parse_args(sys.argv)
     settings.set('USER_PARAM', ret['param'])
     settings.set('USER_ARGS', args)
 
+    settings.set('USER_AGENT', 'Aizou Chrome')
+
     if args.proxy:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
-        settings.set('PROXY_SWITCH_VERIFIER',
-                     'baidu')  # args['proxy-verifier'][0] if 'proxy-verifier' in args else 'baidu')
+        settings.set('PROXY_SWITCH_VERIFIER', 'baidu')
+        settings.set('PROXY_SWITCH_REFRESH_INTERVAL', 3600)
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', args.debug)
@@ -218,7 +234,8 @@ def main():
     parser.add_argument('crawler')
     parser.add_argument('--fast', action='store_true')
     parser.add_argument('--dry', action='store_true')
-    parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--log2file', action='store_true')
+    parser.add_argument('--logpath', type=str)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--proxy', action='store_true')
 
@@ -227,14 +244,19 @@ def main():
     msg = 'SPIDER STARTED: %s' % ' '.join(sys.argv)
 
     spider_name = args.crawler
-    # param = ret['param']
+    log_path = args.logpath if args.logpath else '/var/log/andaman'
+    if args.log2file:
+        try:
+            os.mkdir(log_path)
+        except OSError:
+            pass
+        logfile = os.path.join(log_path, '%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d')))
+    else:
+        logfile = None
+
     s = setup_spider(spider_name, args)
     s.arg_parser = parser
     if s:
-        if args.verbose:
-            logfile = None
-        else:
-            logfile = '/var/log/andaman/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
 
@@ -253,10 +275,6 @@ def main():
         else:
             reactor.run()  # the script will block here until the spider_closed signal was sent
     else:
-        if args.verbose:
-            logfile = None
-        else:
-            logfile = './logs/error.log'
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
