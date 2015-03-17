@@ -22,9 +22,15 @@ import pysolr
 from scrapy.utils import spider
 
 import conf
-from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
-from spiders.youji_mixin import BaiduDomTreeProc
-from spiders.mafengwo_mixin import MafengwoSugMixin
+from spiders import AizouCrawlSpider, AizouPipeline
+
+
+
+
+
+
+# from spiders.youji_mixin import BaiduDomTreeProc
+# from mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduNoteProcItem, BaiduNoteKeywordItem
 import qiniu_utils
@@ -56,29 +62,58 @@ class BaiduNoteSpider(CrawlSpider):
             col = pymongo.Connection().geo.Locality
             start_locs = list(tmp['zhName'] for tmp in col.find({'level': 2}, {'zhName': 1}))
 
+        # 此处pn并非页码，而是第几篇游记的意思。所以，pn=2&rn=10，和pn=0&rn=10相比，有8篇是重合的
+        pn = 0
+        rn = 50
         url_base = 'http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10'
 
         for ret in start_locs:
             url = url_base % (ret, 0)
             yield Request(url=url, callback=self.parse_loc,
-                          meta={'target': ret, 'pn': 0, 'urlBase': url_base})
+                          meta={'target': ret, 'pn': pn, 'rn': rn, 'urlBase': url_base})
+
+    def pagination(self, json_res, meta):
+        """
+        获得更多页面的请求
+        """
+
+        url_base = meta['urlBase']
+        target = meta['target']
+        rn = meta['rn']
+
+        page_list = json_res['data']['search_res']['page_list']
+        if not page_list:
+            return
+
+        page_nums = map(lambda v: v[0], filter(lambda v: isinstance(v[0], int), page_list))
+        if not page_nums:
+            return
+
+        max_page = max(page_nums)
+        for pn in xrange(rn, max_page + 1, rn):
+            url = url_base % (target, pn)
+            yield Request(url=url, callback=self.parse_loc,
+                          meta={'target': target, 'pn': pn, 'rn': rn, 'urlBase': url_base})
 
     def parse_loc(self, response):
         target = response.meta['target']
+
         try:
             data = json.loads(response.body)
+        except ValueError:
+            self.log('Invalid JSON response: %s' % response.url, level=log.ERROR)
+            return
 
+        pn = response.meta['pn']
+        rn = response.meta['rn']
+        if pn == 0:
+            meta = {'target': target, 'pn': pn, 'rn': rn, 'urlBase': response.meta['urlBase']}
+            for req in self.pagination(data, meta):
+                yield req
+
+        try:
             days_map = data['data']['search_res']['days']
             costs_map = data['data']['search_res']['costs']
-
-            if data['data']['search_res']['notes_list']:
-                # 读取下一页
-                url_base = response.meta['urlBase']
-                pn = response.meta['pn'] + 10
-                url = url_base % (target, pn)
-                yield Request(url=url, callback=self.parse_loc, meta={'target': target, 'pn': pn, 'urlBase': url_base})
-            else:
-                return
 
             url_base = 'http://lvyou.baidu.com/notes/%s/d-%d'
             for entry in data['data']['search_res']['notes_list']:
@@ -101,86 +136,38 @@ class BaiduNoteSpider(CrawlSpider):
             pass
 
     def parse(self, response):
-        note = response.meta['note'] if 'note' in response.meta else {}
+        note = response.meta['note']
         page_idx = response.meta['pageIdx']
         note_id = note['nid']
+        meta = response.meta
         sel = Selector(response)
 
-        if 'contents' not in note:
-            note['contents'] = []
-        contents = note['contents']
-        contents_list = sel.xpath(
-            '//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]/div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]').extract()
-        if contents_list:
-            contents.extend(contents_list)
-
-        # 是否存在下一页？
-        tmp = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog"]/text()').extract()
-        if not tmp or not contents_list:
+        floor_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]'
+                               '/div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
+        for floor_idx, floor_node in enumerate(floor_list):
+            floor_id = floor_node.xpath('./@id').extract()[0]
+            floor_html = floor_node.extract()[0]
             item = BaiduNoteItem()
-            item['note'] = note
+            item['data'] = {'note_id': note_id, 'floor_id': floor_id, 'contents': floor_html}
+            if floor_idx == 0:
+                # 游记第一楼，同时存储游记的综述信息
+                item['data']['note'] = note
             yield item
-            #
-            # url_t = 'http://lvyou.baidu.com/notes/%s-%d'
-            # url = url_t % (note['nid'], len(note['contents']))
-            # yield Request(url=url, callback=self.parse_comments, meta={'urlT': url_t, 'note': note})
-        else:
-            page_idx += 1
-            url_base = response.meta['urlBase']
-            url = url_base % (note_id, page_idx)
-            yield Request(url=url, callback=self.parse,
-                          meta={'pageIdx': page_idx, 'noteId': note_id, 'urlBase': url_base, 'note': note})
 
-            # def parse_comments(self, response):
-            # note = response.meta['note']
-            #
-            # if 'comments' not in note:
-            # note['comments'] = []
-            # comments = note['comments']
-            # author = note['authorName']
-            #
-            # sel = Selector(response)
-            #
-            # node_list = sel.xpath('//div[@id="building-container"]//div[contains(@class, "grid-s5m0")]')
-            # for node in node_list:
-            # ret = node.xpath('./div[@class="col-main"]/div[@class="floor"]/div[@class="floor-content"]')
-            # if not ret:
-            # continue
-            # c_node = ret[0]
-            # ret = c_node.xpath('./@nickname').extract()
-            # if not ret or (ret[0] == author and not comments):
-            # continue
-            # c_author = ret[0]
-            # ret = c_node.xpath('./@uid').extract()
-            # if not ret:
-            # continue
-            # c_author_id = ret[0]
-            #
-            # tmp = c_node.extract()
-            # if tmp:
-            # comments.append({'authorName': c_author, 'authorId': c_author_id, 'comment': tmp})
-            #
-            # # 检查是否有下一页
-            # tmp = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog"]/text()').extract()
-            # tmp = tmp[-1] if tmp else None
-            # if tmp:
-            # try:
-            # tmp = int(tmp)
-            # except ValueError:
-            # tmp = None
-            #
-            # if not tmp:
-            # tmp_href = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog"]/@href').extract()
-            # if tmp_href:
-            # href = tmp_href[-1]
-            # parts = urlparse.urlparse(response.url)
-            # url = urlparse.urlunparse((parts[0], parts[1], href, '', '', ''))
-            # return Request(url=url, callback=self.parse_comments,
-            # meta={'urlT': response.meta['urlT'], 'note': note})
-            #
-            # item = BaiduNoteItem()
-            # item['note'] = note
-            # return item
+        # 翻页
+        if page_idx != 0:
+            return
+        page_href_list = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog" and @href]/@href').extract()
+        if not page_href_list:
+            return
+        match = re.search(r'/notes/([0-9a-f]{24})/d-(\d+)', page_href_list[-1])
+        if not match:
+            return
+        for page_idx in xrange(1, int(match.group(1)) + 1):
+            url = meta['urlBase'] % (note_id, page_idx)
+            m = copy.deepcopy(meta)
+            m['pageIdx'] = page_idx
+            yield Request(url=url, callback=self.parse, meta=m)
 
 
 class BaiduNotePipeline(object):
@@ -701,10 +688,13 @@ class BaiduSceneSpider(AizouCrawlSpider):
         super(BaiduSceneSpider, self).__init__(*a, **kw)
 
     def start_requests(self):
-        self.arg_parser.add_argument('--targets', action='append', nargs='*',
-                                     choices=['scene', 'scene-comment', 'dining', 'hotel', 'note', 'all'])
-        self.arg_parser.add_argument('--surl', action='append', nargs='*')
-        self.args = self.arg_parser.parse_args()
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--targets', action='append', nargs='*',
+                            choices=['scene', 'scene-comment', 'dining', 'hotel', 'note', 'all'])
+        parser.add_argument('--surl', action='append', nargs='*')
+        self.args, leftover = parser.parse_known_args()
 
         if not self.args.targets:
             self.args.targets = [['all']]
@@ -835,11 +825,11 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 yield Request(url='http://lvyou.baidu.com/%s/zhusu' % surl, callback=self.parse_hotel,
                               meta={'data': base_data})
 
-            # 抓取游记
-            if 'note' in self.args.targets:
-                idx = 0
-                yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
-                                  (sname, idx), callback=self.parse_note, meta={'data': base_data, 'idx': idx})
+        # 抓取游记
+        if 'note' in self.args.targets:
+            idx = 0
+            yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
+                              (sname, idx), callback=self.parse_note, meta={'data': base_data, 'idx': idx})
 
     def parse_images(self, response):
         data = response.meta['data']
@@ -925,6 +915,25 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
         pass
 
+    def note_search_pagination(self, json_res, meta):
+        page_list = json_res['data']['search_res']['pagelist']
+        if not page_list:
+            return
+
+        page_nums = map(lambda v: v[0], filter(lambda v: isinstance(v[0], int), page_list))
+        if not page_nums:
+            return
+
+        max_page = max(page_nums)
+        rn = 10
+
+        for pn in xrange(rn, max_page + 1, rn):
+            url = 'http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' % (
+                meta['data']['sname'], pn)
+            m = copy.deepcopy(meta['data'])
+            m['idx'] = pn
+            yield Request(url=url, callback=self.parse_note, meta={'data': m, 'idx': pn})
+
     def parse_note(self, response):
         """
         游记解析
@@ -938,12 +947,8 @@ class BaiduSceneSpider(AizouCrawlSpider):
         # log.msg('抓取地区游记列表,sname:%s,idx:%d' % (sname, idx), level=log.INFO)
         # 首次进行计算
         if idx == 0:
-            total = source_data['search_res']['page']['total']
-
-            for pn in xrange(10, min(total, 760), 10):
-                yield Request(url='http://lvyou.baidu.com/search/ajax/search?format=ajax&word=%s&pn=%d&rn=10' %
-                                  (sname, pn), callback=self.parse_note,
-                              meta={'data': copy.deepcopy(tmp_data), 'idx': idx})
+            for req in self.note_search_pagination(json_data, response.meta):
+                yield req
 
         # 地区首页notes列表
         # 子页
@@ -971,7 +976,7 @@ class BaiduSceneSpider(AizouCrawlSpider):
 
             yield Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, 0),
                           callback=self.parse_note_post,
-                          meta={'note_id': note_id, 'main_post': True, 'note_abs': note_abs})
+                          meta={'note_id': note_id, 'main_post': True, 'note_abs': note_abs, 'page_idx': 0})
 
     def parse_note_post(self, response):
         """
@@ -1020,10 +1025,30 @@ class BaiduSceneSpider(AizouCrawlSpider):
                 yield item
 
         # 翻页
-        for href in sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog" and @href]/@href').extract():
+        if response.meta['page_idx'] != 0:
+            return
+        page_href_list = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@class="nslog" and @href]/@href').extract()
+        if not page_href_list:
+            return
+
+        def extract_page(href):
+            match = re.search(r'/notes/([0-9a-f]{24})/d-(\d+)', href)
+            if not match:
+                return
+            else:
+                return int(match.group(2))
+
+        page_result = filter(lambda v: v, map(extract_page, page_href_list))
+        if not page_result:
+            return
+        max_page = max(page_result)
+
+        for href_idx in xrange(1, max_page + 1):
+            href = '/notes/%s/d-%d' % (note_id, href_idx)
             m = {'note_id': note_id}
             if main_post:
                 m['main_post'] = True
+                m['page_idx'] = href_idx
             yield Request(url=self.build_href(response.url, href), callback=self.parse_note_post, meta=m)
 
     def parse_cuisine(self, response):
@@ -1194,7 +1219,7 @@ class BaiduScenePipeline(AizouPipeline):
 
         if item_type in col_map:
             col_name, pk = col_map[item_type]
-            col = self.fetch_db_col('raw_baidu', col_name, 'mongodb-crawler')
+            col = get_mongodb('raw_baidu', col_name, 'mongo-raw')
             col.update({pk: data[pk]}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
@@ -1206,368 +1231,369 @@ class BaiduSceneProItem(Item):
     col_name = Field()
 
 
-class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
-    """
-    百度目的地、景点数据的整理
-    """
-
-    name = 'baidu-scene-proc'
-    uuid = '3d66f9ad-4190-4d7e-a392-e11e29e9b670'
-
-    def __init__(self, *a, **kw):
-        super(BaiduSceneProcSpider, self).__init__(*a, **kw)
-
-    def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.parse)
-
-    # 通过id拼接图片url
-    @staticmethod
-    def images_proc(urls):
-        return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
-
-    # 文本格式的处理
-    @staticmethod
-    def text_pro(text):
-        if text:
-            text = filter(lambda val: val, [tmp.strip() for tmp in re.split(r'\n+', text)])
-            tmp_text = ['<p>%s</p>' % tmp for tmp in text]
-            return '<div>%s</div>' % (''.join(tmp_text))
-        else:
-            return ''
-
-    def gen_mfw_sug_req(self, item, proximity, sug_type):
-        data = item['data']
-        kw_list = []
-        zh_name = data['zhName']
-        kw_list.append(utils.get_short_loc(zh_name))
-        if zh_name not in kw_list:
-            kw_list.append(zh_name)
-        for alias in data['alias']:
-            if alias not in [tmp.lower() for tmp in kw_list]:
-                kw_list.append(alias)
-            alias = re.sub(ur'风?景区$', '', alias)
-            if alias not in [tmp.lower() for tmp in kw_list]:
-                kw_list.append(alias)
-
-        keyword = kw_list[0]
-        kw_list = kw_list[1:]
-        req = self.mfw_sug_req(keyword, callback=self.bind_mfw_scene,
-                               meta={'item': item, 'kw_list': kw_list, 'proximity': proximity, 'sug_type': sug_type})
-        self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
-
-        return req
-
-    def bind_mfw_scene(self, response):
-        item = response.meta['item']
-        proximity = response.meta['proximity']
-        sug_type = response.meta['sug_type']
-        data = item['data']
-
-        if 'location' not in data:
-            return item
-
-        source = data['source']
-        lng, lat = data['location']['coordinates']
-
-        col_loc = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
-        col_vs = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
-
-        def find_counterpart(sug):
-            if sug['type'] == 'mdd':
-                col = col_loc
-            elif sug['type'] == 'vs':
-                col = col_vs
-            else:
-                return
-
-            mfw_cp = col.find_one({'source.mafengwo.id': sug['id']}, {'location': 1})
-            if not mfw_cp:
-                return
-
-            coords = mfw_cp['location']['coordinates']
-            if utils.haversine(coords[0], coords[1], lng, lat) > proximity:
-                return
-
-            if sug['name'] not in data['alias']:
-                return
-
-            return {'mfw_id': sug['id'], 'mfw_name': sug['name']}
-
-        ret = filter(lambda val: val, map(find_counterpart, self.parse_mfw_sug(response)))
-        if ret:
-            mfw_item = ret[0]
-            source['mafengwo'] = {'id': mfw_item['mfw_id']}
-            self.log('Binding: mfw(%d, %s) => baidu(%s, %s)' % (
-                mfw_item['mfw_id'], mfw_item['mfw_name'], source['baidu']['id'], data['zhName']), log.INFO)
-            return item
-        else:
-            kw_list = response.meta['kw_list']
-            if not kw_list:
-                self.log(
-                    'Mafengwo counterparts not found: id=%s, name=%s' % (source['baidu']['id'], data['zhName']),
-                    log.INFO)
-                return item
-
-            keyword = kw_list[0]
-            kw_list = kw_list[1:]
-            req = self.mfw_sug_req(keyword, callback=self.bind_mfw_scene,
-                                   meta={'item': item, 'kw_list': kw_list, 'proximity': proximity,
-                                         'sug_type': sug_type})
-            return req
-
-    def proc_traffic(self, data, contents, is_locality):
-        # 处理交通
-        traffic_intro = ''
-        traffic_details = {}
-
-        if 'traffic' in contents:
-            traffic_intro = contents['traffic']['desc'] if 'desc' in contents['traffic'] else ''
-            for key in ['remote', 'local']:
-                traffic = []
-                if key in contents['traffic']:
-                    for node in contents['traffic'][key]:
-                        traffic.append({
-                            'title': node['name'],
-                            'contents_html': self.text_pro(node['desc']),
-                            'contents': node['desc']
-                        })
-                traffic_details[key + 'Traffic'] = traffic
-
-        if is_locality:
-            data['trafficIntro'] = self.text_pro(traffic_intro)
-            for key in traffic_details:
-                data[key] = []
-                for tmp in traffic_details[key]:
-                    title = tmp['title']
-                    desc = tmp['contents_html']
-                    data[key].append({'title': title, 'desc': desc})
-        else:
-            tmp = [traffic_intro.strip()]
-            for value in (traffic_details[t_type] for t_type in ['localTraffic', 'remoteTraffic'] if
-                          t_type in traffic_details):
-                info_entry = ['%s：\n\n%s' % (value_tmp['title'], value_tmp['contents']) for value_tmp in value]
-                tmp.extend(info_entry)
-            tmp = filter(lambda val: val, tmp)
-            data['trafficInfo'] = '\n\n'.join(tmp) if tmp else ''
-
-    def proc_locality_misc(self, data, contents):
-        # 示例：func('shoppingIntro', 'commodities', 'shopping', 'goods')
-        def func(h1, h2, t1, t2):
-            item_lists = []
-            if t1 in contents:
-                data[h1] = self.text_pro(contents[t1]['desc']) if 'desc' in contents[t1] else ''
-                if t2 in contents[t1]:
-                    for node in contents[t1][t2]:
-                        # 图片
-                        images = []
-                        if 'pic_url' in node:
-                            pic_url = node['pic_url'].strip()
-                            if pic_url:
-                                images = self.images_proc([pic_url])
-                        item_lists.append({
-                            'title': node['name'],
-                            'desc': self.text_pro(node['desc']),
-                            'images': images
-                        })
-            else:
-                data[h1] = ''
-            data[h2] = item_lists
-
-        # 购物
-        func('shoppingIntro', 'commodities', 'shopping', 'goods')
-        # 美食
-        func('diningIntro', 'cuisines', 'dining', 'food')
-        # 活动
-        func('activityIntro', 'activities', 'entertainment', 'activity')
-        # 小贴士
-        func('tipsIntro', 'tips', 'attention', 'list')
-        # 地理文化
-        func('geoHistoryIntro', 'geoHistory', 'geography_history', 'list')
-
-        data['miscInfo'] = []
-
-    @staticmethod
-    def proc_vs_misc(data, tmp):
-        # 门票信息
-        if 'ticket_info' in tmp:
-            price_desc = tmp['ticket_info']['price_desc'] if 'price_desc' in tmp['ticket_info'] else ''
-            open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp[
-                'ticket_info'] else ''
-            data['priceDesc'] = price_desc
-            data['openTime'] = open_time_desc
-        else:
-            data['priceDesc'] = ''
-            data['openTime'] = ''
-
-    def parse(self, response):
-        targets = self.param['targets'] if 'targets' in self.param else ['mdd', 'vs']
-        col_list = [{'mdd': 'BaiduLocality', 'vs': 'BaiduPoi'}[tmp] for tmp in targets]
-        col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
-        col_loc = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
-
-        for col_name in col_list:
-            is_locality = (col_name == 'BaiduLocality')
-            col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
-
-            query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
-            cursor = col_raw_scene.find(query)
-
-            if 'limit' in self.param:
-                cursor.limit(int(self.param['limit'][0]))
-
-            self.log('%d records to process...' % cursor.count(), log.INFO)
-            for entry in cursor:
-                self.log('Yielding %s: %s, %s' % tuple([entry[key] for key in ['sid', 'surl', 'sname']]), log.INFO)
-
-                data = {'abroad': True if entry['is_china'] == '0' else False,
-                        'commentCnt': int(entry['rating_count']) if 'rating_count' in entry else None,
-                        'visitCnt': int(entry['gone_count']) if 'gone_count' in entry else None,
-                        'favorCnt': int(entry['going_count']) if 'going_count' in entry else None,
-                        'hotness': float(entry['star']) / 5 if 'star' in entry else None}
-
-                # 别名
-                alias = set()
-                for key in ['sname', 'ambiguity_sname']:
-                    if key in entry:
-                        data['zhName'] = entry['sname']  # 中文名
-                        alias.add(entry[key].strip().lower())
-                    else:
-                        continue
-
-                # 源
-                data['source'] = {'baidu': {'id': entry['sid']}}
-
-                loc_list = []
-                # 层级结构
-                if 'scene_path' in entry:
-                    country_fetched = False
-                    for scene_path in entry['scene_path']:
-                        if country_fetched:
-                            ret = col_loc.find_one({'alias': scene_path['sname']}, {'zhName': 1, 'enName': 1})
-                            if ret:
-                                loc_list.append({key: ret[key] for key in ['_id', 'zhName', 'enName']})
-                        else:
-                            ret = col_country.find_one({'alias': scene_path['sname']}, {'zhName': 1, 'enName': 1})
-                            if ret:
-                                data['country'] = {key: ret[key] for key in ['_id', 'zhName', 'enName']}
-                                loc_list.append({key: ret[key] for key in ['_id', 'zhName', 'enName']})
-                                country_fetched = True
-
-                data['locList'] = loc_list
-                data['targets'] = [loc_tmp['_id'] for loc_tmp in loc_list]
-
-                data['tags'] = []
-
-                if 'ext' in entry:
-                    tmp = entry['ext']
-                    data['desc'] = tmp['more_desc'] \
-                        if 'more_desc' in tmp else tmp['abs_desc']
-                    data['rating'] = float(tmp['avg_remark_score']) / 5 \
-                        if 'avg_remark_score' in tmp else None
-                    data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
-                    # 位置信息
-                    # if 'map_info' in tmp and tmp['map_info']:
-                    map_info = filter(lambda val: val,
-                                      [c_tmp for c_tmp in re.split(ur'[,/\uff0c]', tmp['map_info'])])
-                    try:
-                        coord = [float(node) for node in map_info]
-                        if len(coord) == 2:
-                            # 有时候经纬度反了
-                            ret = utils.guess_coords(*coord)
-                            if ret:
-                                data['location'] = {'type': 'Point', 'coordinates': ret}
-                    except (ValueError, UnicodeEncodeError):
-                        self.log(map_info, log.ERROR)
-                else:
-                    data['desc'] = ''
-                    data['rating'] = None
-                    data['enName'] = ''
-                    data['location'] = None
-
-                # 设置别名
-                if data['enName']:
-                    alias.add(data['enName'])
-                data['alias'] = list(set(filter(lambda val: val, [tmp.strip().lower() for tmp in alias])))
-
-                # 字段
-                contents = entry['content'] if 'content' in entry else {}
-
-                # 处理图片
-                data['images'] = []
-                if 'highlight' in contents:
-                    if 'list' in contents['highlight']:
-                        data['images'] = self.images_proc(contents['highlight']['list'])
-
-                # 交通信息
-                self.proc_traffic(data, contents, is_locality)
-
-                # 旅行时间
-                if 'besttime' in contents:
-                    best_time = contents['besttime']
-                    travel_month = best_time['more_desc'] if 'more_desc' in best_time else ''
-                    if not travel_month:
-                        travel_month = best_time['simple_desc'] if 'simple_desc' in best_time else ''
-                    data['travelMonth'] = travel_month.strip()
-
-                    tmp_time_cost = best_time['recommend_visit_time'] if 'recommend_visit_time' in best_time else ''
-                    data['timeCostDesc'] = tmp_time_cost
-
-                if is_locality:
-                    self.proc_locality_misc(data, contents)
-                else:
-                    self.proc_vs_misc(data, contents)
-
-                # 返回item
-                item = BaiduSceneProItem()
-                item['data'] = data
-
-                if is_locality:
-                    item['db_name'] = 'geo'
-                    item['col_name'] = 'BaiduLocality'
-                else:
-                    item['db_name'] = 'poi'
-                    item['col_name'] = 'BaiduPoi'
-
-                if 'bind' in self.param:
-                    proximity = 400 if is_locality else 100
-                    sug_type = 'mdd' if is_locality else 'vs'
-
-                    yield self.gen_mfw_sug_req(item, proximity, sug_type)
-                else:
-                    yield item
-
-
-class BaiduSceneProcPipeline(AizouPipeline, ProcImagesMixin):
-    spiders = [BaiduSceneProcSpider.name]
-    spiders_uuid = [BaiduSceneProcSpider.uuid]
-
-    def process_item(self, item, spider):
-        if not self.is_handler(item, spider):
-            return item
-
-        data = item['data']
-        db_name = item['db_name']
-        col_name = item['col_name']
-        col = spider.fetch_db_col(db_name, col_name, 'mongodb-general')
-
-        src = data.pop('source')
-        alias = data.pop('alias')
-        image_list = data.pop('images')
-
-        ops = {'$set': data}
-        for key in src:
-            ops['$set']['source.%s' % key] = src[key]
-        ops['$addToSet'] = {'alias': {'$each': alias}}
-
-        mdd = col.find_and_modify({'source.baidu.id': src['baidu']['id']}, ops, upsert=True, new=True,
-                                  fields={'_id': 1, 'isDone': 1})
-
-        images_formal = self.process_image_list(image_list, mdd['_id'])
-        if ('isDone' not in mdd or not mdd['isDone']) and images_formal:
-            col.update({'_id': mdd['_id']}, {'$set': {'images': images_formal[:10]}})
-
-        return item
-
+#
+# class BaiduSceneProcSpider(AizouCrawlSpider, MafengwoSugMixin):
+# """
+# 百度目的地、景点数据的整理
+# """
+#
+# name = 'baidu-scene-proc'
+# uuid = '3d66f9ad-4190-4d7e-a392-e11e29e9b670'
+#
+# def __init__(self, *a, **kw):
+#         super(BaiduSceneProcSpider, self).__init__(*a, **kw)
+#
+#     def start_requests(self):
+#         yield Request(url='http://www.baidu.com', callback=self.parse)
+#
+#     # 通过id拼接图片url
+#     @staticmethod
+#     def images_proc(urls):
+#         return [{'url': 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp} for tmp in (urls if urls else [])]
+#
+#     # 文本格式的处理
+#     @staticmethod
+#     def text_pro(text):
+#         if text:
+#             text = filter(lambda val: val, [tmp.strip() for tmp in re.split(r'\n+', text)])
+#             tmp_text = ['<p>%s</p>' % tmp for tmp in text]
+#             return '<div>%s</div>' % (''.join(tmp_text))
+#         else:
+#             return ''
+#
+#     def gen_mfw_sug_req(self, item, proximity, sug_type):
+#         data = item['data']
+#         kw_list = []
+#         zh_name = data['zhName']
+#         kw_list.append(utils.get_short_loc(zh_name))
+#         if zh_name not in kw_list:
+#             kw_list.append(zh_name)
+#         for alias in data['alias']:
+#             if alias not in [tmp.lower() for tmp in kw_list]:
+#                 kw_list.append(alias)
+#             alias = re.sub(ur'风?景区$', '', alias)
+#             if alias not in [tmp.lower() for tmp in kw_list]:
+#                 kw_list.append(alias)
+#
+#         keyword = kw_list[0]
+#         kw_list = kw_list[1:]
+#         req = self.mfw_sug_req(keyword, callback=self.bind_mfw_scene,
+#                                meta={'item': item, 'kw_list': kw_list, 'proximity': proximity, 'sug_type': sug_type})
+#         self.log('Yielding %s for BaiduSugMixin. Remaining: %s' % (keyword, ', '.join(kw_list)), log.DEBUG)
+#
+#         return req
+#
+#     def bind_mfw_scene(self, response):
+#         item = response.meta['item']
+#         proximity = response.meta['proximity']
+#         sug_type = response.meta['sug_type']
+#         data = item['data']
+#
+#         if 'location' not in data:
+#             return item
+#
+#         source = data['source']
+#         lng, lat = data['location']['coordinates']
+#
+#         col_loc = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+#         col_vs = self.fetch_db_col('poi', 'ViewSpot', 'mongodb-general')
+#
+#         def find_counterpart(sug):
+#             if sug['type'] == 'mdd':
+#                 col = col_loc
+#             elif sug['type'] == 'vs':
+#                 col = col_vs
+#             else:
+#                 return
+#
+#             mfw_cp = col.find_one({'source.mafengwo.id': sug['id']}, {'location': 1})
+#             if not mfw_cp:
+#                 return
+#
+#             coords = mfw_cp['location']['coordinates']
+#             if utils.haversine(coords[0], coords[1], lng, lat) > proximity:
+#                 return
+#
+#             if sug['name'] not in data['alias']:
+#                 return
+#
+#             return {'mfw_id': sug['id'], 'mfw_name': sug['name']}
+#
+#         ret = filter(lambda val: val, map(find_counterpart, self.parse_mfw_sug(response)))
+#         if ret:
+#             mfw_item = ret[0]
+#             source['mafengwo'] = {'id': mfw_item['mfw_id']}
+#             self.log('Binding: mfw(%d, %s) => baidu(%s, %s)' % (
+#                 mfw_item['mfw_id'], mfw_item['mfw_name'], source['baidu']['id'], data['zhName']), log.INFO)
+#             return item
+#         else:
+#             kw_list = response.meta['kw_list']
+#             if not kw_list:
+#                 self.log(
+#                     'Mafengwo counterparts not found: id=%s, name=%s' % (source['baidu']['id'], data['zhName']),
+#                     log.INFO)
+#                 return item
+#
+#             keyword = kw_list[0]
+#             kw_list = kw_list[1:]
+#             req = self.mfw_sug_req(keyword, callback=self.bind_mfw_scene,
+#                                    meta={'item': item, 'kw_list': kw_list, 'proximity': proximity,
+#                                          'sug_type': sug_type})
+#             return req
+#
+#     def proc_traffic(self, data, contents, is_locality):
+#         # 处理交通
+#         traffic_intro = ''
+#         traffic_details = {}
+#
+#         if 'traffic' in contents:
+#             traffic_intro = contents['traffic']['desc'] if 'desc' in contents['traffic'] else ''
+#             for key in ['remote', 'local']:
+#                 traffic = []
+#                 if key in contents['traffic']:
+#                     for node in contents['traffic'][key]:
+#                         traffic.append({
+#                             'title': node['name'],
+#                             'contents_html': self.text_pro(node['desc']),
+#                             'contents': node['desc']
+#                         })
+#                 traffic_details[key + 'Traffic'] = traffic
+#
+#         if is_locality:
+#             data['trafficIntro'] = self.text_pro(traffic_intro)
+#             for key in traffic_details:
+#                 data[key] = []
+#                 for tmp in traffic_details[key]:
+#                     title = tmp['title']
+#                     desc = tmp['contents_html']
+#                     data[key].append({'title': title, 'desc': desc})
+#         else:
+#             tmp = [traffic_intro.strip()]
+#             for value in (traffic_details[t_type] for t_type in ['localTraffic', 'remoteTraffic'] if
+#                           t_type in traffic_details):
+#                 info_entry = ['%s：\n\n%s' % (value_tmp['title'], value_tmp['contents']) for value_tmp in value]
+#                 tmp.extend(info_entry)
+#             tmp = filter(lambda val: val, tmp)
+#             data['trafficInfo'] = '\n\n'.join(tmp) if tmp else ''
+#
+#     def proc_locality_misc(self, data, contents):
+#         # 示例：func('shoppingIntro', 'commodities', 'shopping', 'goods')
+#         def func(h1, h2, t1, t2):
+#             item_lists = []
+#             if t1 in contents:
+#                 data[h1] = self.text_pro(contents[t1]['desc']) if 'desc' in contents[t1] else ''
+#                 if t2 in contents[t1]:
+#                     for node in contents[t1][t2]:
+#                         # 图片
+#                         images = []
+#                         if 'pic_url' in node:
+#                             pic_url = node['pic_url'].strip()
+#                             if pic_url:
+#                                 images = self.images_proc([pic_url])
+#                         item_lists.append({
+#                             'title': node['name'],
+#                             'desc': self.text_pro(node['desc']),
+#                             'images': images
+#                         })
+#             else:
+#                 data[h1] = ''
+#             data[h2] = item_lists
+#
+#         # 购物
+#         func('shoppingIntro', 'commodities', 'shopping', 'goods')
+#         # 美食
+#         func('diningIntro', 'cuisines', 'dining', 'food')
+#         # 活动
+#         func('activityIntro', 'activities', 'entertainment', 'activity')
+#         # 小贴士
+#         func('tipsIntro', 'tips', 'attention', 'list')
+#         # 地理文化
+#         func('geoHistoryIntro', 'geoHistory', 'geography_history', 'list')
+#
+#         data['miscInfo'] = []
+#
+#     @staticmethod
+#     def proc_vs_misc(data, tmp):
+#         # 门票信息
+#         if 'ticket_info' in tmp:
+#             price_desc = tmp['ticket_info']['price_desc'] if 'price_desc' in tmp['ticket_info'] else ''
+#             open_time_desc = tmp['ticket_info']['open_time_desc'] if 'open_time_desc' in tmp[
+#                 'ticket_info'] else ''
+#             data['priceDesc'] = price_desc
+#             data['openTime'] = open_time_desc
+#         else:
+#             data['priceDesc'] = ''
+#             data['openTime'] = ''
+#
+#     def parse(self, response):
+#         targets = self.param['targets'] if 'targets' in self.param else ['mdd', 'vs']
+#         col_list = [{'mdd': 'BaiduLocality', 'vs': 'BaiduPoi'}[tmp] for tmp in targets]
+#         col_country = self.fetch_db_col('geo', 'Country', 'mongodb-general')
+#         col_loc = self.fetch_db_col('geo', 'Locality', 'mongodb-general')
+#
+#         for col_name in col_list:
+#             is_locality = (col_name == 'BaiduLocality')
+#             col_raw_scene = self.fetch_db_col('raw_data', col_name, 'mongodb-crawler')
+#
+#             query = json.loads(self.param['query'][0]) if 'query' in self.param else {}
+#             cursor = col_raw_scene.find(query)
+#
+#             if 'limit' in self.param:
+#                 cursor.limit(int(self.param['limit'][0]))
+#
+#             self.log('%d records to process...' % cursor.count(), log.INFO)
+#             for entry in cursor:
+#                 self.log('Yielding %s: %s, %s' % tuple([entry[key] for key in ['sid', 'surl', 'sname']]), log.INFO)
+#
+#                 data = {'abroad': True if entry['is_china'] == '0' else False,
+#                         'commentCnt': int(entry['rating_count']) if 'rating_count' in entry else None,
+#                         'visitCnt': int(entry['gone_count']) if 'gone_count' in entry else None,
+#                         'favorCnt': int(entry['going_count']) if 'going_count' in entry else None,
+#                         'hotness': float(entry['star']) / 5 if 'star' in entry else None}
+#
+#                 # 别名
+#                 alias = set()
+#                 for key in ['sname', 'ambiguity_sname']:
+#                     if key in entry:
+#                         data['zhName'] = entry['sname']  # 中文名
+#                         alias.add(entry[key].strip().lower())
+#                     else:
+#                         continue
+#
+#                 # 源
+#                 data['source'] = {'baidu': {'id': entry['sid']}}
+#
+#                 loc_list = []
+#                 # 层级结构
+#                 if 'scene_path' in entry:
+#                     country_fetched = False
+#                     for scene_path in entry['scene_path']:
+#                         if country_fetched:
+#                             ret = col_loc.find_one({'alias': scene_path['sname']}, {'zhName': 1, 'enName': 1})
+#                             if ret:
+#                                 loc_list.append({key: ret[key] for key in ['_id', 'zhName', 'enName']})
+#                         else:
+#                             ret = col_country.find_one({'alias': scene_path['sname']}, {'zhName': 1, 'enName': 1})
+#                             if ret:
+#                                 data['country'] = {key: ret[key] for key in ['_id', 'zhName', 'enName']}
+#                                 loc_list.append({key: ret[key] for key in ['_id', 'zhName', 'enName']})
+#                                 country_fetched = True
+#
+#                 data['locList'] = loc_list
+#                 data['targets'] = [loc_tmp['_id'] for loc_tmp in loc_list]
+#
+#                 data['tags'] = []
+#
+#                 if 'ext' in entry:
+#                     tmp = entry['ext']
+#                     data['desc'] = tmp['more_desc'] \
+#                         if 'more_desc' in tmp else tmp['abs_desc']
+#                     data['rating'] = float(tmp['avg_remark_score']) / 5 \
+#                         if 'avg_remark_score' in tmp else None
+#                     data['enName'] = tmp['en_sname'] if 'en_sname' in tmp else ''
+#                     # 位置信息
+#                     # if 'map_info' in tmp and tmp['map_info']:
+#                     map_info = filter(lambda val: val,
+#                                       [c_tmp for c_tmp in re.split(ur'[,/\uff0c]', tmp['map_info'])])
+#                     try:
+#                         coord = [float(node) for node in map_info]
+#                         if len(coord) == 2:
+#                             # 有时候经纬度反了
+#                             ret = utils.guess_coords(*coord)
+#                             if ret:
+#                                 data['location'] = {'type': 'Point', 'coordinates': ret}
+#                     except (ValueError, UnicodeEncodeError):
+#                         self.log(map_info, log.ERROR)
+#                 else:
+#                     data['desc'] = ''
+#                     data['rating'] = None
+#                     data['enName'] = ''
+#                     data['location'] = None
+#
+#                 # 设置别名
+#                 if data['enName']:
+#                     alias.add(data['enName'])
+#                 data['alias'] = list(set(filter(lambda val: val, [tmp.strip().lower() for tmp in alias])))
+#
+#                 # 字段
+#                 contents = entry['content'] if 'content' in entry else {}
+#
+#                 # 处理图片
+#                 data['images'] = []
+#                 if 'highlight' in contents:
+#                     if 'list' in contents['highlight']:
+#                         data['images'] = self.images_proc(contents['highlight']['list'])
+#
+#                 # 交通信息
+#                 self.proc_traffic(data, contents, is_locality)
+#
+#                 # 旅行时间
+#                 if 'besttime' in contents:
+#                     best_time = contents['besttime']
+#                     travel_month = best_time['more_desc'] if 'more_desc' in best_time else ''
+#                     if not travel_month:
+#                         travel_month = best_time['simple_desc'] if 'simple_desc' in best_time else ''
+#                     data['travelMonth'] = travel_month.strip()
+#
+#                     tmp_time_cost = best_time['recommend_visit_time'] if 'recommend_visit_time' in best_time else ''
+#                     data['timeCostDesc'] = tmp_time_cost
+#
+#                 if is_locality:
+#                     self.proc_locality_misc(data, contents)
+#                 else:
+#                     self.proc_vs_misc(data, contents)
+#
+#                 # 返回item
+#                 item = BaiduSceneProItem()
+#                 item['data'] = data
+#
+#                 if is_locality:
+#                     item['db_name'] = 'geo'
+#                     item['col_name'] = 'BaiduLocality'
+#                 else:
+#                     item['db_name'] = 'poi'
+#                     item['col_name'] = 'BaiduPoi'
+#
+#                 if 'bind' in self.param:
+#                     proximity = 400 if is_locality else 100
+#                     sug_type = 'mdd' if is_locality else 'vs'
+#
+#                     yield self.gen_mfw_sug_req(item, proximity, sug_type)
+#                 else:
+#                     yield item
+#
+#
+# class BaiduSceneProcPipeline(AizouPipeline, ProcImagesMixin):
+#     spiders = [BaiduSceneProcSpider.name]
+#     spiders_uuid = [BaiduSceneProcSpider.uuid]
+#
+#     def process_item(self, item, spider):
+#         if not self.is_handler(item, spider):
+#             return item
+#
+#         data = item['data']
+#         db_name = item['db_name']
+#         col_name = item['col_name']
+#         col = spider.fetch_db_col(db_name, col_name, 'mongodb-general')
+#
+#         src = data.pop('source')
+#         alias = data.pop('alias')
+#         image_list = data.pop('images')
+#
+#         ops = {'$set': data}
+#         for key in src:
+#             ops['$set']['source.%s' % key] = src[key]
+#         ops['$addToSet'] = {'alias': {'$each': alias}}
+#
+#         mdd = col.find_and_modify({'source.baidu.id': src['baidu']['id']}, ops, upsert=True, new=True,
+#                                   fields={'_id': 1, 'isDone': 1})
+#
+#         images_formal = self.process_image_list(image_list, mdd['_id'])
+#         if ('isDone' not in mdd or not mdd['isDone']) and images_formal:
+#             col.update({'_id': mdd['_id']}, {'$set': {'images': images_formal[:10]}})
+#
+#         return item
+#
 
 class BaiduRestaurantHotelItem(Item):
     data = Field()
@@ -2336,201 +2362,201 @@ class BaiduNoteItem(Item):
     data = Field()
     type = Field()
 
+#
+# class BaiduNoteProc(AizouCrawlSpider, BaiduDomTreeProc):
+#     """
+#     百度游记的清洗
+#     """
+#     name = 'baidu_note_proc'
+#     uuid = 'C18FF026-5D0F-3958-D8A4-5E9E734D4A37'
+#
+#     def __init__(self, *a, **kw):
+#         AizouCrawlSpider.__init__(self, *a, **kw)
+#         BaiduDomTreeProc.__init__(self)
+#
+#     def start_requests(self):
+#         yield Request(url='http://www.baidu.com', callback=self.parse_content)
+#
+#
+#     def parse_content(self, response):
+#         abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
+#
+#         for entry in abs_col.find().batch_size(20):
+#             data = {}
+#             # 图像列表
+#             ret_list = []
+#             # 游记内容列表
+#             contents = []
+#             nid = entry['nid']
+#             data['source.baidu.id'] = nid
+#             data['authorName'] = entry['uname']
+#             data['title'] = entry['title']
+#             authoravatar = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
+#             ret = self.retrieve_image(authoravatar)
+#             if ret:
+#                 ret_list.append(ret)
+#                 data['authorAvatar'] = ret['key']
+#             else:
+#                 data['authorAvatar'] = None
+#             data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
+#             data['summary'] = entry['content'].strip() if 'content' in entry else None
+#             data['viewCnt'] = int(entry['view_count']) if 'view_count' in entry else None
+#             data['voteCnt'] = int(entry['recommend_count']) if 'recommend_count' in entry else None
+#             data['commentCnt'] = int(entry['common_posts_count']) if 'common_posts_count' in entry else None
+#             data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
+#             data['essence'] = True if int(entry['is_praised']) == 1 else False
+#             months = []
+#             month = int(entry['month']) if 'month' in entry else None
+#             if month is not None:
+#                 months.append(month)
+#             data['months'] = months
+#             data['lowerDays'] = int(entry['days']) if 'days' in entry else None
+#             data['upperDays'] = data['lowerDays']
+#             price_cost = entry['price_cost'][0]['buildrange'] if 'price_cost' in entry and entry['price_cost'] else None
+#             data['lowerCost'] = int(price_cost[0]) if price_cost else None
+#             data['upperCost'] = int(price_cost[1]) if price_cost else None
+#             rating = float(entry['praise']) if 'praise' in entry else None
+#             data['rating'] = rating / 100.0 if (0 <= rating <= 100) else None
+#             # cover
+#             covers_list = ['http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp['pic_url']
+#                            for tmp in entry['album_pic_list']]
+#             tmp_cover = []
+#             for tmp in covers_list:
+#                 ret = self.retrieve_image(tmp)
+#                 if ret:
+#                     cover_data = {'key': ret['key']}
+#                     ret_list.append(ret)
+#                 else:
+#                     cover_data = {'key': ret}
+#                 tmp_cover.append(cover_data)
+#             data['covers'] = tmp_cover
+#
+#             vs_list = entry['vs_list'] if 'vs_list' in entry else []
+#             # vs_list去重
+#             vs_list = [tmp for tmp in set(vs_list)]
+#             locality_list = []
+#             viewspot_list = []
+#             loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
+#             vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
+#             for tmp_id in vs_list:
+#                 doc = loc_col.find_one({'source.baidu.id': tmp_id})
+#                 if doc:
+#                     tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
+#                                 'enName': doc['enName'], 'tag': doc['tags'],
+#                                 'alias': doc['alias']}
+#                     locality_list.append(tmp_data)
+#                 else:
+#                     doc = vs_col.find_one({'source.baidu.id': tmp_id})
+#                     if doc:
+#                         tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
+#                                     'enName': doc['enName'], 'tag': doc['tags'],
+#                                     'alias': doc['alias']}
+#                         viewspot_list.append(tmp_data)
+#                     else:
+#                         continue
+#             data['viewSpotList'] = viewspot_list if viewspot_list else None
+#             data['localityList'] = locality_list if locality_list else None
+#
+#             # 游记内容处理
+#             note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteMain', 'mongodb-crawler')
+#             tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
+#             # 楼层信息
+#             def func(content):
+#                 selector = Selector(text=content)
+#                 tmp_floor_id = selector.xpath('//div[@class="floor"]/@id').extract()
+#                 if tmp_floor_id:
+#                     floor_id = tmp_floor_id[0]
+#                 else:
+#                     floor_id = None
+#                 if floor_id:
+#                     match = re.search(r'\d+', floor_id)
+#                     if match:
+#                         floor_id = int(match.group())
+#                 return floor_id
+#
+#             # 游记排序
+#             tmp_note_list = sorted(tmp_note_list, key=lambda tmp_note: func(tmp_note['node']))
+#
+#             for note_cnt in tmp_note_list:
+#                 tmp = {}
+#                 note = note_cnt['node']
+#                 sel = Selector(text=note)
+#                 note_title = sel.xpath(
+#                     '//div[@class="col-main"]//div[@class="path-wrapper clearfix"]/span/text()').extract()
+#                 if note_title:
+#                     # log.msg(note_title[0], level=log.INFO)
+#                     tmp['title'] = note_title[0]
+#                 else:
+#                     continue
+#                 note_content = sel.xpath(
+#                     '//div[@class="col-main"]//div[@class="floor-content"]//div[@class="html-content"]').extract()
+#                 if note_content:
+#                     note_content = note_content[0]
+#                 else:
+#                     continue
+#                 # 去除内部所有的链接
+#                 root = etree.HTML(note_content.decode('utf-8'))
+#                 content_root = root.xpath('//div[@class="html-content"]')
+#                 # content_root[0].attrib.pop('class')
+#                 tmp_root = content_root[0]
+#                 # 无需进行楼层处理
+#                 # for i in range(0, len(tmp_root)):
+#                 # if 'class' in tmp_root[i].attrib.keys() and tmp_root[i].attrib['class'] == 'notes-floor':  # 判断是楼层
+#                 # parent = tmp_root[i].getparent()
+#                 # for j in range(0, len(parent)):
+#                 # if parent[j].tag == 'span' and parent[j].attrib['class'] == 'notes-floor':
+#                 # del parent[j]
+#                 # break
+#                 # break
+#                 try:
+#                     # todo 树解析不够高效
+#                     result = self.walk_tree(tmp_root, ret_list)
+#                     proc_root = result['root']
+#                     ret_list = result['ret_list']
+#                     tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+#                 except TypeError, e:
+#                     log.msg(e.message, level=log.INFO)
+#                     log.msg('nid:%s' % nid, level=log.INFO)
+#                     continue
+#                 contents.append(tmp)
+#             # yield 游记信息
+#             data['contents'] = contents
+#             item = BaiduNoteItem()
+#             item['data'] = data
+#             item['type'] = 'note'
+#             yield item
+#
+#             # yield ret
+#             ret_list = filter(lambda val: val, ret_list)
+#             if ret_list:
+#                 for ret in ret_list:
+#                     image_data = self.image_proc(ret)
+#                     if image_data:
+#                         item = BaiduNoteItem()
+#                         item['data'] = image_data
+#                         item['type'] = 'image'
+#                         yield item
 
-class BaiduNoteProc(AizouCrawlSpider, BaiduDomTreeProc):
-    """
-    百度游记的清洗
-    """
-    name = 'baidu_note_proc'
-    uuid = 'C18FF026-5D0F-3958-D8A4-5E9E734D4A37'
-
-    def __init__(self, *a, **kw):
-        AizouCrawlSpider.__init__(self, *a, **kw)
-        BaiduDomTreeProc.__init__(self)
-
-    def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.parse_content)
-
-
-    def parse_content(self, response):
-        abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
-
-        for entry in abs_col.find().batch_size(20):
-            data = {}
-            # 图像列表
-            ret_list = []
-            # 游记内容列表
-            contents = []
-            nid = entry['nid']
-            data['source.baidu.id'] = nid
-            data['authorName'] = entry['uname']
-            data['title'] = entry['title']
-            authoravatar = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
-            ret = self.retrieve_image(authoravatar)
-            if ret:
-                ret_list.append(ret)
-                data['authorAvatar'] = ret['key']
-            else:
-                data['authorAvatar'] = None
-            data['publishTime'] = int(entry['create_time']) if 'create_time' in entry else None
-            data['summary'] = entry['content'].strip() if 'content' in entry else None
-            data['viewCnt'] = int(entry['view_count']) if 'view_count' in entry else None
-            data['voteCnt'] = int(entry['recommend_count']) if 'recommend_count' in entry else None
-            data['commentCnt'] = int(entry['common_posts_count']) if 'common_posts_count' in entry else None
-            data['travelTime'] = int(entry['start_time']) if 'start_time' in entry else None
-            data['essence'] = True if int(entry['is_praised']) == 1 else False
-            months = []
-            month = int(entry['month']) if 'month' in entry else None
-            if month is not None:
-                months.append(month)
-            data['months'] = months
-            data['lowerDays'] = int(entry['days']) if 'days' in entry else None
-            data['upperDays'] = data['lowerDays']
-            price_cost = entry['price_cost'][0]['buildrange'] if 'price_cost' in entry and entry['price_cost'] else None
-            data['lowerCost'] = int(price_cost[0]) if price_cost else None
-            data['upperCost'] = int(price_cost[1]) if price_cost else None
-            rating = float(entry['praise']) if 'praise' in entry else None
-            data['rating'] = rating / 100.0 if (0 <= rating <= 100) else None
-            # cover
-            covers_list = ['http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp['pic_url']
-                           for tmp in entry['album_pic_list']]
-            tmp_cover = []
-            for tmp in covers_list:
-                ret = self.retrieve_image(tmp)
-                if ret:
-                    cover_data = {'key': ret['key']}
-                    ret_list.append(ret)
-                else:
-                    cover_data = {'key': ret}
-                tmp_cover.append(cover_data)
-            data['covers'] = tmp_cover
-
-            vs_list = entry['vs_list'] if 'vs_list' in entry else []
-            # vs_list去重
-            vs_list = [tmp for tmp in set(vs_list)]
-            locality_list = []
-            viewspot_list = []
-            loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
-            vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
-            for tmp_id in vs_list:
-                doc = loc_col.find_one({'source.baidu.id': tmp_id})
-                if doc:
-                    tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
-                                'enName': doc['enName'], 'tag': doc['tags'],
-                                'alias': doc['alias']}
-                    locality_list.append(tmp_data)
-                else:
-                    doc = vs_col.find_one({'source.baidu.id': tmp_id})
-                    if doc:
-                        tmp_data = {'_id': doc['_id'], 'zhName': doc['zhName'],
-                                    'enName': doc['enName'], 'tag': doc['tags'],
-                                    'alias': doc['alias']}
-                        viewspot_list.append(tmp_data)
-                    else:
-                        continue
-            data['viewSpotList'] = viewspot_list if viewspot_list else None
-            data['localityList'] = locality_list if locality_list else None
-
-            # 游记内容处理
-            note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteMain', 'mongodb-crawler')
-            tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
-            # 楼层信息
-            def func(content):
-                selector = Selector(text=content)
-                tmp_floor_id = selector.xpath('//div[@class="floor"]/@id').extract()
-                if tmp_floor_id:
-                    floor_id = tmp_floor_id[0]
-                else:
-                    floor_id = None
-                if floor_id:
-                    match = re.search(r'\d+', floor_id)
-                    if match:
-                        floor_id = int(match.group())
-                return floor_id
-
-            # 游记排序
-            tmp_note_list = sorted(tmp_note_list, key=lambda tmp_note: func(tmp_note['node']))
-
-            for note_cnt in tmp_note_list:
-                tmp = {}
-                note = note_cnt['node']
-                sel = Selector(text=note)
-                note_title = sel.xpath(
-                    '//div[@class="col-main"]//div[@class="path-wrapper clearfix"]/span/text()').extract()
-                if note_title:
-                    # log.msg(note_title[0], level=log.INFO)
-                    tmp['title'] = note_title[0]
-                else:
-                    continue
-                note_content = sel.xpath(
-                    '//div[@class="col-main"]//div[@class="floor-content"]//div[@class="html-content"]').extract()
-                if note_content:
-                    note_content = note_content[0]
-                else:
-                    continue
-                # 去除内部所有的链接
-                root = etree.HTML(note_content.decode('utf-8'))
-                content_root = root.xpath('//div[@class="html-content"]')
-                # content_root[0].attrib.pop('class')
-                tmp_root = content_root[0]
-                # 无需进行楼层处理
-                # for i in range(0, len(tmp_root)):
-                # if 'class' in tmp_root[i].attrib.keys() and tmp_root[i].attrib['class'] == 'notes-floor':  # 判断是楼层
-                # parent = tmp_root[i].getparent()
-                # for j in range(0, len(parent)):
-                # if parent[j].tag == 'span' and parent[j].attrib['class'] == 'notes-floor':
-                # del parent[j]
-                # break
-                # break
-                try:
-                    # todo 树解析不够高效
-                    result = self.walk_tree(tmp_root, ret_list)
-                    proc_root = result['root']
-                    ret_list = result['ret_list']
-                    tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
-                except TypeError, e:
-                    log.msg(e.message, level=log.INFO)
-                    log.msg('nid:%s' % nid, level=log.INFO)
-                    continue
-                contents.append(tmp)
-            # yield 游记信息
-            data['contents'] = contents
-            item = BaiduNoteItem()
-            item['data'] = data
-            item['type'] = 'note'
-            yield item
-
-            # yield ret
-            ret_list = filter(lambda val: val, ret_list)
-            if ret_list:
-                for ret in ret_list:
-                    image_data = self.image_proc(ret)
-                    if image_data:
-                        item = BaiduNoteItem()
-                        item['data'] = image_data
-                        item['type'] = 'image'
-                        yield item
-
-
-class BaiduNoteProcPipeline(AizouPipeline):
-    spiders = [BaiduNoteProc.name]
-    spiders_uuid = [BaiduNoteProc.uuid]
-
-    def process_item(self, item, spider):
-        if not self.is_handler(item, spider):
-            return item
-
-        data = item['data']
-        type = item['type']
-        if not data:
-            return item
-
-        if type == 'note':
-            col = self.fetch_db_col('travelnote', 'BaiduNoteMain', 'mongodb-general')
-            col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
-            # log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
-        else:
-            col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-            # log.msg('key:%s' % data['key'], )
-            col.update({'key': data['key']}, {'$set': data}, upsert=True)
-        return item
+#
+# class BaiduNoteProcPipeline(AizouPipeline):
+#     spiders = [BaiduNoteProc.name]
+#     spiders_uuid = [BaiduNoteProc.uuid]
+#
+#     def process_item(self, item, spider):
+#         if not self.is_handler(item, spider):
+#             return item
+#
+#         data = item['data']
+#         type = item['type']
+#         if not data:
+#             return item
+#
+#         if type == 'note':
+#             col = self.fetch_db_col('travelnote', 'BaiduNoteMain', 'mongodb-general')
+#             col.update({'source.baidu.id': data['source.baidu.id']}, {'$set': data}, upsert=True)
+#             # log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
+#         else:
+#             col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
+#             # log.msg('key:%s' % data['key'], )
+#             col.update({'key': data['key']}, {'$set': data}, upsert=True)
+#         return item
