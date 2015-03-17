@@ -10,7 +10,6 @@ import time
 import math
 import datetime
 from lxml import etree
-import urlparse
 from bson import ObjectId
 
 import MySQLdb
@@ -24,7 +23,7 @@ from scrapy.utils import spider
 
 import conf
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
-from spiders.image_proc import BaiduImageExtractor
+from spiders.youji_mixin import BaiduDomTreeProc
 from spiders.mafengwo_mixin import MafengwoSugMixin
 import utils
 from items import BaiduPoiItem, BaiduNoteProcItem, BaiduNoteKeywordItem
@@ -2255,136 +2254,113 @@ class BaiduRestaurantRecSpiderPipeline(AizouPipeline):
         return item
 
 
+class NoteSolrItem(Item):
+    data = Field()
+
+
+class NoteUpSolrSpider(AizouCrawlSpider):
+    """
+    百度游记上传到solr
+    """
+    name = 'note_solr'
+    uuid = 'E30B45F1-969F-3EBE-E95D-901B9FACA3BA'
+
+    def __init__(self, *a, **kw):
+        AizouCrawlSpider.__init__(self, *a, **kw)
+
+    def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.up_to_solr)
+
+    def up_to_solr(self, response):
+        note_col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
+        for entry in note_col.find():
+            note_id = entry['source']['baidu']['id']
+            data = {'id': str(entry['_id']),
+                    'title': entry['title'],
+                    'note_id': note_id
+            }
+            contents = entry['contents']
+            content_list = []
+            for node in contents:
+                cnt_text_list = filter(lambda val: val, etree.fromstring(node['content']).xpath('//text()'))
+                if not cnt_text_list:
+                    continue
+                cnt_text = ','.join(cnt_text_list)
+                if node['title']:
+                    tmp_ful_text = node['title'], '%s' % cnt_text
+                else:
+                    tmp_ful_text = cnt_text
+                content_list.extend(tmp_ful_text)
+            if not content_list:
+                continue
+            data['contents'] = '\n'.join(content_list)
+            if data['contents']:
+                item = NoteSolrItem()
+                item['data'] = data
+                yield item
+            else:
+                continue
+
+
+class BaiduNoteUpSolrPipeline(AizouPipeline):
+    """
+    上传到solr
+    """
+
+    spiders = [NoteUpSolrSpider.name]
+    spiders_uuid = [NoteUpSolrSpider.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        solr_conf = conf.global_conf['solr']
+        solr_s = pysolr.Solr('http://%s:%s/solr/travelnote' % (solr_conf['host'], solr_conf['port']))
+        data = item['data']
+        doc = [{
+                   'id': data['id'],
+                   'note_id': data['note_id'],
+                   'title': data['title'],
+                   'contents': data['contents'],
+               }
+        ]
+        try:
+            solr_s.add(doc)
+        except SolrError, e:
+            log.msg('error:%s,id:%s' % (e.message, data['id']), level=log.WARNING)
+            pass
+        return item
+
+
 class BaiduNoteItem(Item):
     data = Field()
     type = Field()
 
 
-class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
+class BaiduNoteProc(AizouCrawlSpider, BaiduDomTreeProc):
     """
-    百度游记数据的清洗
+    百度游记的清洗
     """
     name = 'baidu_note_proc'
-    uuid = 'B05E3272-78B1-5F38-3258-5F6E68433F27'
+    uuid = 'C18FF026-5D0F-3958-D8A4-5E9E734D4A37'
 
     def __init__(self, *a, **kw):
         AizouCrawlSpider.__init__(self, *a, **kw)
-        BaiduImageExtractor.__init__(self)
-
-    def image_proc(self, ret):
-        # 检查是否已经存在于数据库中
-        data = {}
-        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
-        col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-        img = col_im.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
-        if not img:
-            img = col_cand.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
-        if not img:
-            # 添加到待抓取列表中
-            data = {'key': ret['key'], 'url': ret['src'], 'url_hash': ret['url_hash']}
-        return data
-
-    def f1(self, sub_node):  # 删除br标签
-        n_parent = sub_node.getparent()
-        for j in range(0, len(n_parent)):
-            if n_parent[j].tag == 'br':
-                del n_parent[j]
-                break
-
-    def f2(self, sub_node):  # 处理标签的所有属性
-        sub_node.attrib.clear()
-
-    def f3(self, sub_node):  # 处理a标签
-        if sub_node.attrib.keys():
-            for attr in sub_node.attrib.keys():
-                if attr == 'href':
-                    url = sub_node.attrib[attr]
-                    ret = urlparse.urlparse(url)
-                    if ret.netloc == '' or ret.netloc == 'lvyou.baidu.com':
-                        sub_node.attrib.pop(attr)
-                    else:
-                        continue
-                elif attr != 'target':
-                    sub_node.attrib.pop(attr)
-
-    def f4(self, sub_node):
-        """
-        处理span标签
-        :param sub_node:
-        """
-        if sub_node.attrib.keys():
-            for attr in sub_node.attrib.keys():
-                if attr == 'class':
-                    if sub_node.attrib[attr] == 'des-l':
-                        sub_node.attrib[attr] = 'notes-photo-desc'
-                    elif sub_node.attrib[attr] == 'scene-r':
-                        sub_node.attrib[attr] = 'notes-photo-loc'
-                    else:
-                        sub_node.attrib.pop(attr)
-                else:
-                    sub_node.attrib.pop(attr)
-
-    def f5(self, sub_node):  # 处理img标签
-        item = BaiduNoteItem()
-        if sub_node.attrib.keys():
-            for attr in sub_node.attrib.keys():
-                if attr == 'src':
-                    # log.msg('wait', level=log.INFO)
-                    ret = self.retrieve_image(sub_node.attrib['src'])
-                    if not ret:
-                        continue
-                    else:
-                        image_data = self.image_proc(ret)
-                        if image_data:
-                            item['data'] = image_data
-                            item['type'] = 'image'
-                        sub_node.attrib['photo-id'] = ret['key']
-                        sub_node.attrib.pop('src')
-
-                elif attr == 'class':
-                    if sub_node.attrib['class'] == 'notes-photo-img':
-                        sub_node.attrib['class'] = 'notes-photo'
-                    else:
-                        sub_node.attrib.pop(attr)
-                else:
-                    sub_node.attrib.pop(attr)
-        return item
-
-    # 遍历树,去除内部跳转链接,抽取图片url
-    def walk_tree(self, root, item_list):
-        if not len(root):
-            return None
-        for node in root.iter():
-
-            if node.tag == 'a':
-                self.f3(node)
-            elif node.tag == 'img':
-                tmp_item = self.f5(node)
-                if tmp_item:
-                    item_list.append(tmp_item)
-            elif node.tag == 'span':
-                # 楼层单独处理
-                if 'class' in node.attrib.keys() and node.attrib['class'] == 'notes-floor':  # 判断是楼层
-                    parent = node.getparent()
-                    for i in range(0, len(parent)):
-                        if parent[i].tag == 'span' and parent[i].attrib['class'] == 'notes-floor':
-                            del parent[i]
-                            break
-                else:
-                    self.f4(node)
-            elif node.tag == 'p' or node.tag == 'div':
-                self.f2(node)
-            elif node.tag == 'br':
-                self.f1(node)
-
-        return {'root': root, 'item_list': item_list}
+        BaiduDomTreeProc.__init__(self)
 
     def start_requests(self):
+        yield Request(url='http://www.baidu.com', callback=self.parse_content)
+
+
+    def parse_content(self, response):
         abs_col = self.fetch_db_col('raw_baidu', 'BaiduNoteAbs', 'mongodb-crawler')
-        loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
-        vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
-        for entry in abs_col.find():
+
+        for entry in abs_col.find().batch_size(20):
             data = {}
+            # 图像列表
+            ret_list = []
+            # 游记内容列表
+            contents = []
             nid = entry['nid']
             data['source.baidu.id'] = nid
             data['authorName'] = entry['uname']
@@ -2392,12 +2368,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             authoravatar = 'http://hiphotos.baidu.com/lvpics/abpic/item/%s.jpg' % entry['avatar_small']
             ret = self.retrieve_image(authoravatar)
             if ret:
-                image_data = self.image_proc(ret)
-                if image_data:
-                    item = BaiduNoteItem()
-                    item['data'] = image_data
-                    item['type'] = 'image'
-                    yield item
+                ret_list.append(ret)
                 data['authorAvatar'] = ret['key']
             else:
                 data['authorAvatar'] = None
@@ -2419,7 +2390,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             data['lowerCost'] = int(price_cost[0]) if price_cost else None
             data['upperCost'] = int(price_cost[1]) if price_cost else None
             rating = float(entry['praise']) if 'praise' in entry else None
-            data['rating'] = rating / 100.0 if rating and (0 <= rating <= 100) else None
+            data['rating'] = rating / 100.0 if (0 <= rating <= 100) else None
             # cover
             covers_list = ['http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % tmp['pic_url']
                            for tmp in entry['album_pic_list']]
@@ -2428,12 +2399,7 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                 ret = self.retrieve_image(tmp)
                 if ret:
                     cover_data = {'key': ret['key']}
-                    image_data = self.image_proc(ret)
-                    if image_data:
-                        item = BaiduNoteItem()
-                        item['data'] = image_data
-                        item['type'] = 'image'
-                        yield item
+                    ret_list.append(ret)
                 else:
                     cover_data = {'key': ret}
                 tmp_cover.append(cover_data)
@@ -2444,6 +2410,8 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
             vs_list = [tmp for tmp in set(vs_list)]
             locality_list = []
             viewspot_list = []
+            loc_col = self.fetch_db_col('geo', 'BaiduLocality', 'mongodb-general')
+            vs_col = self.fetch_db_col('poi', 'BaiduPoi', 'mongodb-general')
             for tmp_id in vs_list:
                 doc = loc_col.find_one({'source.baidu.id': tmp_id})
                 if doc:
@@ -2462,79 +2430,91 @@ class BaiduNoteProcSpider(AizouCrawlSpider, BaiduImageExtractor):
                         continue
             data['viewSpotList'] = viewspot_list if viewspot_list else None
             data['localityList'] = locality_list if locality_list else None
-            yield Request(url='http://www.baidu.com', callback=self.parse_content, meta={'data': data})
 
-    def parse_content(self, response):
-        item_list = []
-        tmp_data = response.meta['data']
-        nid = tmp_data['source.baidu.id']
-        note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteMain', 'mongodb-crawler')
-        contents = []
+            # 游记内容处理
+            note_col = self.fetch_db_col('raw_baidu', 'BaiduNoteMain', 'mongodb-crawler')
+            tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
+            # 楼层信息
+            def func(content):
+                selector = Selector(text=content)
+                tmp_floor_id = selector.xpath('//div[@class="floor"]/@id').extract()
+                if tmp_floor_id:
+                    floor_id = tmp_floor_id[0]
+                else:
+                    floor_id = None
+                if floor_id:
+                    match = re.search(r'\d+', floor_id)
+                    if match:
+                        floor_id = int(match.group())
+                return floor_id
 
-        tmp_note_list = list(note_col.find({'nid': nid, 'main_post': True}))
+            # 游记排序
+            tmp_note_list = sorted(tmp_note_list, key=lambda tmp_note: func(tmp_note['node']))
 
-        # 楼层信息
-        def func(content):
-            selector = Selector(text=content)
-            tmp_floor_id = selector.xpath('//div[@class="floor"]/@id').extract()
-            if tmp_floor_id:
-                floor_id = tmp_floor_id[0]
-            else:
-                floor_id = None
-            if floor_id:
-                match = re.search(r'\d+', floor_id)
-                if match:
-                    floor_id = int(match.group())
-            return floor_id
+            for note_cnt in tmp_note_list:
+                tmp = {}
+                note = note_cnt['node']
+                sel = Selector(text=note)
+                note_title = sel.xpath(
+                    '//div[@class="col-main"]//div[@class="path-wrapper clearfix"]/span/text()').extract()
+                if note_title:
+                    # log.msg(note_title[0], level=log.INFO)
+                    tmp['title'] = note_title[0]
+                else:
+                    continue
+                note_content = sel.xpath(
+                    '//div[@class="col-main"]//div[@class="floor-content"]//div[@class="html-content"]').extract()
+                if note_content:
+                    note_content = note_content[0]
+                else:
+                    continue
+                # 去除内部所有的链接
+                root = etree.HTML(note_content.decode('utf-8'))
+                content_root = root.xpath('//div[@class="html-content"]')
+                # content_root[0].attrib.pop('class')
+                tmp_root = content_root[0]
+                # 无需进行楼层处理
+                # for i in range(0, len(tmp_root)):
+                # if 'class' in tmp_root[i].attrib.keys() and tmp_root[i].attrib['class'] == 'notes-floor':  # 判断是楼层
+                # parent = tmp_root[i].getparent()
+                # for j in range(0, len(parent)):
+                # if parent[j].tag == 'span' and parent[j].attrib['class'] == 'notes-floor':
+                # del parent[j]
+                # break
+                # break
+                try:
+                    # todo 树解析不够高效
+                    result = self.walk_tree(tmp_root, ret_list)
+                    proc_root = result['root']
+                    ret_list = result['ret_list']
+                    tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+                except TypeError, e:
+                    log.msg(e.message, level=log.INFO)
+                    log.msg('nid:%s' % nid, level=log.INFO)
+                    continue
+                contents.append(tmp)
+            # yield 游记信息
+            data['contents'] = contents
+            item = BaiduNoteItem()
+            item['data'] = data
+            item['type'] = 'note'
+            yield item
 
-        tmp_note_list = sorted(tmp_note_list, key=lambda tmp_note: func(tmp_note['node']))
-
-        for entry in tmp_note_list:
-            tmp = {}
-            note = entry['node']
-            sel = Selector(text=note)
-            note_title = sel.xpath(
-                '//div[@class="col-main"]//div[@class="path-wrapper clearfix"]/span/text()').extract()
-            if note_title:
-                # log.msg(note_title[0], level=log.INFO)
-                tmp['title'] = note_title[0]
-            else:
-                continue
-            note_content = sel.xpath(
-                '//div[@class="col-main"]//div[@class="floor-content"]//div[@class="html-content"]').extract()
-            if note_content:
-                note_content = note_content[0]
-            else:
-                continue
-            # 去除内部所有的链接
-            root = etree.HTML(note_content.decode('utf-8'))
-            content_root = root.xpath('//div[@class="html-content"]')
-            # content_root[0].attrib.pop('class')
-            tmp_root = content_root[0]
-            result = self.walk_tree(tmp_root, item_list)
-            proc_root = result['root']
-            item_list = result['item_list']
-            if item_list:
-                for sub_node in item_list:
-                    yield sub_node
-            try:
-                tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
-            except TypeError, e:
-                log.msg(e.message, level=log.INFO)
-                log.msg('nid:%s' % nid, level=log.INFO)
-                continue
-            contents.append(tmp)
-
-        tmp_data['contents'] = contents
-        item = BaiduNoteItem()
-        item['data'] = tmp_data
-        item['type'] = 'note'
-        yield item
+            # yield ret
+            ret_list = filter(lambda val: val, ret_list)
+            if ret_list:
+                for ret in ret_list:
+                    image_data = self.image_proc(ret)
+                    if image_data:
+                        item = BaiduNoteItem()
+                        item['data'] = image_data
+                        item['type'] = 'image'
+                        yield item
 
 
-class BaiduNoteProcSpiderPipeline(AizouPipeline):
-    spiders = [BaiduNoteProcSpider.name]
-    spiders_uuid = [BaiduNoteProcSpider.uuid]
+class BaiduNoteProcPipeline(AizouPipeline):
+    spiders = [BaiduNoteProc.name]
+    spiders_uuid = [BaiduNoteProc.uuid]
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -2551,79 +2531,6 @@ class BaiduNoteProcSpiderPipeline(AizouPipeline):
             # log.msg('nid:%s' % data['source.baidu.id'], level=log.INFO)
         else:
             col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-            # log.msg('image', level=log.INFO)
+            # log.msg('key:%s' % data['key'], )
             col.update({'key': data['key']}, {'$set': data}, upsert=True)
         return item
-
-
-class NoteSolrItem(Item):
-    data = Field()
-
-
-class NoteUpSolrSpider(AizouCrawlSpider):
-    """
-    百度游记上传到solr
-    """
-    name = 'note_solr'
-    uuid = 'E30B45F1-969F-3EBE-E95D-901B9FACA3BA'
-
-    def __init__(self, *a, **kw):
-        AizouCrawlSpider.__init__(self, *a, **kw)
-
-    def start_requests(self):
-        yield Request(url='http://www.baidu.com', callback=self.up_to_solr)
-
-    def up_to_solr(self, response):
-        note_col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
-        for entry in note_col.find():
-            data = {'id': str(entry['_id']),
-                    'title': entry['title'],
-            }
-            contents = entry['contents']
-            content_list = []
-            for node in contents:
-                cnt_text_list = filter(lambda val: val, etree.fromstring(node['content']).xpath('//text()'))
-                if not cnt_text_list:
-                    continue
-                cnt_text = ','.join(cnt_text_list)
-                if node['title']:
-                    tmp_ful_text = node['title'], '%s' % cnt_text
-                else:
-                    tmp_ful_text = cnt_text
-                content_list.extend(tmp_ful_text)
-            if not content_list:
-                continue
-            data['contents'] = '\n'.join(content_list)
-            item = NoteSolrItem()
-            item['data'] = data
-            yield item
-
-
-class BaiduNoteUpSolrPipeline(AizouPipeline):
-    """
-    上传到solr
-    """
-
-    spiders = [NoteUpSolrSpider.name]
-    spiders_uuid = [NoteUpSolrSpider.uuid]
-
-    def process_item(self, item, spider):
-        if not self.is_handler(item, spider):
-            return item
-
-        solr_conf = conf.global_conf['solr']
-        solr_s = pysolr.Solr('http://%s:%s/solr/travelnote' % (solr_conf['host'], solr_conf['port']))
-        data = item['data']
-        doc = [{
-                   'id': data['id'],
-                   'title': data['title'],
-                   'contents': data['contents'],
-               }
-        ]
-        try:
-            solr_s.add(doc)
-        except SolrError, e:
-            log.msg('error:%s,id:%s' % (e.message, data['id']), level=log.WARNING)
-            pass
-        return item
-

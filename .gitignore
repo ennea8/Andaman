@@ -7,4 +7,4 @@ conf/commons.cfg
 baidu_key.cfg
 tmp
 common.cfg
-*.yaml
+conf/*.yaml

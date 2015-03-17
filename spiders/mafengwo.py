@@ -13,6 +13,7 @@ from scrapy import Item, Request, Field, Selector, log
 from spiders import AizouCrawlSpider, AizouPipeline, ProcImagesMixin
 from spiders.baidu_mixin import BaiduSugMixin
 from spiders.image_proc import MfwImageExtractor
+from spiders.youji_mixin import MfwDomTreeProc
 import utils
 
 
@@ -1619,7 +1620,7 @@ class MafengwoNoteItem(Item):
     type = Field()
 
 
-class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
+class MafengwoNoteProc(AizouCrawlSpider, MfwDomTreeProc):
     """
     蚂蜂窝游记的清洗
     """
@@ -1628,100 +1629,16 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
 
     def __init__(self, *a, **kw):
         AizouCrawlSpider.__init__(self, *a, **kw)
-        MfwImageExtractor.__init__(self)
-
-    def image_proc(self, ret):
-        # 检查是否已经存在于数据库中
-        data = {}
-        col_im = self.fetch_db_col('imagestore', 'Images', 'mongodb-general')
-        col_cand = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
-        img = col_im.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
-        if not img:
-            img = col_cand.find_one({'url_hash': ret['url_hash']}, {'_id': 1})
-        if not img:
-            # 添加到待抓取列表中
-            data = {'key': ret['key'], 'url': ret['src'], 'url_hash': ret['url_hash']}
-        return data
-
-    def f1(self, sub_node):  # 删除br标签
-        n_parent = sub_node.getparent()
-        for j in range(0, len(n_parent)):
-            if n_parent[j].tag == 'br':
-                del n_parent[j]
-                break
-
-    def f2(self, sub_node):  # 处理标签的所有属性
-        sub_node.attrib.clear()
-
-    def f3(self, sub_node):  # 处理a标签
-        if sub_node.attrib.keys():
-            for attr in sub_node.attrib.keys():
-                if attr == 'href':
-                    url = sub_node.attrib[attr]
-                    ret = urlparse.urlparse(url)
-                    if ret.netloc == '' or ret.netloc == 'www.mafengwo.cn':
-                        sub_node.attrib.pop(attr)
-                elif attr != 'target':
-                    sub_node.attrib.pop(attr)
-
-    def f4(self, sub_node):
-        """
-        处理span标签
-        :param sub_node:
-        """
-        sub_node.attrib.clear()
-
-    def f5(self, sub_node):  # 处理img标签
-        item = MafengwoNoteItem()
-        if sub_node.attrib.keys():
-            for attr in sub_node.attrib.keys():
-                if attr == 'src':
-                    # log.msg('wait', level=log.INFO)
-                    ret = self.retrieve_image(sub_node.attrib['src'])
-                    if not ret:
-                        sub_node.attrib.pop(attr)
-                        continue
-                    else:
-                        image_data = self.image_proc(ret)
-                        sub_node.attrib['photo-id'] = ret['key']
-                        sub_node.attrib.pop('src')
-                        if image_data:
-                            item['data'] = image_data
-                            item['type'] = 'image'
-                else:
-                    sub_node.attrib.pop(attr)
-        return item
-
-    # html树的遍历
-    def walk_tree(self, root, item_list):
-        if not len(root):
-            return None
-        for node in root.iter():
-            if node.tag == 'a':
-                self.f3(node)
-            elif node.tag == 'img':
-                tmp_item = self.f5(node)
-                if tmp_item:
-                    item_list.append(tmp_item)
-            elif node.tag == 'span':
-                self.f4(node)
-            elif node.tag == 'p' or node.tag == 'div':
-                self.f2(node)
-            elif node.tag == 'br':
-                self.f1(node)
-            else:
-                self.f2(node)
-        return {'root': root, 'item_list': item_list}
-
+        MfwDomTreeProc.__init__(self)
 
     def start_requests(self):
         yield Request(url='http://www.baidu.com', callback=self.parse_content)
 
 
     def parse_content(self, response):
-        item_list = []
+        ret_list = []
         note_col = self.fetch_db_col('raw_mfw', 'MafengwoNote', 'mongodb-crawler')
-        for entry in note_col.find({'main_post': True}):
+        for entry in note_col.find({'main_post': True}).batch_size(20):
             data = {}
             nid = entry['note_id']
             data['source.mafengwo.id'] = nid
@@ -1730,13 +1647,10 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
             author_avatar = entry['author_avatar'] if 'author_avatar' in entry else None
             ret = self.retrieve_image(author_avatar)
             if ret:
-                image_data = self.image_proc(ret)
                 data['authorAvatar'] = ret['key']
-                if image_data:
-                    item = MafengwoNoteItem()
-                    item['data'] = image_data
-                    item['type'] = 'image'
-                    yield item
+                ret_list.append(ret)
+            else:
+                data['authorAvatar'] = None
             data['viewCnt'] = int(entry['view_cnt']) if 'view_cnt' in entry else None
             data['voteCnt'] = int(entry['vote_cnt']) if 'vote_cnt' in entry else None
             data['commentCnt'] = int(entry['comment_cnt']) if 'comment_cnt' in entry else None
@@ -1748,12 +1662,7 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                 ret = self.retrieve_image(cover)
                 if ret:
                     data['cover'] = ret['key']
-                    image_data = self.image_proc(ret)
-                    if image_data:
-                        item = MafengwoNoteItem()
-                        item['data'] = image_data
-                        item['type'] = 'image'
-                        yield item
+                    ret_list.append(ret)
                 else:
                     data['cover'] = None
             note_content = entry['contents'] if 'contents' in entry else None
@@ -1788,22 +1697,33 @@ class MafengwoNoteProc(AizouCrawlSpider, MfwImageExtractor):
                                 del parent[j]
                                 break
                         break
-                result = self.walk_tree(tmp_root, item_list)
-                proc_root = result['root']
-                item_list = result['item_list']
-                tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+                try:
+                    result = self.walk_tree(tmp_root, ret_list)
+                    proc_root = result['root']
+                    ret_list = result['ret_list']
+                    tmp['content'] = etree.tostring(proc_root, encoding='utf-8').decode('utf-8')
+                except TypeError, e:
+                    log.msg(e.message, level=log.INFO)
+                    log.msg('nid:%s' % nid, level=log.INFO)
+                    continue
                 contents.append(tmp)
-                if item_list:
-                    for sub_node in item_list:
-                        yield sub_node
 
             data['contents'] = contents
             item = MafengwoNoteItem()
             item['data'] = data
             item['type'] = 'note'
-            #log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
-
+            # log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
             yield item
+
+            ret_list = filter(lambda val: val, ret_list)
+            if ret_list:
+                for ret in ret_list:
+                    image_data = self.image_proc(ret)
+                    if image_data:
+                        item = MafengwoNoteItem()
+                        item['data'] = image_data
+                        item['type'] = 'image'
+                        yield item
 
 
 class MafengwoNoteProcPipeline(AizouPipeline):
@@ -1822,7 +1742,7 @@ class MafengwoNoteProcPipeline(AizouPipeline):
         if type == 'note':
             col = self.fetch_db_col('travelnote', 'MafengwoNote', 'mongodb-general')
             col.update({'source.mafengwo.id': data['source.mafengwo.id']}, {'$set': data}, upsert=True)
-            #log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
+            # log.msg('nid:%s' % data['source.mafengwo.id'], level=log.INFO)
         else:
             col = self.fetch_db_col('imagestore', 'ImageCandidates', 'mongodb-general')
             # log.msg('image', level=log.INFO)
