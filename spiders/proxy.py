@@ -165,16 +165,6 @@ class YoudailiProxySpider(BaseProxySpider):
         self._proxy_list = set([])
 
     def start_requests(self):
-        verifier = []
-        if 'verify' in self.param:
-            if 'baidu' in self.param['verify']:
-                verifier.append('baidu')
-            if 'googleapis' in self.param['verify']:
-                verifier.append('googleapis')
-
-        if not verifier:
-            return
-
         template = 'http://www.youdaili.net/Daili/http/list_%d.html'
         try:
             max_page = int(getattr(self, 'param', {})['max-page'][0])
@@ -183,7 +173,7 @@ class YoudailiProxySpider(BaseProxySpider):
 
         # inclusive
         for page in xrange(1, max_page + 1):
-            yield Request(url=template % page, callback=self.parse, meta={'verifier': verifier})
+            yield Request(url=template % page, callback=self.parse)
 
     def parse(self, response):  # draw the state
         for node in Selector(response).xpath('//div[@class="newslist_body"]/ul[@class="newslist_line"]/li'):
@@ -192,8 +182,7 @@ class YoudailiProxySpider(BaseProxySpider):
                 continue
             href = tmp[0]
 
-            yield Request(url=href, callback=self.parse_proxylist,
-                          meta={'verifier': response.meta['verifier']})
+            yield Request(url=href, callback=self.parse_proxylist)
 
     def parse_proxylist(self, response):
         sel = Selector(response)
@@ -215,8 +204,7 @@ class YoudailiProxySpider(BaseProxySpider):
             if not m:
                 continue
             url = '%s/%s' % (m.groups()[0], page_href)
-            yield Request(url=url, callback=self.parse_proxylist,
-                          meta={'verifier': response.meta['verifier']})
+            yield Request(url=url, callback=self.parse_proxylist)
 
         for entry in sel.xpath('//div[@class="cont_font"]/p/text()').extract():
             entry = entry.strip()
