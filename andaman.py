@@ -83,11 +83,25 @@ def parse_args(args):
     return {'cmd': cmd, 'param': param_dict}
 
 
+def proc_crawler_settings(crawler):
+    """
+    读取配置文件，进行相应的设置
+    """
+    settings = crawler.settings
+
+    config = conf.load_yaml()
+    if 'scrapy' in config:
+        for key, value in config['scrapy'].items():
+            settings.set(key, value)
+
+
 def setup_spider(spider_name, args):
     import conf
 
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
+
+    proc_crawler_settings(crawler)
 
     settings = crawler.settings
     ret = parse_args(sys.argv)
@@ -220,7 +234,8 @@ def main():
     parser.add_argument('crawler')
     parser.add_argument('--fast', action='store_true')
     parser.add_argument('--dry', action='store_true')
-    parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--log2file', action='store_true')
+    parser.add_argument('--logpath', type=str)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--proxy', action='store_true')
 
@@ -229,17 +244,19 @@ def main():
     msg = 'SPIDER STARTED: %s' % ' '.join(sys.argv)
 
     spider_name = args.crawler
-    # param = ret['param']
+    log_path = args.logpath if args.logpath else '/var/log/andaman'
+    if args.log2file:
+        try:
+            os.mkdir(log_path)
+        except OSError:
+            pass
+        logfile = os.path.join(log_path, '%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d')))
+    else:
+        logfile = None
+
     s = setup_spider(spider_name, args)
     if s:
-        if args.verbose:
-            logfile = None
-        else:
-            try:
-                os.mkdir('/var/log/andaman/')
-            except OSError:
-                pass
-            logfile = '/var/log/andaman/%s_%s.log' % (spider_name, datetime.datetime.now().strftime('%Y%m%d'))
+        s.arg_parser = parser
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         s.log(msg, scrapy.log.INFO)
 
@@ -258,10 +275,6 @@ def main():
         else:
             reactor.run()  # the script will block here until the spider_closed signal was sent
     else:
-        if args.verbose:
-            logfile = None
-        else:
-            logfile = './logs/error.log'
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 

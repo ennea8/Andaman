@@ -27,6 +27,7 @@ class AizouCrawlSpider(CrawlSpider):
         settings = kw['settings']
         self.param = settings['USER_PARAM']
         self.args = settings['USER_ARGS']
+        self.arg_parser = None
 
         self.col_dict = {}
 
