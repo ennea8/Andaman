@@ -81,7 +81,6 @@ class CtripDataProc(AizouCrawlSpider):
             a_id = sel.xpath(
                 '//div[@class="detailmain"]/div[@class="bestanswer_con"]/div[@class="answer_box cf"]/@data-answerid').extract()
             a_item = QaItem()
-            # rec----------
             tmp_data = {'rec': True, 'q_id': q_id, 'body': best_anwser[0], 'a_id': a_id[0]}
             a_item['type'] = 'answer'
             a_item['data'] = tmp_data
@@ -254,7 +253,6 @@ class QunarDataProc(AizouCrawlSpider):
                 return
             # 翻到下一页
             subpage_idx += 1
-            # 如果subpage_idx>page_total?
             sub_data = {'subpage_idx': subpage_idx, 'subpage_url': subpage_url, 'q_id': q_id}
             tmp_url = '%s&page=%d' % (subpage_url, subpage_idx)
             yield Request(url=tmp_url,
