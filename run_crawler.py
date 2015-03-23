@@ -6,8 +6,8 @@ import sys
 import imp
 from time import time
 import traceback
-
 import datetime
+
 import scrapy
 from scrapy import signals, Request, Item, log
 from scrapy.crawler import Crawler
@@ -83,11 +83,25 @@ def parse_args(args):
     return {'cmd': cmd, 'param': param_dict}
 
 
+def proc_crawler_settings(crawler):
+    """
+    读取配置文件，进行相应的设置
+    """
+    settings = crawler.settings
+
+    config = conf.load_yaml()
+    if 'scrapy' in config:
+        for key, value in config['scrapy'].items():
+            settings.set(key, value)
+
+
 def setup_spider(spider_name, args):
     import conf
 
     crawler = Crawler(Settings())
     crawler.signals.connect(reactor.stop, signal=signals.spider_closed)
+
+    proc_crawler_settings(crawler)
 
     settings = crawler.settings
     ret = parse_args(sys.argv)
@@ -98,8 +112,8 @@ def setup_spider(spider_name, args):
 
     if args.proxy:
         settings.set('DOWNLOADER_MIDDLEWARES', {'middlewares.ProxySwitchMiddleware': 300})
-        settings.set('PROXY_SWITCH_VERIFIER',
-                     'baidu')  # args['proxy-verifier'][0] if 'proxy-verifier' in args else 'baidu')
+        settings.set('PROXY_SWITCH_VERIFIER', 'baidu')
+        settings.set('PROXY_SWITCH_REFRESH_INTERVAL', 3600)
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', args.debug)

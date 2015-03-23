@@ -129,8 +129,14 @@ class ProxySwitchMiddleware(object):
         recently = settings['PROXY_SWITCH_RECENTLY']
         if not recently:
             recently = 12
+        auto_refresh = settings['PROXY_SWITCH_REFRESH_INTERVAL']
+        if not auto_refresh:
+            auto_refresh = 0
 
-        return cls(latency, recently, count, crawler)
+        mw_settings = {'latency': latency, 'count': count, 'recently': recently, 'auto_refresh': auto_refresh,
+                       'crawler': crawler}
+
+        return cls(mw_settings)
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -153,18 +159,42 @@ class ProxySwitchMiddleware(object):
             proxy_list[proxy] = {'req': 0, 'fail': 0, 'enabled': True}
         return proxy_list
 
-    def __init__(self, latency, recently, count, crawler):
+    def refresh_proxy(self, count, latency, recently):
+        spider = getattr(getattr(self, '_crawler'), '_spider')
+        if spider:
+            spider.log('Proxy spool refreshed: %d available, %d disabled' % (
+                len(self.proxy_list), len(self.disabled_proxies)), log.INFO)
+
+        for proxy, proxy_desc in filter(lambda item: item[0] not in self.disabled_proxies,
+                                        self.load_proxy(count, latency, recently).items()):
+            if proxy not in self.proxy_list:
+                self.proxy_list[proxy] = proxy_desc
+
+        self.proxy_list = dict(filter(lambda item: item[0] not in self.disabled_proxies,
+                                      self.load_proxy(count, latency, recently).items()))
+
+    def __init__(self, mw_settings):
+        crawler = mw_settings['crawler']
+        count = mw_settings['count']
+        latency = mw_settings['latency']
+        recently = mw_settings['recently']
+        auto_refresh = mw_settings['auto_refresh']
+
         self._crawler = crawler
+        self.refresh_interval = auto_refresh
         self.disabled_proxies = set([])
         self.proxy_list = dict(filter(lambda item: item[0] not in self.disabled_proxies,
                                       self.load_proxy(count, latency, recently).items()))
         self.max_fail_cnt = 5
         self.max_retry_cnt = 10
 
-        # 每小时更新一下代理池
-        @set_interval(3600)
-        def func():
-            self.proxy_list = self.load_proxy(count, latency, recently)
+        if self.refresh_interval > 0:
+            # 每半小时更新一下代理池
+            @set_interval(self.refresh_interval)
+            def func():
+                self.refresh_proxy(count, latency, recently)
+
+            func()
 
     def deregister(self, proxy, spider):
         """
