@@ -1,5 +1,6 @@
 # coding=utf-8
 import re
+import json
 from scrapy import Item, Field, Request, Selector, log
 from spiders import AizouCrawlSpider, AizouPipeline
 from utils.database import get_mongodb
@@ -319,5 +320,130 @@ class QunarDataProcPipeline(AizouPipeline):
 
 
 
+__author__ = 'bxm'
+
+class MafengwoDataProc(AizouCrawlSpider):
+    """
+    抓取蚂蜂窝的问答
+    """
+
+    name = 'mafengwo-qa'
+    uuid = 'D4C23067-2BB7-5ED5-5546-D3F6E95D4567'
+
+    def start_requests(self):
+        url = 'http://www.mafengwo.cn/qa/ajax_pager.php?action=question_index&start=0'
+        data = {'start': 0, 'domain': 'http://www.mafengwo.cn'}
+        yield Request(url=url, callback=self.parse, meta=data)
+
+    def parse(self, response):
+        domain = response.meta['domain']
+        start = response.meta['start']
+
+        # 从返回的json中提取html,
+        page_dict = json.loads(response.body)
+        page_html=''
+        if page_dict:
+            page_html = page_dict['payload']['list_html']
+        sel = Selector(text=page_html)
+        #得到问题链接的列表
+        ask_list = sel.xpath('//div[@class="title"]/a/@href').extract()
+
+        #总共500个问题
+        if start >= 500:
+            return
+        for url_suffix in ask_list:
+            if url_suffix:
+                url_request = '%s%s' % (domain, url_suffix)
+                #log.msg('%s' % url_request)
+                yield Request(url=url_request, callback=self.parse_question)
+            else:
+                continue
+        #每次ajax请求返回20个问题
+        start += 20
+        url_response = re.sub(r'\d+', '%d' % start, response.url)
+        data = {'start': start, 'domain': domain}
+        yield Request(url=url_response, callback=self.parse, meta=data)
+
+
+    def parse_question(self, response):
+        """
+        从问答中提取问题，如：http://www.mafengwo.cn/wenda/detail-207723.html
+        """
+        sel = Selector(response)
+        q_id = sel.xpath('//div[@class="wrapper"]/@data-qid').extract()
+        question = sel.xpath('//div[@class="q-detail"]').extract()
+
+        q_item = QaItem()
+        #log.msg(u'请求question')
+        q_item['type'] = 'question'
+        q_item['data'] = {'q_id': q_id[0], 'body': question[0]}
+        yield q_item
+
+        url_request = "http://www.mafengwo.cn/qa/ajax_pager.php?_uid=0&qid=%s&action=question_detail" % q_id[0]
+        start = 0
+        yield Request(url=url_request, callback=self.parse_answer, meta={'start': start, 'domain': url_request})
+
+    def parse_answer(self, response):
+        """
+        解析通过ajax请求得到的问题答案，如：http://www.mafengwo.cn/qa/ajax_pager.php?_uid=0&qid=207723&action=
+        question_detail&start=0
+        """
+        start = response.meta['start']
+        domain = response.meta['domain']
+
+        a_dict = json.loads(response.body)
+        a_html=None
+        a_total=None
+        if a_dict:
+            a_html = a_dict['payload']['list_html']
+            # 答案数量
+            a_total = a_dict['payload']['total']
+
+        sel = Selector(text=a_html)
+        answer_list = sel.xpath('//li[@class="answer-item clearfix _j_answer_item"]').extract()
+        q_id = sel.xpath('//div[@class="share-pop _j_share_pop"]/@data-qid').extract()
+
+        for answer in answer_list:
+            a_id = Selector(text=answer).xpath('//li/@data-aid').extract()
+            a_best = Selector(text=answer).xpath('//div[@class="answer-content answer-best"]').extract()
+            # a_item=QaItem()放循环外面将只返回一个
+            a_item = QaItem()
+            a_item['type'] = 'answer'
+            #是否最佳答案
+            if a_best:
+                a_item['data'] = {'rec': True, 'a_id': a_id[0], 'q_id': q_id[0], 'body': answer}
+            else:
+                a_item['data'] = {'a_id': a_id[0], 'q_id': q_id[0], 'body': answer}
+            yield a_item
+
+        # 每次请求返回50个答案
+        start += 50
+        if start > a_total:
+            return
+        yield Request(url='%s&start=%s' % (domain, start), callback=self.parse_answer,
+                      meta={'start': start, 'domain': domain})
+
+
+class MafengwoDataProcPineline(AizouPipeline):
+    """
+    蚂蜂窝数据进入数据库
+    """
+    spiders = [MafengwoDataProc.name]
+    spiders_uuid = [MafengwoDataProc.uuid]
+
+    def process_item(self, item, spider):
+        if not self.is_handler(item, spider):
+            return item
+
+        data = item['data']
+        item_type = item['type']
+
+        if item_type == 'question':
+            col = get_mongodb('raw_faq', 'MafengwoQuestion', 'mongo-raw')
+            col.update({'q_id': data['q_id']}, {'$set': data}, upsert=True)
+        else:
+            col = get_mongodb('raw_faq', 'MafengwoAnswer', 'mongo-raw')
+            col.update({'a_id': data['a_id']}, {'$set': data}, upsert=True)
+        return item
 
 
