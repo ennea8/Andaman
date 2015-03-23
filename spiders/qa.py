@@ -2,7 +2,7 @@
 import re
 from scrapy import Item, Field, Request, Selector, log
 from spiders import AizouCrawlSpider, AizouPipeline
-from utils import get_mongodb
+from utils.database import get_mongodb
 
 __author__ = 'lxf'
 
@@ -33,7 +33,7 @@ class CtripDataProc(AizouCrawlSpider):
         tmp_data = response.meta['data']
         # 翻页
         page_idx = tmp_data['page_idx']
-        log.msg('page_idx:%d' % page_idx, level=log.INFO)
+        #log.msg('page_idx:%d' % page_idx, level=log.INFO)
         # 域名
         domain = tmp_data['domain']
         sel = Selector(response)
@@ -74,13 +74,14 @@ class CtripDataProc(AizouCrawlSpider):
         q_item['type'] = 'question'
         q_item['data'] = tmp_data
         yield q_item
-        # 抽取答案
+        # 抽取答案 
         best_anwser = sel.xpath('//div[@class="detailmain"]/div[@class="bestanswer_con"]').extract()
         other_answer_list = sel.xpath('//div[@class="detailmain"]/div[@id="divAskReplyListContent"]//li')
         if best_anwser:
             a_id = sel.xpath(
                 '//div[@class="detailmain"]/div[@class="bestanswer_con"]/div[@class="answer_box cf"]/@data-answerid').extract()
             a_item = QaItem()
+            # rec----------
             tmp_data = {'rec': True, 'q_id': q_id, 'body': best_anwser[0], 'a_id': a_id[0]}
             a_item['type'] = 'answer'
             a_item['data'] = tmp_data
@@ -128,7 +129,7 @@ class QunarDataProc(AizouCrawlSpider):
     """
     去哪问答数据抓取
     """
-    name = 'qunar_qa'
+    name = 'qunar-qa'
     uuid = 'F2C23067-2BB7-5ED5-5546-D3F6E95C7255'
 
     def start_requests(self):
@@ -143,7 +144,7 @@ class QunarDataProc(AizouCrawlSpider):
         # 翻页
         page_idx = tmp_data['page_idx']
 
-        log.msg('page_idx:%d' % page_idx, level=log.INFO)
+        #log.msg('page_idx:%d' % page_idx, level=log.INFO)
         # 开始的url
         domain = tmp_data['domain']
         sel = Selector(response)
@@ -154,7 +155,6 @@ class QunarDataProc(AizouCrawlSpider):
                 # 获取url
                 tmp_url = node.xpath('.//a[@class="s xst"]/@href').extract()
                 # 获取title_id进行数据关联
-                # log.msg('url:%s' % tmp_url)
                 if tmp_url:
                     tmp_ques_id = node.xpath('./@id').extract()
                     match = re.search('\d+', tmp_ques_id[0])
@@ -184,7 +184,6 @@ class QunarDataProc(AizouCrawlSpider):
         sub_data = response.meta['sub_data']
         # 翻页
         subpage_idx = sub_data['subpage_idx']
-        log.msg('subpage_idx %d' % subpage_idx)
         # url
         subpage_url = sub_data['subpage_url']
         # title_id
@@ -198,10 +197,10 @@ class QunarDataProc(AizouCrawlSpider):
             match = re.search(r'\d+', page_total[0])
             page_total = match.group()
             page_total = int(page_total)
-            log.msg('total_page:%d' % page_total)
             if subpage_idx <= page_total:
                 # 抓取帖子
                 if subpage_idx == 1:
+                    title = sel.xpath('//span[@id="thread_subject"]').extract()
                     # 将1页1楼存放在问题中
                     data = {}
                     tmp_node = post_list[0]
@@ -210,6 +209,7 @@ class QunarDataProc(AizouCrawlSpider):
                     if match:
                         post_id = match.group()
                         data['post_id'] = post_id
+                        data['title'] = title
                         data['body'] = tmp_node.extract()
                         data['q_id'] = q_id
                     post_item = QaItem()
@@ -250,8 +250,11 @@ class QunarDataProc(AizouCrawlSpider):
                             yield post_item
                         else:
                             continue
+            else:
+                return
             # 翻到下一页
             subpage_idx += 1
+            # 如果subpage_idx>page_total?
             sub_data = {'subpage_idx': subpage_idx, 'subpage_url': subpage_url, 'q_id': q_id}
             tmp_url = '%s&page=%d' % (subpage_url, subpage_idx)
             yield Request(url=tmp_url,
@@ -262,12 +265,14 @@ class QunarDataProc(AizouCrawlSpider):
         else:
             # 将1页1楼存放在问题中
             data = {}
+            title = sel.xpath('//span[@id="thread_subject"]').extract()
             tmp_node = post_list[0]
             tmp_post_id = tmp_node.xpath('./@id').extract()
             match = re.search(r'\d+', tmp_post_id[0])
             if match:
                 post_id = match.group()
                 data['post_id'] = post_id
+                data['title'] = title[0]
                 data['body'] = tmp_node.extract()
                 data['q_id'] = q_id
             post_item = QaItem()
@@ -313,3 +318,8 @@ class QunarDataProcPipeline(AizouPipeline):
             col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
+
+
+
+
+
