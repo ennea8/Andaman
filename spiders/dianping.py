@@ -43,7 +43,8 @@ class DianpingSpider(AizouCrawlSpider):
         return {'city_list': city_list, 'region': region}
 
     def start_requests(self):
-        yield Request(url='http://www.dianping.com/citylist', callback=self.parse_city_list)
+        yield Request(url='http://www.dianping.com/citylist', callback=self.parse_city_list,
+                      meta={'proxy_switch_ctx': {'enabled': False}})
 
     def parse_city_list(self, response):
         """
@@ -81,7 +82,8 @@ class DianpingSpider(AizouCrawlSpider):
                 if city_list and (city_name not in city_list and city_pinyin not in city_list):
                     continue
 
-                yield Request(url=url, meta={'data': {'city_name': city_name, 'city_pinyin': city_pinyin}},
+                yield Request(url=url, meta={'data': {'city_name': city_name, 'city_pinyin': city_pinyin},
+                                             'proxy_switch_ctx': {'enabled': False}},
                               callback=self.parse_city_main)
 
     def parse_city_main(self, response):
@@ -348,7 +350,7 @@ class DianpingSpider(AizouCrawlSpider):
         """
         data = json.loads(response.body)
         m = copy.deepcopy(response.meta['data'])
-        m['reivew_stat'] = data['msg']
+        m['review_stat'] = data['msg']
 
         item = DianpingItem()
         item['type'] = 'dining'
@@ -388,7 +390,13 @@ class DianpingPipeline(AizouPipeline):
         ops = {'$set': data}
         if add_set_ops:
             ops['$addToSet'] = add_set_ops
-        col.update({'shop_id': data['shop_id']}, ops, upsert=True)
+
+        from pymongo.errors import OperationFailure
+
+        try:
+            col.update({'shop_id': data['shop_id']}, ops, upsert=True)
+        except OperationFailure as e:
+            spider.log(e.message, level=log.ERROR)
         return item
 
     @staticmethod

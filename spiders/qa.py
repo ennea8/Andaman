@@ -1,9 +1,12 @@
 # coding=utf-8
 import re
 import json
-from scrapy import Item, Field, Request, Selector, log
+
+from scrapy import Item, Field, Request, Selector
+
 from spiders import AizouCrawlSpider, AizouPipeline
 from utils.database import get_mongodb
+
 
 __author__ = 'lxf'
 
@@ -16,12 +19,12 @@ class QaItem(Item):
     data = Field()
 
 
-class CtripDataProc(AizouCrawlSpider):
+class CtripQA(AizouCrawlSpider):
     """
     携程问答
     """
-    name = 'ctrip_qa'
-    uuid = 'A0D57DE3-1C3C-79D6-8BF4-1CCDEBB2FBD9'
+    name = 'ctrip-qa'
+    uuid = '97168ee6-6006-4eba-ac9a-7c8223275a'
 
     def start_requests(self):
         page_idx = 1
@@ -34,7 +37,7 @@ class CtripDataProc(AizouCrawlSpider):
         tmp_data = response.meta['data']
         # 翻页
         page_idx = tmp_data['page_idx']
-        #log.msg('page_idx:%d' % page_idx, level=log.INFO)
+        # log.msg('page_idx:%d' % page_idx, level=log.INFO)
         # 域名
         domain = tmp_data['domain']
         sel = Selector(response)
@@ -60,11 +63,13 @@ class CtripDataProc(AizouCrawlSpider):
             # 解析结束
             return
 
-    def parse_detail(self, response):
+    @staticmethod
+    def parse_detail(response):
         sel = Selector(response)
         q_item = QaItem()
         sub_url = response.meta['sub_url']
         question = sel.xpath('//div[@class="detailmain"]/div[@class="detailmain_top"]').extract()
+
         # 问题的id
         q_id = sel.xpath('//div[@class="detailmain"]//div[@class="ask_infoline cf"]//li/a/@data-shareid').extract()
         if q_id:
@@ -75,6 +80,7 @@ class CtripDataProc(AizouCrawlSpider):
         q_item['type'] = 'question'
         q_item['data'] = tmp_data
         yield q_item
+
         # 抽取答案 
         best_anwser = sel.xpath('//div[@class="detailmain"]/div[@class="bestanswer_con"]').extract()
         other_answer_list = sel.xpath('//div[@class="detailmain"]/div[@id="divAskReplyListContent"]//li')
@@ -102,9 +108,9 @@ class CtripDataProc(AizouCrawlSpider):
             return
 
 
-class CtripDataProcPipeline(AizouPipeline):
-    spiders = [CtripDataProc.name]
-    spiders_uuid = [CtripDataProc.uuid]
+class CtripQAPipeline(AizouPipeline):
+    spiders = [CtripQA.name]
+    spiders_uuid = [CtripQA.uuid]
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -115,22 +121,22 @@ class CtripDataProcPipeline(AizouPipeline):
 
         # 数据库授权
         if item_type == 'question':
-            col = get_mongodb('raw_faq', 'CtripQuestion', 'mongo-raw')
+            col = get_mongodb('raw', 'CtripQuestion', 'mongo-raw')
             col.update({'q_id': data['q_id']}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         else:
-            col = get_mongodb('raw_faq', 'CtripAnswer', 'mongo-raw')
+            col = get_mongodb('raw', 'CtripAnswer', 'mongo-raw')
             col.update({'a_id': data['a_id']}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
 
 
-class QunarDataProc(AizouCrawlSpider):
+class QunarQA(AizouCrawlSpider):
     """
     去哪问答数据抓取
     """
     name = 'qunar-qa'
-    uuid = 'F2C23067-2BB7-5ED5-5546-D3F6E95C7255'
+    uuid = '58df13df-b134-4164-9e71-cdac2a19b314'
 
     def start_requests(self):
         page_idx = 1
@@ -144,7 +150,7 @@ class QunarDataProc(AizouCrawlSpider):
         # 翻页
         page_idx = tmp_data['page_idx']
 
-        #log.msg('page_idx:%d' % page_idx, level=log.INFO)
+        # log.msg('page_idx:%d' % page_idx, level=log.INFO)
         # 开始的url
         domain = tmp_data['domain']
         sel = Selector(response)
@@ -296,9 +302,9 @@ class QunarDataProc(AizouCrawlSpider):
                     continue
 
 
-class QunarDataProcPipeline(AizouPipeline):
-    spiders = [QunarDataProc.name]
-    spiders_uuid = [QunarDataProc.uuid]
+class QunarQAPipeline(AizouPipeline):
+    spiders = [QunarQA.name]
+    spiders_uuid = [QunarQA.uuid]
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -309,26 +315,23 @@ class QunarDataProcPipeline(AizouPipeline):
 
         # 数据库授权
         if item_type == 'question':
-            col = get_mongodb('raw_faq', 'QunarQuestion', 'mongo-raw')
+            col = get_mongodb('raw', 'QunarQuestion', 'mongo-raw')
             col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         else:
-            col = get_mongodb('raw_faq', 'QunarAnswer', 'mongo-raw')
+            col = get_mongodb('raw', 'QunarAnswer', 'mongo-raw')
             col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
             # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
 
 
-
-__author__ = 'bxm'
-
-class MafengwoDataProc(AizouCrawlSpider):
+class MafengwoQA(AizouCrawlSpider):
     """
     抓取蚂蜂窝的问答
     """
 
     name = 'mafengwo-qa'
-    uuid = 'D4C23067-2BB7-5ED5-5546-D3F6E95D4567'
+    uuid = '6e98b3d3-1d7b-422a-ab61-215b642f7a2d'
 
     def start_requests(self):
         url = 'http://www.mafengwo.cn/qa/ajax_pager.php?action=question_index&start=0'
@@ -341,24 +344,24 @@ class MafengwoDataProc(AizouCrawlSpider):
 
         # 从返回的json中提取html,
         page_dict = json.loads(response.body)
-        page_html=''
+        page_html = ''
         if page_dict:
             page_html = page_dict['payload']['list_html']
         sel = Selector(text=page_html)
-        #得到问题链接的列表
+        # 得到问题链接的列表
         ask_list = sel.xpath('//div[@class="title"]/a/@href').extract()
 
-        #总共500个问题
+        # 总共500个问题
         if start >= 500:
             return
         for url_suffix in ask_list:
             if url_suffix:
                 url_request = '%s%s' % (domain, url_suffix)
-                #log.msg('%s' % url_request)
+                # log.msg('%s' % url_request)
                 yield Request(url=url_request, callback=self.parse_question)
             else:
                 continue
-        #每次ajax请求返回20个问题
+        # 每次ajax请求返回20个问题
         start += 20
         url_response = re.sub(r'\d+', '%d' % start, response.url)
         data = {'start': start, 'domain': domain}
@@ -374,7 +377,7 @@ class MafengwoDataProc(AizouCrawlSpider):
         question = sel.xpath('//div[@class="q-detail"]').extract()
 
         q_item = QaItem()
-        #log.msg(u'请求question')
+        # log.msg(u'请求question')
         q_item['type'] = 'question'
         q_item['data'] = {'q_id': q_id[0], 'body': question[0]}
         yield q_item
@@ -392,8 +395,8 @@ class MafengwoDataProc(AizouCrawlSpider):
         domain = response.meta['domain']
 
         a_dict = json.loads(response.body)
-        a_html=None
-        a_total=None
+        a_html = None
+        a_total = None
         if a_dict:
             a_html = a_dict['payload']['list_html']
             # 答案数量
@@ -409,7 +412,7 @@ class MafengwoDataProc(AizouCrawlSpider):
             # a_item=QaItem()放循环外面将只返回一个
             a_item = QaItem()
             a_item['type'] = 'answer'
-            #是否最佳答案
+            # 是否最佳答案
             if a_best:
                 a_item['data'] = {'rec': True, 'a_id': a_id[0], 'q_id': q_id[0], 'body': answer}
             else:
@@ -424,12 +427,12 @@ class MafengwoDataProc(AizouCrawlSpider):
                       meta={'start': start, 'domain': domain})
 
 
-class MafengwoDataProcPineline(AizouPipeline):
+class MafengwoQAPipeline(AizouPipeline):
     """
     蚂蜂窝数据进入数据库
     """
-    spiders = [MafengwoDataProc.name]
-    spiders_uuid = [MafengwoDataProc.uuid]
+    spiders = [MafengwoQA.name]
+    spiders_uuid = [MafengwoQA.uuid]
 
     def process_item(self, item, spider):
         if not self.is_handler(item, spider):
@@ -439,10 +442,10 @@ class MafengwoDataProcPineline(AizouPipeline):
         item_type = item['type']
 
         if item_type == 'question':
-            col = get_mongodb('raw_faq', 'MafengwoQuestion', 'mongo-raw')
+            col = get_mongodb('raw', 'MafengwoQuestion', 'mongo-raw')
             col.update({'q_id': data['q_id']}, {'$set': data}, upsert=True)
         else:
-            col = get_mongodb('raw_faq', 'MafengwoAnswer', 'mongo-raw')
+            col = get_mongodb('raw', 'MafengwoAnswer', 'mongo-raw')
             col.update({'a_id': data['a_id']}, {'$set': data}, upsert=True)
         return item
 

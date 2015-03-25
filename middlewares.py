@@ -122,13 +122,13 @@ class ProxySwitchMiddleware(object):
     def from_settings(cls, settings, crawler=None):
         latency = settings['PROXY_SWITCH_LATENCY']
         if not latency:
-            latency = 0.8
+            latency = 1
         count = settings['PROXY_SWITCH_COUNT']
         if not count:
             count = 10000
         recently = settings['PROXY_SWITCH_RECENTLY']
         if not recently:
-            recently = 12
+            recently = 24
         auto_refresh = settings['PROXY_SWITCH_REFRESH_INTERVAL']
         if not auto_refresh:
             auto_refresh = 0
@@ -145,7 +145,7 @@ class ProxySwitchMiddleware(object):
     @staticmethod
     def load_proxy(count, latency, recently):
         response = urllib2.urlopen(
-            'http://api2.taozilvxing.cn/core/misc/proxies?verifier=all&latency=%f&recently=%d&pageSize=%d' %
+            'http://api.taozilvxing.cn/core/misc/proxies?verifier=all&latency=%f&recently=%d&pageSize=%d' %
             (latency, recently, count))
         data = json.loads(response.read())
         # 加载代理列表
@@ -232,6 +232,14 @@ class ProxySwitchMiddleware(object):
         return proxy_list[random.randint(0, len(proxy_list) - 1)]
 
     def process_request(self, request, spider):
+        # 如何临时性禁用proxy middleware: 将meta['proxy_middleware']['enabled']设置为False
+        mw_key = 'proxy_switch_ctx'
+        try:
+            if mw_key in request.meta and request.meta[mw_key]['enabled'] is False:
+                return
+        except KeyError:
+            pass
+
         proxy = self.pick_proxy()
         if proxy:
             spider.log('Set proxy %s for request: %s' % (proxy, request.url), log.DEBUG)
@@ -246,6 +254,13 @@ class ProxySwitchMiddleware(object):
     def process_response(self, request, response, spider):
         if 'proxy' not in request.meta:
             return response
+        mw_key = 'proxy_switch_ctx'
+        try:
+            if mw_key in request.meta and request.meta[mw_key]['enabled'] is False:
+                return response
+        except KeyError:
+            pass
+
         proxy = request.meta['proxy']
 
         ctx = request.meta['proxy_switch_ctx']
