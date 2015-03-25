@@ -9,6 +9,7 @@ from lxml.html import HtmlElement
 
 __author__ = 'zephyre'
 
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points
@@ -180,111 +181,3 @@ def parse_etree(node, rules):
         return node
 
     return func(dom)
-
-
-def load_yaml():
-    """
-    Load YAML-format configuration files
-    :return:
-    """
-
-    config = getattr(load_yaml, 'config', None)
-    if config:
-        return config
-
-    from yaml import load
-    import os
-    from glob import glob
-
-    cfg_dir = os.path.abspath(os.path.join(os.path.split(__file__)[0], './conf/'))
-    cfg_file = os.path.join(cfg_dir, 'andaman.yaml')
-    with open(cfg_file) as f:
-        config = load(f)
-
-    # Resolve includes
-    if 'include' in config:
-        for entry in config['include']:
-            for fname in glob(os.path.join(cfg_dir, entry)):
-                if fname == cfg_file:
-                    continue
-                try:
-                    with open(fname) as f:
-                        include_data = load(f)
-                        for k, v in include_data.items():
-                            config[k] = v
-                except IOError:
-                    continue
-
-    setattr(load_yaml, 'config', config)
-    return config
-
-
-def get_mongodb(db_name, col_name, profile):
-    """
-    建立MongoDB的连接。
-    :param host:
-    :param port:
-    :param db_name:
-    :param col_name:
-    :return:
-    """
-
-    cached = getattr(get_mongodb, 'cached', {})
-
-    if profile in cached:
-        client = cached[profile]['client']
-        db_set = cached[profile]['dbset']
-    else:
-        client = None
-        db_set = None
-
-    if not client:
-        cfg = load_yaml()
-        section = filter(lambda v: v['profile'] == profile, cfg['mongodb'])[0]
-
-        host = section.get('host', 'localhost')
-        port = int(section.get('port', '27017'))
-
-        if section.get('replica', False):
-            from pymongo import MongoReplicaSetClient
-            from pymongo import ReadPreference
-
-            client = MongoReplicaSetClient('%s:%d' % (host, port), replicaSet=section.get('replName'))
-
-            pref = section.get('readPref', 'PRIMARY')
-            client.read_preference = getattr(ReadPreference, pref)
-
-        else:
-            from pymongo import MongoClient
-
-            client = MongoClient(host, port)
-
-        cached[profile] = {'client': client}
-        setattr(get_mongodb, 'cached', cached)
-
-    db = client[db_name]
-
-    if not db_set:
-        db_set = set([])
-    if db_name not in db_set:
-        cfg = load_yaml()
-        section = filter(lambda v: v['profile'] == profile, cfg['mongodb'])[0]
-
-        auth = section.get('auth')
-        if auth:
-            db_auth = filter(lambda v: db_name in v['database'], auth)
-            if db_auth:
-                db_auth = db_auth[0]
-                user = db_auth['user']
-                passwd = db_auth['passwd']
-                credb = client[getattr(auth, 'credb', 'admin')]
-                if user and passwd:
-                    credb.authenticate(name=user, password=passwd)
-
-        db_set.add(db_name)
-        cached[profile]['dbset'] = db_set
-        setattr(get_mongodb, 'cached', cached)
-
-    return db[col_name]
-
-
