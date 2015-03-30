@@ -325,6 +325,9 @@ class QunarQAPipeline(AizouPipeline):
         return item
 
 
+
+__author__ = 'bxm'
+
 class MafengwoQA(AizouCrawlSpider):
     """
     抓取蚂蜂窝的问答
@@ -338,12 +341,19 @@ class MafengwoQA(AizouCrawlSpider):
         data = {'start': 0, 'domain': 'http://www.mafengwo.cn'}
         yield Request(url=url, callback=self.parse, meta=data)
 
+    def json_to_dic(self, response):
+        try:
+            return json.loads(response.body)
+        except (ValueError, KeyError):
+            return None
+
+
     def parse(self, response):
         domain = response.meta['domain']
         start = response.meta['start']
 
         # 从返回的json中提取html,
-        page_dict = json.loads(response.body)
+        page_dict = self.json_to_dic(response)
         page_html = ''
         if page_dict:
             page_html = page_dict['payload']['list_html']
@@ -351,18 +361,19 @@ class MafengwoQA(AizouCrawlSpider):
         # 得到问题链接的列表
         ask_list = sel.xpath('//div[@class="title"]/a/@href').extract()
 
-        # 总共500个问题
-        if start >= 500:
-            return
         for url_suffix in ask_list:
             if url_suffix:
                 url_request = '%s%s' % (domain, url_suffix)
-                # log.msg('%s' % url_request)
+                #url_request='http://www.mafengwo.cn/wenda/detail-2318849.html'
                 yield Request(url=url_request, callback=self.parse_question)
             else:
                 continue
+
         # 每次ajax请求返回20个问题
         start += 20
+        #总共500个问题
+        if start >= 500:
+            return
         url_response = re.sub(r'\d+', '%d' % start, response.url)
         data = {'start': start, 'domain': domain}
         yield Request(url=url_response, callback=self.parse, meta=data)
@@ -375,14 +386,17 @@ class MafengwoQA(AizouCrawlSpider):
         sel = Selector(response)
         q_id = sel.xpath('//div[@class="wrapper"]/@data-qid').extract()
         question = sel.xpath('//div[@class="q-detail"]').extract()
-
         q_item = QaItem()
         # log.msg(u'请求question')
         q_item['type'] = 'question'
-        q_item['data'] = {'q_id': q_id[0], 'body': question[0]}
-        yield q_item
+        if q_id and question:
+            q_item['data'] = {'q_id': q_id[0], 'body': question[0]}
+            yield q_item
+        else:
+            return
 
         url_request = "http://www.mafengwo.cn/qa/ajax_pager.php?_uid=0&qid=%s&action=question_detail" % q_id[0]
+        #url_request='http://www.mafengwo.cn/qa/ajax_pager.php?_uid=0&qid=2319020&action=question_detail'
         start = 0
         yield Request(url=url_request, callback=self.parse_answer, meta={'start': start, 'domain': url_request})
 
@@ -394,9 +408,10 @@ class MafengwoQA(AizouCrawlSpider):
         start = response.meta['start']
         domain = response.meta['domain']
 
-        a_dict = json.loads(response.body)
-        a_html = None
-        a_total = None
+
+        a_dict = self.json_to_dic(response)
+        a_html = ''
+        a_total = 0
         if a_dict:
             a_html = a_dict['payload']['list_html']
             # 答案数量
@@ -421,6 +436,7 @@ class MafengwoQA(AizouCrawlSpider):
 
         # 每次请求返回50个答案
         start += 50
+        # if start > a_total or start>=100:
         if start > a_total:
             return
         yield Request(url='%s&start=%s' % (domain, start), callback=self.parse_answer,
