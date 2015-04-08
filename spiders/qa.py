@@ -2,7 +2,7 @@
 import re
 import json
 
-from scrapy import Item, Field, Request, Selector
+from scrapy import Item, Field, Request, Selector,log
 
 from spiders import AizouCrawlSpider, AizouPipeline
 from utils.database import get_mongodb
@@ -37,7 +37,6 @@ class CtripQA(AizouCrawlSpider):
         tmp_data = response.meta['data']
         # 翻页
         page_idx = tmp_data['page_idx']
-        # log.msg('page_idx:%d' % page_idx, level=log.INFO)
         # 域名
         domain = tmp_data['domain']
         sel = Selector(response)
@@ -46,7 +45,6 @@ class CtripQA(AizouCrawlSpider):
         if asks_list:
             for node in asks_list:
                 tmp_url = node.xpath('./@href').extract()
-                # log.msg('url:%s' % tmp_url)
                 if tmp_url:
                     url = '%s%s' % (domain, tmp_url[0])
                     # 具体解析页面
@@ -123,7 +121,6 @@ class CtripQAPipeline(AizouPipeline):
         if item_type == 'question':
             col = get_mongodb('raw', 'CtripQuestion', 'mongo-raw')
             col.update({'q_id': data['q_id']}, {'$set': data}, upsert=True)
-            # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         else:
             col = get_mongodb('raw', 'CtripAnswer', 'mongo-raw')
             col.update({'a_id': data['a_id']}, {'$set': data}, upsert=True)
@@ -317,11 +314,9 @@ class QunarQAPipeline(AizouPipeline):
         if item_type == 'question':
             col = get_mongodb('raw', 'QunarQuestion', 'mongo-raw')
             col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
-            # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         else:
             col = get_mongodb('raw', 'QunarAnswer', 'mongo-raw')
             col.update({'post_id': data['post_id']}, {'$set': data}, upsert=True)
-            # log.msg('note_id:%s' % data['note_id'], level=log.INFO)
         return item
 
 
@@ -364,12 +359,12 @@ class MafengwoQA(AizouCrawlSpider):
         for url_suffix in ask_list:
             if url_suffix:
                 url_request = '%s%s' % (domain, url_suffix)
-                #url_request='http://www.mafengwo.cn/wenda/detail-2318849.html'
+                #log.msg(url_request)
                 yield Request(url=url_request, callback=self.parse_question)
             else:
                 continue
 
-        # 每次ajax请求返回20个问题
+       # 每次ajax请求返回20个问题
         start += 20
         #总共500个问题
         if start >= 500:
@@ -416,10 +411,12 @@ class MafengwoQA(AizouCrawlSpider):
             a_html = a_dict['payload']['list_html']
             # 答案数量
             a_total = a_dict['payload']['total']
-
         sel = Selector(text=a_html)
         answer_list = sel.xpath('//li[@class="answer-item clearfix _j_answer_item"]').extract()
         q_id = sel.xpath('//div[@class="share-pop _j_share_pop"]/@data-qid').extract()
+        if a_total==0 or not q_id:
+            return
+        #log.msg('q_id%s:anwsers%s'%(q_id[0],a_total))
 
         for answer in answer_list:
             a_id = Selector(text=answer).xpath('//li/@data-aid').extract()
