@@ -117,7 +117,7 @@ def setup_spider(spider_name, args):
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', args.debug)
-    settings.set('AUTOTHROTTLE_ENABLED', not args.fast)
+    settings.set('AUTOTHROTTLE_ENABLED', args.throttle)
 
     if spider_name in conf.global_conf['spiders']:
         spider_class = conf.global_conf['spiders'][spider_name]
@@ -232,7 +232,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('crawler')
-    parser.add_argument('--fast', action='store_true')
+    parser.add_argument('--throttle', action='store_true')
     parser.add_argument('--dry', action='store_true')
     parser.add_argument('--log2file', action='store_true')
     parser.add_argument('--logpath', type=str)
