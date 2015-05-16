@@ -17,4 +17,4 @@ class MainTest(unittest.TestCase):
 
 class FakeTest(unittest.TestCase):
     def test(self):
-        self.assertEqual(fun(3), 5)
+        self.assertEqual(fun(13), 14)
