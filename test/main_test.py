@@ -9,7 +9,10 @@ def fun(x):
 
 class MainTest(unittest.TestCase):
     def test(self):
-        self.assertEqual(fun(3), 4)
+        self.assertEqual(fun(4), 5)
+
+    def testAnother(self):
+        self.assertEqual(fun(8), 9)
 
 
 class FakeTest(unittest.TestCase):
