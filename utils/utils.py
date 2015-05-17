@@ -15,6 +15,14 @@ def haversine(lon1, lat1, lon2, lat2):
     Calculate the great circle distance between two points
     on the earth (specified in decimal degrees)
     """
+    for lon in (lon1, lon2):
+        if lon < -180 or lon > 180:
+            raise ValueError
+
+    for lat in (lat1, lat2):
+        if lat < -90 or lat > 90:
+            raise ValueError
+
     # convert decimal degrees to radians
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
 
@@ -72,7 +80,7 @@ def guess_coords(x, y):
 # {
 # dvec3 lonLat;
 # double x = mercator.x/20037508.34*180;
-#     double y = mercator.y/20037508.34*180;
+# double y = mercator.y/20037508.34*180;
 #     y= 180/PI*(2*atan(exp(y*PI/180))-PI/2);
 #     lonLat.x = x;
 #     lonLat.y = y;
