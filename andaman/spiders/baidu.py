@@ -19,7 +19,7 @@ class BaiduNoteSpider(scrapy.Spider):
     def __init__(self, **kwargs):
         super(BaiduNoteSpider, self).__init__(**kwargs)
         self.note_offset = int(getattr(self, 'note_offset', 0))
-        self.note_limit = int(getattr(self, 'note_count', 20))
+        self.note_limit = int(getattr(self, 'note_limit', 100))
         self.note_type = int(getattr(self, 'note_type', 3))
 
     def start_requests(self):
@@ -41,7 +41,7 @@ class BaiduNoteSpider(scrapy.Spider):
 
         def build_item(entry):
             """
-            从response中的一段数据，生成一个BaiduNoteItem
+            从response中的一段数据，生成一个BaiduNoteItem，以及访问游记详情的Request
 
             :param entry:
             :return:
@@ -49,6 +49,7 @@ class BaiduNoteSpider(scrapy.Spider):
             from andaman.items.baidu import BaiduNoteItem
 
             item = BaiduNoteItem()
+            item['note_id'] = entry['nid']
             item['title'] = entry['title'].strip()
             item['author_name'] = entry['user_nickname'].strip()
             item['author_avatar'] = image_builder(entry['avatar_small'].strip())
@@ -58,8 +59,15 @@ class BaiduNoteSpider(scrapy.Spider):
             item['comment_cnt'] = int(entry['common_posts_count'])
             item['favor_cnt'] = int(entry['favorite_count'])
 
-            return item
+            # 生成正文的请求
+            req = scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d' % entry['nid'], callback=self.parse_note)
 
-        return imap(build_item, json.loads(response.body_as_unicode())['data']['notes_list'])
+            return [item, req]
 
+        # 游记的综合信息
+        return [item for pair in imap(build_item, json.loads(response.body_as_unicode())['data']['notes_list']) for item
+                in pair]
+
+    def parse_note(self, response):
+        pass
 
