@@ -279,6 +279,24 @@ def main():
         scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
 
+def spider_closing(self):
+    """Activates on spider closed signal"""
+    log.msg
+
+
+def main2():
+    from twisted.internet import reactor
+    from scrapy.crawler import Crawler
+    from scrapy.settings import Settings
+    from scrapy import signals, log
+
+    log.start(loglevel=log.DEBUG)
+    settings = Settings()
+    settings.set('USER_AGENT', 'Kiran Koduru')
+    crawler = Crawler(settings)
+    crawler.signals.connect()
+    reactor.run()
+
 if __name__ == "__main__":
     old_dir = os.getcwd()
     os.chdir(os.path.normpath(os.path.split(__file__)[0]))
