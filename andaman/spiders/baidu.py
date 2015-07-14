@@ -24,7 +24,7 @@ class BaiduNoteSpider(scrapy.Spider):
     def __init__(self, **kwargs):
         super(BaiduNoteSpider, self).__init__(**kwargs)
         self.note_offset = int(getattr(self, 'note_offset', 0))
-        self.note_limit = int(getattr(self, 'note_limit', 100))
+        self.note_limit = int(getattr(self, 'note_limit', 2))
         self.note_type = int(getattr(self, 'note_type', 3))
 
     def start_requests(self):
@@ -85,6 +85,9 @@ class BaiduNoteSpider(scrapy.Spider):
             return req
 
         # 游记的综合信息
+        # 用来做测试
+        note_id = [x['nid'] for x in json.loads(response.body_as_unicode())['data']['notes_list']]
+        PLACE_DICT['note_id'] = note_id
         return imap(build_note, json.loads(response.body_as_unicode())['data']['notes_list'])
 
     # 处理楼层分页的信息,
@@ -135,9 +138,8 @@ class BaiduNoteSpider(scrapy.Spider):
             # 当是第一页，且没有place需要解析时，可直接生成item
             if max_page == 0:
                 if not place_href:
-                    item = BaiduNoteItem()
-                    item['one_note'] = one_note
-                    yield item
+                    for item in create_item(one_note):
+                        yield item
                 elif place_href:
                     for place in self.parse_place(one_note, place_href):
                         yield place
@@ -159,9 +161,8 @@ class BaiduNoteSpider(scrapy.Spider):
     def parse_place(self, one_note, place_href):
         # 若没有place需要处理，则生成item
         if not place_href:
-            item = BaiduNoteItem()
-            item['one_note'] = one_note
-            yield item
+            for item in create_item(one_note):
+                yield item
 
         # 对plae_href去重
         place_href_uniq = list(set(place_href))
@@ -180,18 +181,15 @@ class BaiduNoteSpider(scrapy.Spider):
         # 如果有重定向的href存在
         if not re_surl:
             # 重定向的地址为0，则说明不需要处理地址了，直接生成item
-            item = BaiduNoteItem()
-            item['one_note'] = one_note
-            yield item
+            for item in create_item(one_note):
+                yield item
         else:
             # 再用一个函数单独处理redirct surl
             y = re_surl.pop()
             if y in PLACE_DICT.keys():
                 one_note['path'].append(PLACE_DICT[y])
-            if not re_surl:
-                item = BaiduNoteItem()
-                item['one_note'] = one_note
-                yield item
+                if not re_surl:
+                    create_item(one_note)
             else:
                 tmp_url = 'http://lvyou.baidu.com%s' % y
                 yield scrapy.Request(url=tmp_url, callback=self.parse_href,
@@ -213,21 +211,25 @@ class BaiduNoteSpider(scrapy.Spider):
 
         # 判断re_surl中是否还有元素，若没有则可生成item
         if not re_surl:
-            item = BaiduNoteItem()
-            item['one_note'] = one_note
-            yield item
+            for item in create_item(one_note):
+                yield item
         # 若还有元素，则继续进行处理
         else:
             x = re_surl.pop()
             if x in PLACE_DICT.keys():
                 one_note['path'].append(PLACE_DICT[x])
-            if not re_surl:
-                item = BaiduNoteItem()
-                item['one_note'] = one_note
-                yield item
+                if not re_surl:
+                    for item in create_item(one_note):
+                        yield item
             else:
                 tmp_url = 'http://lvyou.baidu.com%s' % x
                 yield scrapy.Request(url=tmp_url, callback=self.parse_href,
                                      meta={'dont_redirect': True, 'handle_httpstatus_list': [301, 302],
                                            'one_note': one_note, 're_surl': re_surl, 'key': x})
+
+def create_item(one_note):
+    item = BaiduNoteItem()
+    item['one_note'] = one_note
+
+    yield item
 
