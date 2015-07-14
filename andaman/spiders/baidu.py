@@ -5,9 +5,14 @@ import json
 from scrapy import log
 import scrapy
 
+import re
+from andaman.items.baidu import BaiduNoteItem
 
 __author__ = 'zephyre'
 
+# 用一个全局的dict来存储301重定向的href和surl一一对应的关系
+global PLACE_DICT
+PLACE_DICT = {}
 
 def image_builder(key):
     return 'http://hiphotos.baidu.com/lvpics/pic/item/%s.jpg' % key
@@ -39,102 +44,190 @@ class BaiduNoteSpider(scrapy.Spider):
         @scrapes title author_name author_avatar abstract view_cnt vote_cnt comment_cnt favor_cnt
         """
 
-        def build_item(entry):
+        def build_note(entry):
             """
-            从response中的一段数据，生成一个BaiduNoteItem，以及访问游记详情的Request
+            从response中的一段数据，生成一个Note，以及访问游记详情的Request
 
             :param entry:
             :return:
             """
-            from andaman.items.baidu import BaiduNoteItem
 
-            item = BaiduNoteItem()
-            item['note_id'] = entry['nid']
-            item['title'] = entry['title'].strip()
-            item['author_name'] = entry['user_nickname'].strip()
-            item['author_avatar'] = image_builder(entry['avatar_small'].strip())
-            item['abstract'] = entry['content'].strip()
-            item['view_cnt'] = int(entry['view_count'])
-            item['vote_cnt'] = int(entry['recommend_count'])
-            item['comment_cnt'] = int(entry['common_posts_count'])
-            item['favor_cnt'] = int(entry['favorite_count'])
-            item['raw_data'] = entry
-            item['departure'] = entry['departure']
+            one_note = {}
+            one_note['note_id'] = entry['nid']
+            one_note['title'] = entry['title'].strip()
+            one_note['author_name'] = entry['user_nickname'].strip()
+            one_note['author_avatar'] = image_builder(entry['avatar_small'].strip())
+            one_note['abstract'] = entry['content'].strip()
+            one_note['view_cnt'] = int(entry['view_count'])
+            one_note['vote_cnt'] = int(entry['recommend_count'])
+            one_note['comment_cnt'] = int(entry['common_posts_count'])
+            one_note['favor_cnt'] = int(entry['favorite_count'])
+            one_note['post_count'] = int(entry['notes_posts_count'])
+            one_note['raw_data'] = entry
+            one_note['departure'] = entry['departure']
             try:
                 destinations = [x['surl'] for x in entry['destinations']]
             except TypeError:
                 destinations = [x for x in entry['destinations']]
-            item['destinations'] = destinations
-            item['durationtime'] = int(entry['time'])
-            item['durationtime_unit'] = entry['time_unit']
-            item['start_month'] = int(entry['start_month'])
-            item['publish_time'] = long(entry['publish_time']) * 1000L
-            item['brief_album'] = map(image_builder, [x['pic_url'] for x in entry['album_pic_list']])
+            one_note['destinations'] = destinations
+            one_note['durationtime'] = int(entry['time'])
+            one_note['durationtime_unit'] = entry['time_unit']
+            one_note['start_month'] = int(entry['start_month'])
+            one_note['publish_time'] = long(entry['publish_time']) * 1000L
+            one_note['brief_album'] = map(image_builder, [x['pic_url'] for x in entry['album_pic_list']])
 
-            # 生成正文的请求
-            req = scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-0' % entry['nid'], callback=self.parse_detail,
-                                 meta={'nid':entry['nid'], 'page': 0})
+            # 生成正文的请求,下一步才是解析获得的页面，包括PostItem和path
+            req = scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-0' % one_note['note_id'],
+                                 callback=self.parse_detail,
+                                 meta={'one_note': one_note, 'max_page': 0, 'current_page': 0,
+                                       'place_href': []})
 
-            return [item, req]
+            return req
 
         # 游记的综合信息
-        return [item for pair in imap(build_item, json.loads(response.body_as_unicode())['data']['notes_list']) for item
-                in pair]
+        return imap(build_note, json.loads(response.body_as_unicode())['data']['notes_list'])
 
+    # 处理楼层分页的信息,
+    # 多想想几种情况 ，测试用例来测试一下
     def parse_detail(self, response):
-        nid = response.meta['nid']
-        current_page = response.meta['page']
+        meta = response.meta
+
+        one_note = meta['one_note']
+        note_id = one_note['note_id']
+
+        current_page = meta['current_page']
+        max_page = meta['max_page']
+
+        place_href = meta['place_href']
+
         sel = scrapy.Selector(response)
-        # 由meta中的page来判定是否是第一页，当其它页时，meta也需要设定page
+        # 由meta中的page来判定是否是第一页
         if current_page == 0:
-            # 先抓取路线中的地点
-            place_name = sel.xpath('//div[@class="detail-floor1-path"]//span[@class="path-detail"]/a/text()').extract()
-            # 若没有地点则不需要抓取
-            if place_name:
-                place_href = sel.xpath('//div[@class="detail-floor1-path"]//span[@class="path-detail"]/a/@href').extract()
-                place_url = ['http://lvyou.baidu.com%s' % x for x in place_href]
-                path_place = dict(zip(place_name, place_url))
+            # 若是第一页则创建one_noter['contents']
+            one_note['contents'] = []
 
-                from andaman.items.baidu import BaiduNotePathPlace
+            # 若是第一页,则解析出其中的最大页数，更新max_page
+            # 若不存在，则默认max_page为0
+            href_list = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@href]/@href').extract()
+            max_page = max(map(lambda x: int(re.search('d-(\d+)', x).group(1)),
+                               href_list)) if href_list else 0
 
-                path_item = BaiduNotePathPlace()
-                path_item['note_id'] = nid
-                path_item['path_place'] = path_place
-                yield path_item
+            # 首页若存在place则解析path,不存在则place_href为空
+            # place_href只用meta作传递用进行传递，直到最后一页时进行地点的处理
+            place_href = sel.xpath('//div[@class="detail-floor1-path"]//span[@class="path-detail"]/a/@href').extract()
+            # 当存在时，one_note里要包含path这一项
+            # 若不存在，则在处理地点的函数中，直接生成item
+            if place_href:
+                one_note['path'] = []
 
-            # Parse the pagination section
-            # 若找不到xpath会返回:空list,即[]
-            # 加上.extract()返回的才是list,否则是Secletor
-            nodes = sel.xpath('//span[@id="J_notes-view-pagelist"]/a[@href]/text()').extract()
-
-            # 写法要会，思维要习惯，自己要写一写，
-            # 功能：将val转换成int格式，不能转换则返回0
-            def conv_int(val):
-                try:
-                    return int(val)
-                except ValueError:
-                    return 0
-
-            max_page = max(map(conv_int, nodes)) if nodes else 0
-            # 由maxpage生成要访问的翻页,从第二页开始
-            for page_num in xrange(1, max_page):
-                yield scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (nid, page_num),
-                                     callback=self.parse_detail,
-                                     meta={'nid': nid, 'page': page_num})
-
-        #由xpath选出每页中的所有的游记内容
-        post_list = sel.xpath('//div[@class="detail-post-item"]')
+        # 由xpath选出每页中的所有的游记内容
+        post_list = sel.xpath('//div[@class="col-main"]/div')
         for node in post_list:
-            # 每一楼都要有note_id、floor_id and contents
-            floor_id = node.xpath('./@id').extract()
-            contents = node.extract()
+            # 每一楼都要有floor_id and contents
+            floor_id = node.xpath('./@id').extract()[0]
+            floor_contents = node.xpath('.//div[@class="floor-content"]').extract()[0]
+            per_floor = {'floor_id': floor_id, 'floor_contents': floor_contents}
+            one_note['contents'].append(per_floor)
 
-            from andaman.items.baidu import BaiduNotePostItem
+        # 由maxpage生成要访问的翻页,从第二页开始
+        # current_page == max_page则要处理meta中的place
+        if current_page == max_page:
+            # 当是第一页，且没有place需要解析时，可直接生成item
+            if max_page == 0:
+                if not place_href:
+                    item = BaiduNoteItem()
+                    item['one_note'] = one_note
+                    yield item
+                elif place_href:
+                    for place in self.parse_place(one_note, place_href):
+                        yield place
 
-            post_item = BaiduNotePostItem()
-            post_item['note_id'] = nid
-            post_item['floor_id'] = floor_id[0]
-            post_item['contents'] = contents
-            yield post_item
+            # 当到达最后一页时，处理place，在处理place的函数中生成item
+            # one_note即是要生成的item，meta含要处理的数据
+            else:
+                for place in self.parse_place(one_note, meta['place_href']):
+                    yield place
+        else:
+            current_page += 1
+            yield scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, current_page),
+                                 callback=self.parse_detail,
+                                 meta={'one_note': one_note, 'max_page': max_page, 'current_page': current_page,
+                                       'place_href': place_href})
+    # 输入输出要重新定
+    # 关于place的所有处理都包含在这个函数里
+    # 用来处理首次的place处理，后续的处理包含在parse_href中
+    def parse_place(self, one_note, place_href):
+        # 若没有place需要处理，则生成item
+        if not place_href:
+            item = BaiduNoteItem()
+            item['one_note'] = one_note
+            yield item
 
+        # 对plae_href去重
+        place_href_uniq = list(set(place_href))
+        # 分为直接存在surl和301重定向处理两部分处理
+        # re_surl 专门用来存储重定向的href
+        re_surl = []
+        for x in place_href_uniq:
+            match = re.match(r'/scene/', x)
+            # 没有成功匹配，则说明x是surl, 直接加入到path中即可
+            if not match:
+                path_surl = x.strip('/')
+                one_note['path'].append(path_surl)
+            else:
+                # 匹配成功，则说明x是重定向网址, 另行处理,存入另一个列表中
+                re_surl.append(x)
+        # 如果有重定向的href存在
+        if not re_surl:
+            # 重定向的地址为0，则说明不需要处理地址了，直接生成item
+            item = BaiduNoteItem()
+            item['one_note'] = one_note
+            yield item
+        else:
+            # 再用一个函数单独处理redirct surl
+            y = re_surl.pop()
+            if y in PLACE_DICT.keys():
+                one_note['path'].append(PLACE_DICT[y])
+            if not re_surl:
+                item = BaiduNoteItem()
+                item['one_note'] = one_note
+                yield item
+            else:
+                tmp_url = 'http://lvyou.baidu.com%s' % y
+                yield scrapy.Request(url=tmp_url, callback=self.parse_href,
+                                     meta={'dont_redirect': True, 'handle_httpstatus_list': [301, 302],
+                                           'one_note': one_note, 're_surl': re_surl, 'key': y})
+
+    def parse_href(self, response):
+        meta = response.meta
+
+        one_note = meta['one_note']
+        re_surl = meta['re_surl']
+        key = meta['key']
+
+        # 首先要处理一条信息，加入one_note的path中
+        href_surl = response.headers['location'].strip('/')
+        one_note['path'].append(href_surl)
+        # 得到href_surl后，要加入到PLACE_DICT中
+        PLACE_DICT[key] = href_surl
+
+        # 判断re_surl中是否还有元素，若没有则可生成item
+        if not re_surl:
+            item = BaiduNoteItem()
+            item['one_note'] = one_note
+            yield item
+        # 若还有元素，则继续进行处理
+        else:
+            x = re_surl.pop()
+            if x in PLACE_DICT.keys():
+                one_note['path'].append(PLACE_DICT[x])
+            if not re_surl:
+                item = BaiduNoteItem()
+                item['one_note'] = one_note
+                yield item
+            else:
+                tmp_url = 'http://lvyou.baidu.com%s' % x
+                yield scrapy.Request(url=tmp_url, callback=self.parse_href,
+                                     meta={'dont_redirect': True, 'handle_httpstatus_list': [301, 302],
+                                           'one_note': one_note, 're_surl': re_surl, 'key': x})
 
