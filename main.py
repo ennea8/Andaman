@@ -4,7 +4,7 @@ from twisted.internet import reactor
 from scrapy.crawler import CrawlerRunner
 from scrapy import log
 
-from andaman.spiders.baidu import BaiduNoteSpider
+from andaman.spiders.proxy import YoudailiSpider
 
 
 __author__ = 'zephyre'
@@ -21,7 +21,7 @@ def main():
 
     configure_logging()
     runner = CrawlerRunner()
-    d = runner.crawl(BaiduNoteSpider)
+    d = runner.crawl(YoudailiSpider)
     d.addBoth(lambda _: reactor.stop())
 
     reactor.run()
