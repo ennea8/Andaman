@@ -117,7 +117,7 @@ def setup_spider(spider_name, args):
     settings.set('SPIDER_MIDDLEWARES', {'middlewares.GoogleGeocodeMiddleware': 300})
 
     settings.set('AUTOTHROTTLE_DEBUG', args.debug)
-    settings.set('AUTOTHROTTLE_ENABLED', not args.fast)
+    settings.set('AUTOTHROTTLE_ENABLED', args.throttle)
 
     if spider_name in conf.global_conf['spiders']:
         spider_class = conf.global_conf['spiders'][spider_name]
@@ -232,7 +232,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('crawler')
-    parser.add_argument('--fast', action='store_true')
+    parser.add_argument('--throttle', action='store_true')
     parser.add_argument('--dry', action='store_true')
     parser.add_argument('--log2file', action='store_true')
     parser.add_argument('--logpath', type=str)
@@ -278,6 +278,24 @@ def main():
         scrapy.log.start(logfile=logfile, loglevel=scrapy.log.DEBUG if args.debug else scrapy.log.INFO)
         scrapy.log.msg('Cannot find spider: %s' % spider_name, scrapy.log.CRITICAL)
 
+
+def spider_closing(self):
+    """Activates on spider closed signal"""
+    log.msg
+
+
+def main2():
+    from twisted.internet import reactor
+    from scrapy.crawler import Crawler
+    from scrapy.settings import Settings
+    from scrapy import signals, log
+
+    log.start(loglevel=log.DEBUG)
+    settings = Settings()
+    settings.set('USER_AGENT', 'Kiran Koduru')
+    crawler = Crawler(settings)
+    crawler.signals.connect()
+    reactor.run()
 
 if __name__ == "__main__":
     old_dir = os.getcwd()
