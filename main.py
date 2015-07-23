@@ -125,8 +125,8 @@ def main():
 
     configure_logging()
 
-    spiders = map(lambda name: spiders[name] if name in spiders else [],
-                  [v for v in settings.get('SPIDERS', '').split(',') if v])
+    spider_names = [v for v in settings.get('SPIDERS', '').split(',') if v]
+    spiders = [spiders[name] for name in spider_names if name in spiders]
     runner = CrawlerRunner(settings=settings)
     for s in spiders:
         runner.crawl(s)
