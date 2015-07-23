@@ -29,10 +29,37 @@ def parse_cmd_args(settings):
 
     args, leftover = parser.parse_known_args()
 
+    def tobool(v):
+        tmp = v.lower()
+        if tmp == 'false':
+            return False
+        elif tmp == 'true':
+            return True
+        else:
+            return None
+
+    def toint(v):
+        try:
+            return int(v)
+        except ValueError:
+            return None
+
+    def tofloat(v):
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
     for entry in args.s:
         splits = entry.split('=', 1)
         if len(splits) == 2:
-            settings.set(splits[0], splits[1])
+            key, value = splits[0], splits[1]
+
+            for method in [tobool, toint, tofloat, lambda v: v]:
+                tmp = method(value)
+                if tmp:
+                    settings.set(key, tmp)
+                    break
 
     return settings
 
