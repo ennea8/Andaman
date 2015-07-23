@@ -35,10 +35,10 @@ class ProxyPipeline(object):
         # 默认每个代理服务器项目存活3天
         ttl = settings.getint('ETCD_TTL', 3600 * 24 * 3)
 
-        # requests.put(base_url, data={'ttl': ttl, 'dir': True})
-        # requests.put(base_url + '/proxy', data={'value': proxy})
-        # requests.put(base_url + '/desc', data={'value': item['desc']})
-        # requests.put(base_url + '/latency', data={'value', item['latency']})
-        # requests.put(base_url + '/timestamp', data={'value', item['verifiedTime']})
+        requests.put(base_url, data={'ttl': ttl, 'dir': True})
+        requests.put(base_url + '/proxy', data={'value': proxy})
+        requests.put(base_url + '/desc', data={'value': item['desc']})
+        requests.put(base_url + '/latency', data={'value': item['latency']})
+        requests.put(base_url + '/timestamp', data={'value': item['verifiedTime']})
 
         return item
