@@ -25,7 +25,10 @@ class YoudailiSpider(scrapy.Spider):
         from requests.utils import to_native_string
         from base64 import b64encode
 
-        auth = 'Basic ' + to_native_string(b64encode(('%s:%s' % (user, password)).encode('latin1')).strip())
+        if user and password:
+            auth = 'Basic ' + to_native_string(b64encode(('%s:%s' % (user, password)).encode('latin1')).strip())
+        else:
+            auth = None
 
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
@@ -45,7 +48,8 @@ class YoudailiSpider(scrapy.Spider):
         elif target == 'etcd':
             etcd_node = self._get_etcd(settings)
             url = 'http://%s:%d/v2/keys/proxies/?recursive=true' % (etcd_node['host'], etcd_node['port'])
-            yield Request(url=url, headers={'Authorization': etcd_node['auth']}, callback=self.update_proxies)
+            headers = {'Authorization': etcd_node['auth']} if etcd_node['auth'] else {}
+            yield Request(url=url, headers=headers, callback=self.update_proxies)
 
     def update_proxies(self, response):
         from urlparse import urlparse
