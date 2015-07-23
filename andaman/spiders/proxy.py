@@ -71,6 +71,12 @@ class YoudailiSpider(scrapy.Spider):
         port = meta['port']
         desc = meta['desc']
 
+        settings = self.crawler.settings
+        match_word = settings.get('YOUDAILI_MATCH', '')
+
+        if match_word and match_word not in response.body:
+            return
+
         # 尝试三次，取latency的平均值
         results = meta['latency_results']
         results.append(meta['download_latency'])
