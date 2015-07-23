@@ -9,5 +9,4 @@ class ProxyItem(scrapy.Item):
     scheme = scrapy.Field()
     desc = scrapy.Field()
     latency = scrapy.Field()
-    available = scrapy.Field()
     verifiedTime = scrapy.Field()

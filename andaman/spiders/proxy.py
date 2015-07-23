@@ -56,7 +56,7 @@ class YoudailiSpider(scrapy.Spider):
 
                 yield Request(url='http://www.baidu.com', callback=self.verify, dont_filter=True,
                               errback=self.verify_errback,
-                              meta={'host': host, 'port': port, 'desc': desc,
+                              meta={'host': host, 'port': port, 'desc': desc, 'latency_results': [],
                                     'proxy': 'http://%s:%d' % (host, port),
                                     'dont_redirect': True, 'dont_retry': True, 'download_timeout': 10})
 
@@ -64,17 +64,30 @@ class YoudailiSpider(scrapy.Spider):
     def verify_errback(response):
         pass
 
-    @staticmethod
-    def verify(response):
+    def verify(self, response):
         meta = response.meta
 
-        item = ProxyItem()
-        item['host'] = meta['host']
-        item['port'] = meta['port']
-        item['scheme'] = 'http'
-        item['desc'] = meta['desc']
-        item['latency'] = meta['download_latency']
-        item['available'] = True
-        item['verifiedTime'] = long(time.time() * 1000)
+        host = meta['host']
+        port = meta['port']
+        desc = meta['desc']
 
-        yield item
+        # 尝试三次，取latency的平均值
+        results = meta['latency_results']
+        results.append(meta['download_latency'])
+        if len(results) < 3:
+            yield Request(url='http://www.baidu.com', callback=self.verify, dont_filter=True,
+                          errback=self.verify_errback,
+                          meta={'host': host, 'port': port, 'desc': desc, 'latency_results': results,
+                                'proxy': 'http://%s:%d' % (host, port),
+                                'dont_redirect': True, 'dont_retry': True, 'download_timeout': 10})
+        else:
+            item = ProxyItem()
+
+            item['host'] = host
+            item['port'] = port
+            item['scheme'] = 'http'
+            item['desc'] = desc
+            item['latency'] = sum(results) / len(results)
+            item['verifiedTime'] = long(time.time() * 1000)
+
+            yield item
