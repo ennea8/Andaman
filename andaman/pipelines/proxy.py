@@ -10,6 +10,11 @@ __author__ = 'zephyre'
 class ProxyPipeline(object):
     spiders = ['youdaili']
 
+    def __init__(self):
+        import logging
+
+        logging.getLogger("requests").setLevel(logging.WARNING)
+
     @staticmethod
     def _get_etcd(settings):
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379)}
