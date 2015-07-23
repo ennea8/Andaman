@@ -130,7 +130,7 @@ def main():
 
     settings = parse_cmd_args(settings)
 
-    configure_logging()
+    configure_logging(settings=settings)
 
     spider_names = [v for v in settings.get('SPIDERS', '').split(',') if v]
     spiders = [spider_map[name] for name in spider_names if name in spider_map]
