@@ -69,7 +69,11 @@ MONGO_PORT = 27017
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
+<<<<<<< HEAD
     'andaman.pipelines.BaiduNotePipeline': 300,
+=======
+    'andaman.pipelines.proxy.ProxyPipeline': 100
+>>>>>>> dev
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
