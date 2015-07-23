@@ -15,7 +15,11 @@ __author__ = 'zephyre'
 class YoudailiSpider(scrapy.Spider):
     name = 'youdaili'
 
-    start_urls = ['http://www.youdaili.net/Daili/guonei/list_%d.html' % page for page in [1, 2]]
+    def start_requests(self):
+        settings = self.crawler.settings
+        pages_cnt = settings.getint('YOUDAILI_PAGES_CNT', 1)
+        for url in ['http://www.youdaili.net/Daili/guonei/list_%d.html' % page for page in xrange(1, pages_cnt + 1)]:
+            yield Request(url=url, callback=self.parse)
 
     def parse(self, response):
         """

@@ -55,8 +55,8 @@ class ProxyPipeline(object):
 
         auth = self._get_auth(settings)
 
+        requests.put(base_url, auth=auth, data={'ttl': ttl, 'dir': True})
         try:
-            self._process_response(requests.put(base_url, auth=auth, data={'ttl': ttl, 'dir': True}), spider)
             self._process_response(requests.put(base_url + '/proxy', auth=auth, data={'value': proxy}), spider)
             self._process_response(requests.put(base_url + '/desc', auth=auth, data={'value': item['desc']}), spider)
             self._process_response(requests.put(base_url + '/latency', auth=auth, data={'value': item['latency']}),
@@ -76,6 +76,6 @@ class ProxyPipeline(object):
                 spider.logger.warning('Insufficient credentials')
                 raise IOError
             else:
-                spider.logger.warning('Something went wrong with the etcd service')
+                spider.logger.warning('Something went wrong with the etcd service: %s', response)
                 raise IOError
 
