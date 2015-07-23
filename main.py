@@ -1,4 +1,6 @@
 # coding=utf-8
+import imp
+
 from scrapy.settings import Settings
 from twisted.internet import reactor
 from scrapy.crawler import CrawlerRunner
@@ -15,7 +17,7 @@ def spider_closing(self):
     reactor.stop()
 
 
-def parse_cmd_args():
+def parse_cmd_args(settings):
     """
     解析命令行参数
     :return: Settings对象
@@ -26,8 +28,6 @@ def parse_cmd_args():
     parser.add_argument('-s', type=str, action='append')
 
     args, leftover = parser.parse_known_args()
-
-    settings = Settings()
 
     for entry in args.s:
         splits = entry.split('=', 1)
@@ -114,19 +114,26 @@ def register_pipelines():
 
 
 def main():
-    spiders = register_spiders()
+    spider_map = register_spiders()
     pipelines = register_pipelines()
 
     from scrapy.utils.log import configure_logging
 
-    settings = parse_cmd_args()
+    settings = Settings()
 
+    # 加载系统中存在的Pipeline
     settings.set('ITEM_PIPELINES', {p: 100 for p in pipelines.keys()})
+
+    ret = imp.find_module('settings', ['andaman'])
+    settings_module = imp.load_module('settings', *ret)
+    settings.setmodule(settings_module)
+
+    settings = parse_cmd_args(settings)
 
     configure_logging()
 
     spider_names = [v for v in settings.get('SPIDERS', '').split(',') if v]
-    spiders = [spiders[name] for name in spider_names if name in spiders]
+    spiders = [spider_map[name] for name in spider_names if name in spider_map]
     runner = CrawlerRunner(settings=settings)
     for s in spiders:
         runner.crawl(s)
