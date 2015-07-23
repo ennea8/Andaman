@@ -78,9 +78,10 @@ class YoudailiSpider(scrapy.Spider):
             return
 
         # 尝试三次，取latency的平均值
+        req_cnt = settings.getint('YOUDAILI_REQUEST_CNT', 3)
         results = meta['latency_results']
         results.append(meta['download_latency'])
-        if len(results) < 3:
+        if len(results) < req_cnt:
             yield Request(url='http://www.baidu.com', callback=self.verify, dont_filter=True,
                           errback=self.verify_errback,
                           meta={'host': host, 'port': port, 'desc': desc, 'latency_results': results,
