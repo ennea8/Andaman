@@ -29,12 +29,20 @@ class MafengwoQaSpider(scrapy.Spider):
             yield Request(url='http://www.mafengwo.cn/qa/ajax_pager.php?action=question_index&start=%d' % start_idx)
 
     def parse_question(self, response):
+        # 抓取相关问题
+        for related_href in response.selector.xpath(
+                '//div[@class="q-relate"]/ul[@class="bd"]/li/a[@href]/@href').extract():
+            url = urljoin(response.url, related_href)
+            yield Request(url=url, callback=self.parse_question)
+
         tmp = response.selector.xpath('//div[@class="q-detail"]/div[@class="person"]/div[@class="avatar"]/a[@href]')
         user_href = tmp[0].xpath('./@href').extract()[0]
         m = re.search(r'/wenda/u/(\d+)', user_href)
         author_id = int(m.group(1))
         tmp = tmp[0].xpath('./img/@src').extract()[0]
         author_avatar = re.sub(r'\.head\.w\d+\.', '.', tmp)
+        if author_avatar.endswith('pp48.gif'):
+            author_avatar = ''
         author_name = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
 

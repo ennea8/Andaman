@@ -62,7 +62,8 @@ DOWNLOADER_MIDDLEWARES = {
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'andaman.pipelines.proxy.ProxyPipeline': 100
+    'andaman.pipelines.proxy.ProxyPipeline': 100,
+    'andaman.pipelines.mafengwo.MafengwoQAPipeline': 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
