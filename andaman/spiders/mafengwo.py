@@ -3,12 +3,11 @@ import json
 from urlparse import urljoin
 import re
 
-from datetime import datetime, timedelta
 import scrapy
-from andaman.utils.html import html2text
 from scrapy.http import Request
 from scrapy.selector import Selector
 
+from andaman.utils.html import html2text, parse_time
 from andaman.items.mafengwo import MafengwoQuestion
 
 
@@ -65,10 +64,8 @@ class MafengwoQaSpider(scrapy.Spider):
 
         title = response.selector.xpath('//div[@class="q-content"]/div[@class="q-title"]/h1/text()').extract()[0]
 
-        # contents = ''.join([tmp.strip() for tmp in response.selector.xpath(
-        #     '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]/descendant-or-self::text()').extract()])
-
-        raw_contents = response.selector.xpath('//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]').extract()[0]
+        raw_contents = \
+            response.selector.xpath('//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]').extract()[0]
         contents = html2text(raw_contents)
 
         tmp = response.selector.xpath(
@@ -77,9 +74,7 @@ class MafengwoQaSpider(scrapy.Spider):
 
         time_str = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
-        tz_delta = timedelta(seconds=8 * 3600)
-        timestamp = long((datetime.strptime(time_str, '%y/%m/%d %H:%M') - tz_delta - datetime.utcfromtimestamp(
-            0)).total_seconds() * 1000)
+        timestamp = parse_time(time_str)
 
         tmp = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="user-bar"]/span[@class="fr"]/a[@href]/text()').extract()
@@ -106,6 +101,8 @@ class MafengwoQaSpider(scrapy.Spider):
         item['contents'] = contents
         item['tags'] = tags
         item['view_cnt'] = view_cnt
+        if author_avatar:
+            item['file_urls'] = [author_avatar]
 
         return item
 
@@ -124,14 +121,11 @@ class MafengwoQaSpider(scrapy.Spider):
 
             time_str = answer_node.xpath(
                 './div[@class="answer-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
-            tz_delta = timedelta(seconds=8 * 3600)
-            timestamp = long((datetime.strptime(time_str, '%Y-%m-%d %H:%M') - tz_delta - datetime.utcfromtimestamp(
-                0)).total_seconds() * 1000)
+            timestamp = parse_time(time_str)
 
-            raw_contents = response.selector.xpath('//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]').extract()[0]
+            raw_contents = answer_node.xpath(
+                './div[@class="answer-content"]//dl/dd[@class="_j_answer_html"]/text()').extract()[0]
             contents = html2text(raw_contents)
-
-
 
 
     @staticmethod

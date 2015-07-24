@@ -15,6 +15,8 @@ class MafengwoQuestion(Item):
     contents = Field()
     tags = Field()
     view_cnt = Field()
+    file_urls = Field()
+    files = Field()
 
 
 class MafengwoAnswer(Item):
@@ -27,4 +29,6 @@ class MafengwoAnswer(Item):
     contents = Field()
     vote_cnt = Field()
     accepted = Field()
+    file_urls = Field()
+    files = Field()
 
