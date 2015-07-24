@@ -63,6 +63,7 @@ EXTENSIONS = {
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
+    'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     'andaman.pipelines.proxy.ProxyPipeline': 100,
     'andaman.pipelines.mafengwo.MafengwoQAPipeline': 100
 }
