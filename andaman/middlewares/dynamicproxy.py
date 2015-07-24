@@ -97,14 +97,15 @@ class DynamicProxy(object):
         """
         if 'dynamic_proxy_pool' in meta and 'proxy' in meta:
             del meta['proxy']
+            del meta['dynamic_proxy_pool']
 
     def process_response(self, request, response, spider):
         if not self.enabled:
             return response
 
-        self._strip_meta(response.meta)
-
+        self._strip_meta(request.meta)
         return response
 
     def process_exception(self, request, exception, spider):
-        self._strip_meta(exception.request.meta)
+        self._strip_meta(request.meta)
+        return
