@@ -49,8 +49,8 @@ class MafengwoQAPipeline(object):
         return client.andaman
 
     def __init__(self, settings):
-        etcd_node = self._get_etcd(settings)
-        self.mongo = self._get_mongo_db(self._get_mongo_uri(etcd_node))
+        self.etcd_node = self._get_etcd(settings)
+        self.mongo = None
 
     @staticmethod
     def _get_etcd(settings):
@@ -78,7 +78,11 @@ class MafengwoQAPipeline(object):
 
     def process_question(self, item, spider):
         data = {k: item[k] for k in item.fields}
-        self.mongo.MafengwoQuestion.update({'qid': item['qid']}, {'$setOnInsert': data}, upsert=True)
+
+        if not self.mongo:
+            self.mongo = self._get_mongo_db(self._get_mongo_uri(self.etcd_node))
+
+        self.mongo.MafengwoQuestion.update({'qid': item['qid']}, {'$set': data}, upsert=True)
 
         return item
 
