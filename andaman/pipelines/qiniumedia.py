@@ -1,8 +1,8 @@
 # coding=utf-8
-from scrapy.pipelines.files import FilesPipeline
 import sys
-from twisted.internet import threads
 
+from scrapy.pipelines.files import FilesPipeline
+from twisted.internet import threads
 from qiniu import Auth, BucketManager
 
 
@@ -10,14 +10,46 @@ __author__ = 'zephyre'
 
 
 class QiniuFilesStore(object):
-    ACCESS_KEY = 'jU6KkDZdGYODmrPVh5sbBIkJX65y-Cea991uWpWZ'
-    SECRET_KEY = 'OVSfoBU_Lzb6QgMWCvOD0x1mDO10JxIOwCuIYNr0'
+    def _get_key(self, key):
+        from andaman.utils import etcd
 
-    def __init__(self, bucket):
+        etcd_info = etcd.get_etcd_info(self.settings)
+        return etcd.get_etcd_key(etcd_info, '/project-conf/andaman/qiniu/%s' % key)
+
+    def get_access_key(self):
+        if not self._access_key:
+            ak = self._get_key('accessKey')
+            self._access_key = ak
+        return self._access_key
+
+    def get_secret_key(self):
+        if not self._secret_key:
+            sk = self._get_key('secretKey')
+            self._secret_key = sk
+        return self._secret_key
+
+    def get_bucket_mgr(self):
+        if not self._bucket_mgr:
+            ak = self.access_key
+            sk = self.secret_key
+            q = Auth(ak, sk)
+            self._bucket_mgr = BucketManager(q)
+
+        return self._bucket_mgr
+
+    bucket_mgr = property(get_bucket_mgr)
+
+    access_key = property(get_access_key)
+
+    secret_key = property(get_secret_key)
+
+    def __init__(self, bucket, settings):
         self.bucket = bucket
+        self.settings = settings
 
-        q = Auth(self.ACCESS_KEY, self.SECRET_KEY)
-        self.bucket_mgr = BucketManager(q)
+        self._access_key = None
+        self._secret_key = None
+        self._bucket_mgr = None
 
     def get_file_stat(self, key):
         stat, error = self.bucket_mgr.stat(self.bucket, key)
