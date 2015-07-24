@@ -16,6 +16,12 @@ __author__ = 'zephyre'
 class YoudailiSpider(scrapy.Spider):
     name = 'youdaili'
 
+    def __init__(self, *args, **kwargs):
+        super(YoudailiSpider, self).__init__(*args, **kwargs)
+
+        # 已经处理过的代理服务器
+        self.processed_proxies = set([])
+
     @staticmethod
     def _get_etcd(settings):
 
@@ -75,6 +81,10 @@ class YoudailiSpider(scrapy.Spider):
             desc = proxy['desc']
             proxy_url = proxy['proxy']
 
+            # 跳过已经处理过的proxy
+            if proxy_url in self.processed_proxies:
+                continue
+
             parse_result = urlparse(proxy_url)
             netloc = parse_result.netloc
             tmp = netloc.split(':')
@@ -126,6 +136,10 @@ class YoudailiSpider(scrapy.Spider):
                 port = int(m.group(2))
                 desc = m.group(3)
 
+                key = 'http://%s:%d' % (host, port)
+                if key in self.processed_proxies:
+                    continue
+
                 yield Request(url='http://www.baidu.com', callback=self.verify, dont_filter=True,
                               errback=self.verify_errback,
                               meta={'host': host, 'port': port, 'desc': desc, 'latency_results': [],
@@ -144,6 +158,9 @@ class YoudailiSpider(scrapy.Spider):
             fail_cnt = (meta['fail_cnt'] if 'fail_cnt' in meta else 0) + 1
 
             if fail_cnt > req_cnt:
+                key = 'http://%s:%d' % (meta['host'], meta['port'])
+                self.processed_proxies.add(key)
+
                 # 连续失败多次，需要丢弃该代理服务器
                 item = ProxyItem()
                 item['host'] = meta['host']
@@ -181,6 +198,9 @@ class YoudailiSpider(scrapy.Spider):
             yield Request(url='http://www.baidu.com', callback=self.verify, dont_filter=True,
                           errback=self.verify_errback, meta=new_meta)
         else:
+            key = 'http://%s:%d' % (host, port)
+            self.processed_proxies.add(key)
+
             item = ProxyItem()
 
             item['host'] = host
