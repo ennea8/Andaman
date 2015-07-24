@@ -57,7 +57,7 @@ def parse_cmd_args(settings):
 
             for method in [tobool, toint, tofloat, lambda v: v]:
                 tmp = method(value)
-                if tmp:
+                if tmp is not None:
                     settings.set(key, tmp)
                     break
 
