@@ -2,9 +2,10 @@
 import json
 from urlparse import urljoin
 import re
-from datetime import datetime, timedelta
 
+from datetime import datetime, timedelta
 import scrapy
+from andaman.utils.html import html2text
 from scrapy.http import Request
 from scrapy.selector import Selector
 
@@ -35,6 +36,22 @@ class MafengwoQaSpider(scrapy.Spider):
             url = urljoin(response.url, related_href)
             yield Request(url=url, callback=self.parse_question)
 
+        q_item = self.retrive_question(response)
+        yield q_item
+
+        # 抓取回答
+        qid = q_item['qid']
+        page = 0
+        page_size = 50
+        url = 'http://www.mafengwo.cn/qa/ajax_pager.php?qid=%d&action=question_detail&start=%d' \
+              % (qid, page * page_size)
+        yield Request(url=url, callback=self.parse_answer_list, meta={'qid': qid, 'page': page, 'page_size': page_size})
+
+    @staticmethod
+    def retrive_question(response):
+        """
+        分析response，得到问题
+        """
         tmp = response.selector.xpath('//div[@class="q-detail"]/div[@class="person"]/div[@class="avatar"]/a[@href]')
         user_href = tmp[0].xpath('./@href').extract()[0]
         m = re.search(r'/wenda/u/(\d+)', user_href)
@@ -47,8 +64,13 @@ class MafengwoQaSpider(scrapy.Spider):
             '//div[@class="q-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
 
         title = response.selector.xpath('//div[@class="q-content"]/div[@class="q-title"]/h1/text()').extract()[0]
-        contents = ''.join([tmp.strip() for tmp in response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]/descendant-or-self::text()').extract()])
+
+        # contents = ''.join([tmp.strip() for tmp in response.selector.xpath(
+        #     '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]/descendant-or-self::text()').extract()])
+
+        raw_contents = response.selector.xpath('//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]').extract()[0]
+        contents = html2text(raw_contents)
+
         tmp = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="visit"]/text()').extract()[0]
         view_cnt = int(re.search(ur'(\d+)\s*浏览', tmp).group(1))
@@ -85,4 +107,33 @@ class MafengwoQaSpider(scrapy.Spider):
         item['tags'] = tags
         item['view_cnt'] = view_cnt
 
-        yield item
+        return item
+
+    def parse_answer_list(self, response):
+        sel = Selector(text=json.loads(response.body)['payload']['list_html'])
+        for answer_node in sel.xpath('//li[contains(@class, "answer-item")]'):
+            author_node = answer_node.xpath('./div[@class="person"]/div[contains(@class, "avatar") and @data-uid]')[0]
+            author_id = int(author_node.xpath('./@data-uid').extract()[0])
+            tmp = author_node.xpath('./a/img/@src').extract()[0]
+            author_avatar = re.sub(r'\.head\.w\d+\.', '.', tmp)
+            if author_avatar.endswith('pp48.gif'):
+                author_avatar = ''
+
+            author_name = answer_node.xpath(
+                './div[@class="answer-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
+
+            time_str = answer_node.xpath(
+                './div[@class="answer-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
+            tz_delta = timedelta(seconds=8 * 3600)
+            timestamp = long((datetime.strptime(time_str, '%Y-%m-%d %H:%M') - tz_delta - datetime.utcfromtimestamp(
+                0)).total_seconds() * 1000)
+
+            raw_contents = response.selector.xpath('//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-desc"]').extract()[0]
+            contents = html2text(raw_contents)
+
+
+
+
+    @staticmethod
+    def parse_time(time_str):
+        pass
