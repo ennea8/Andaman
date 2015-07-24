@@ -1,5 +1,8 @@
 # coding=utf-8
+import json
 import sys
+
+from scrapy.http import Response
 
 from scrapy.pipelines.files import FilesPipeline
 from twisted.internet import threads
@@ -14,7 +17,7 @@ class QiniuFilesStore(object):
         from andaman.utils import etcd
 
         etcd_info = etcd.get_etcd_info(self.settings)
-        return etcd.get_etcd_key(etcd_info, '/project-conf/andaman/qiniu/%s' % key)
+        return etcd.get_etcd_key(etcd_info, '/project-conf/andaman/qiniu/%s' % key).encode('utf-8')
 
     def get_access_key(self):
         if not self._access_key:
@@ -86,21 +89,15 @@ class QiniuPipeline(FilesPipeline):
     DEFAULT_FILES_URLS_FIELD = 'file_urls'
     DEFAULT_FILES_RESULT_FIELD = 'files'
 
-    def __init__(self, bucket):
-        self.store = QiniuFilesStore(bucket)
+    def __init__(self, bucket, settings=None):
+        self.store = QiniuFilesStore(bucket, settings)
         super(FilesPipeline, self).__init__(download_func=self.fetch)
 
     def fetch(self, request, spider):
         key = self.file_path(request)
         ret = self.store.fetch_file(request.url, key)
 
-        # 伪造response
-        response = object
-        response.status = 200
-        response.body = ret
-        response.flags = False
-
-        return response
+        return Response(request.url, body=json.dumps(ret))
 
     @classmethod
     def from_settings(cls, settings):
@@ -110,7 +107,7 @@ class QiniuPipeline(FilesPipeline):
         cls.FILES_RESULT_FIELD = settings.get('FILES_RESULT_FIELD', cls.DEFAULT_FILES_RESULT_FIELD)
         cls.EXPIRES = settings.get('QINIU_EXPIRE', cls.DEFAULT_EXPIRES)
 
-        return cls(bucket)
+        return cls(bucket, settings=settings)
 
     def file_path(self, request, response=None, info=None):
         from scrapy.utils.request import request_fingerprint
@@ -118,4 +115,4 @@ class QiniuPipeline(FilesPipeline):
         return request_fingerprint(request)
 
     def file_downloaded(self, response, request, info):
-        return response.body['hash']
+        return json.loads(response.body)['hash']
