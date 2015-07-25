@@ -27,13 +27,13 @@ def parse_time(time_str, tz=8):
 
     m = re.search(ur'(\d+)\s*秒前', time_str)
     if m:
-        return shift_time(timedelta(seconds=int(m.group(1))))
+        return shift_time(timedelta(seconds=-int(m.group(1))))
     m = re.search(ur'(\d+)\s*分钟前', time_str)
     if m:
-        return shift_time(timedelta(seconds=int(m.group(1)) * 60))
+        return shift_time(timedelta(minutes=-int(m.group(1))))
     m = re.search(ur'(\d+)\s*小时前', time_str)
     if m:
-        return shift_time(timedelta(seconds=int(m.group(1)) * 3600))
+        return shift_time(timedelta(hours=-int(m.group(1))))
     m = re.search(ur'(\d+)\s*天前', time_str)
     if m:
         return shift_time(timedelta(days=int(m.group(1))))
