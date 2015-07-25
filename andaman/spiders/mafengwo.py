@@ -95,14 +95,14 @@ class MafengwoQaSpider(scrapy.Spider):
         item['title'] = title
         item['author_nickname'] = author_name
         item['author_id'] = author_id
-        item['author_avatar'] = author_avatar
+        if author_avatar:
+            item['author_avatar'] = author_avatar
+            item['file_urls'] = [author_avatar]
         item['timestamp'] = timestamp
         item['topic'] = topic
         item['contents'] = contents
         item['tags'] = tags
         item['view_cnt'] = view_cnt
-        if author_avatar:
-            item['file_urls'] = [author_avatar]
 
         return item
 
@@ -158,8 +158,9 @@ class MafengwoQaSpider(scrapy.Spider):
             item['aid'] = aid
             item['author_nickname'] = author_name
             item['author_id'] = author_id
-            item['author_avatar'] = author_avatar
-            item['file_urls'] = [author_avatar]
+            if author_avatar:
+                item['author_avatar'] = author_avatar
+                item['file_urls'] = [author_avatar]
             item['timestamp'] = timestamp
             item['contents'] = contents
             item['vote_cnt'] = vote_cnt

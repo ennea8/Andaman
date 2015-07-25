@@ -77,17 +77,26 @@ class MafengwoQAPipeline(object):
             return self.process_answer(item, spider)
 
     def process_qa(self, item, spider, col_name, pk_name):
-        data = {k: item[k] for k in item.fields if k not in ['files', 'file_urls']}
+        data = {}
+        for field in item.fields:
+            if field in ['files', 'file_urls']:
+                continue
+            try:
+                data[field] = item[field]
+            except KeyError:
+                pass
 
         # 处理图像
-        try:
-            files = item['files']
-        except KeyError:
-            files = []
-        image_map = {v['url']: v['path'] for v in files}
-        avatar = data['author_avatar']
-        if avatar in image_map:
+        image_map = {v['url']: v['path'] for v in item.get('files', [])}
+
+        avatar = item.get('author_avatar', None)
+        if avatar and avatar in image_map:
             data['author_avatar'] = image_map[avatar]
+        else:
+            try:
+                del data['author_avatar']
+            except KeyError:
+                pass
 
         if not self.mongo:
             self.mongo = self._get_mongo_db(self._get_mongo_uri(self.etcd_node))
