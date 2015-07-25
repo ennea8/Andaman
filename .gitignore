@@ -13,3 +13,4 @@ project.egg-info/
 setup.py
 *.pid
 scrapy.cfg
+andaman.egg-info/
