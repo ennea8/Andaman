@@ -76,11 +76,15 @@ class MafengwoQAPipeline(object):
         elif type(item).__name__ == 'MafengwoAnswer':
             return self.process_answer(item, spider)
 
-    def process_question(self, item, spider):
+    def process_qa(self, item, spider, col_name, pk_name):
         data = {k: item[k] for k in item.fields if k not in ['files', 'file_urls']}
 
         # 处理图像
-        image_map = {v['url']: v['path'] for v in item['files']}
+        try:
+            files = item['files']
+        except KeyError:
+            files = []
+        image_map = {v['url']: v['path'] for v in files}
         avatar = data['author_avatar']
         if avatar in image_map:
             data['author_avatar'] = image_map[avatar]
@@ -88,9 +92,13 @@ class MafengwoQAPipeline(object):
         if not self.mongo:
             self.mongo = self._get_mongo_db(self._get_mongo_uri(self.etcd_node))
 
-        self.mongo.MafengwoQuestion.update({'qid': item['qid']}, {'$set': data}, upsert=True)
+        col = getattr(self.mongo, col_name)
+        col.update({pk_name: item[pk_name]}, {'$set': data}, upsert=True)
 
         return item
+
+    def process_question(self, item, spider):
+        return self.process_qa(item, spider, 'MafengwoQuestion', 'qid')
 
     def process_answer(self, item, spider):
-        return item
+        return self.process_qa(item, spider, 'MafengwoAnswer', 'aid')

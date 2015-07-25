@@ -8,7 +8,7 @@ from scrapy.http import Request
 from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
-from andaman.items.mafengwo import MafengwoQuestion
+from andaman.items.mafengwo import MafengwoQuestion, MafengwoAnswer
 
 
 __author__ = 'zephyre'
@@ -107,8 +107,27 @@ class MafengwoQaSpider(scrapy.Spider):
         return item
 
     def parse_answer_list(self, response):
+        meta = response.meta
+        qid = meta['qid']
+        page = meta['page']
+        page_size = meta['page_size']
+
         sel = Selector(text=json.loads(response.body)['payload']['list_html'])
-        for answer_node in sel.xpath('//li[contains(@class, "answer-item")]'):
+        answer_nodes = sel.xpath('//li[contains(@class, "answer-item")]')
+        if not answer_nodes:
+            return
+
+        # 查找下一页
+        if len(answer_nodes) == page_size:
+            next_page = page + 1
+            url = 'http://www.mafengwo.cn/qa/ajax_pager.php?qid=%d&action=question_detail&start=%d' \
+                  % (qid, next_page * page_size)
+            yield Request(url=url, callback=self.parse_answer_list,
+                          meta={'qid': qid, 'page': next_page, 'page_size': page_size})
+
+        for answer_node in sel.xpath('//li[contains(@class, "answer-item") and @data-aid]'):
+            aid = int(answer_node.xpath('./@data-aid').extract()[0])
+
             author_node = answer_node.xpath('./div[@class="person"]/div[contains(@class, "avatar") and @data-uid]')[0]
             author_id = int(author_node.xpath('./@data-uid').extract()[0])
             tmp = author_node.xpath('./a/img/@src').extract()[0]
@@ -116,18 +135,34 @@ class MafengwoQaSpider(scrapy.Spider):
             if author_avatar.endswith('pp48.gif'):
                 author_avatar = ''
 
-            author_name = answer_node.xpath(
-                './div[@class="answer-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
+            content_node = answer_node.xpath('./div[contains(@class,"answer-content")]')[0]
 
-            time_str = answer_node.xpath(
-                './div[@class="answer-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
+            author_name = content_node.xpath('./div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
+
+            time_str = content_node.xpath('./div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
             timestamp = parse_time(time_str)
 
-            raw_contents = answer_node.xpath(
-                './div[@class="answer-content"]//dl/dd[@class="_j_answer_html"]/text()').extract()[0]
+            accepted = bool(answer_node.xpath('.//div[contains(@class,"answer-best")]'))
+
+            raw_contents = content_node.xpath('.//dl/dd[@class="_j_answer_html"]/text()').extract()[0]
             contents = html2text(raw_contents)
 
+            try:
+                vote_cnt = int(answer_node.xpath('.//a[@class="btn-zan"]/span/text()').extract()[0])
+            except (IndexError, ValueError):
+                self.logger.debug(u'Invalid vote count: %s' % answer_node.extract()[0])
+                vote_cnt = 0
 
-    @staticmethod
-    def parse_time(time_str):
-        pass
+            item = MafengwoAnswer()
+            item['qid'] = qid
+            item['aid'] = aid
+            item['author_nickname'] = author_name
+            item['author_id'] = author_id
+            item['author_avatar'] = author_avatar
+            item['file_urls'] = [author_avatar]
+            item['timestamp'] = timestamp
+            item['contents'] = contents
+            item['vote_cnt'] = vote_cnt
+            item['accepted'] = accepted
+
+            yield item
