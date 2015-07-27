@@ -1,5 +1,6 @@
 # coding=utf-8
 import random
+from scrapy.exceptions import IgnoreRequest
 
 __author__ = 'zephyre'
 
@@ -86,9 +87,31 @@ class DynamicProxy(object):
         proxy = self._pick_proxy(spider)
         if proxy:
             request.meta['proxy'] = proxy['proxy']
+            request.meta['dynamic_proxy_pool'] = True
+
+    @staticmethod
+    def _strip_meta(meta):
+        """
+        去除meta中可能存在的DynamicProxy的痕迹
+        :param meta:
+        :return:
+        """
+        if 'dynamic_proxy_pool' in meta and 'proxy' in meta:
+            del meta['proxy']
+            del meta['dynamic_proxy_pool']
 
     def process_response(self, request, response, spider):
         if not self.enabled:
             return response
 
+        self._strip_meta(request.meta)
+        # 如果返回的结果为空，说明有错误
+        if not response.body.strip():
+            msg = 'Empty response body returned: %s'%request.url
+            spider.logger.warning(msg)
+            response.status = 400
         return response
+
+    def process_exception(self, request, exception, spider):
+        self._strip_meta(request.meta)
+        return
