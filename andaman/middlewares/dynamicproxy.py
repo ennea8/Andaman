@@ -122,12 +122,15 @@ class DynamicProxy(object):
         if not self.enabled or 'proxy' in request.meta:
             return
 
+        # 有ignore_dynamic_proxy标志，且值为True，则不进行加代理操作
+        if 'ignore_dynamic_proxy' in request.meta:
+            if request.meta['ignore_dynamic_proxy'] == True:
+                return
+
         proxy = self._pick_proxy(spider)
-        # proxy= ret{'proxy': , 'fail_cnt':  }
+        # proxy= {'proxy': , 'fail_cnt':  }
         if proxy:
             request.meta['proxy'] = proxy['proxy']
-            request.meta['add_proxy'] = True
-
             request.meta['dynamic_proxy_pool'] = True
 
     @staticmethod
@@ -144,20 +147,15 @@ class DynamicProxy(object):
     def process_response(self, request, response, spider):
         if not self.enabled:
             return response
-        # 检测request.meta里的add_proxy值，若没有，则不是此中间件所中，不进行去proxy处理，直接抛出response
-        try:
-            # 若为真，则说明代理为此中件间所加，连同加上的代理一起去掉
-            # 此时，应去掉request.meta中的内容，response.meta此时是空
-            if request.meta['add_proxy']:
-                # 先存下proxy，做后续判断是否失败处理
-                # proxy: 'http://host:port'
-                proxy = request.meta['proxy']
-                request.meta.pop('proxy')
-                request.meta.pop('add_proxy')
-        except KeyError:
+
+        meta = request.meta
+
+        # 检测request.meta里的dynamic_proxy_pool值，若没有，则不是此中间件所中，不进行去proxy处理，直接抛出response
+        if 'dynamic_proxy_pool' not in meta:
             return response
-        except AttributeError:
-            return response
+
+        # proxy: 'http://host:port'
+        proxy = meta['proxy']
 
         # scrapy中retryMiddleware为500，要处理的http code在retry中处理后，再经过此中间件
         # 此中间件的值要设置的大于500，即下载器下载的response要先经过此中间件，再经过retry中间件
@@ -165,55 +163,32 @@ class DynamicProxy(object):
         #                二是status等于200，但内容不对时也判定失败，这个后面遇到是再加,目前判定为对，抛出response即可
 
         # 认证标志is_valid
-        is_valid = False
-        if response.status < 400:
-            status_valid = True
-            # 如果response的http statuscode正确
-            is_valid = status_valid
-
-        # 用来判断是否含有valid函数
-        try:
-            # response中对proxy是否有效的判断
-            if 'valid' in request.meta:
-                valid_bool = request.meta['valid'](response)
-                is_valid = status_valid and valid_bool
-
-        except KeyError:
-            pass
+        validator_func = meta['valid'] if 'valid' in meta else lambda _:True
+        is_valid = getattr(response, 'status', 500) and validator_func(response) \
+                   and response.body.strip()
 
         # 先只考虑proxy失效的情况，暂定：若是网址失效，由retry处理，网页重试次数由retry处理
         # 对proxy出错的处理：相应的计数加1，去除proxy，抛出requset，
-        # 含status == 200的情况
         if is_valid:
             # 某一代理只要有一次成功，则失则次数清0
             self.reset_fail_cnt(proxy, spider)
         else:
             # 失败则相应的计数加1
             self.add_fail_cnt(proxy, spider)
-
+            # 强制让其status为400，重试操作交给retry中间件
+            response.status = 400
 
         self._strip_meta(request.meta)
-        # 如果返回的结果为空，说明有错误
-        if not response.body.strip():
-            msg = 'Empty response body returned: %s'%request.url
-            spider.logger.warning(msg)
-            response.status = 400
+
         return response
 
     def process_exception(self, request, exception, spider):
         if not self.enabled:
             return
 
-        try:
-            if request.meta['add_proxy']:
-                proxy = request.meta['proxy']
-                self.add_fail_cnt(proxy, spider)
-                # 处理exception也要去掉proxy，为了方便scrapy retry中间件的处理
-                request.meta.pop('proxy')
-                request.meta.pop('add_proxy')
-
-        except KeyError:
-            pass
+        if 'dynamic_proxy_pool' in request.meta:
+            proxy = request.meta['proxy']
+            self.add_fail_cnt(proxy, spider)
 
         self._strip_meta(request.meta)
         return
