@@ -8,7 +8,7 @@ from scrapy.http import Request
 from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
-from andaman.items.mafengwo import MafengwoQuestion, MafengwoAnswer
+from andaman.items.qa import QuestionItem, AnswerItem
 
 
 __author__ = 'zephyre'
@@ -46,19 +46,23 @@ class MafengwoQaSpider(scrapy.Spider):
               % (qid, page * page_size)
         yield Request(url=url, callback=self.parse_answer_list, meta={'qid': qid, 'page': page, 'page_size': page_size})
 
-    @staticmethod
-    def retrive_question(response):
+    def retrive_question(self, response):
         """
         分析response，得到问题
         """
         tmp = response.selector.xpath('//div[@class="q-detail"]/div[@class="person"]/div[@class="avatar"]/a[@href]')
-        user_href = tmp[0].xpath('./@href').extract()[0]
+        try:
+            user_href = tmp[0].xpath('./@href').extract()[0]
+        except IndexError:
+            self.logger.warning('Invalid response: %s' % response.url)
+            self.logger.warning(response.body)
+            raise
         m = re.search(r'/wenda/u/(\d+)', user_href)
         author_id = int(m.group(1))
         tmp = tmp[0].xpath('./img/@src').extract()[0]
         author_avatar = re.sub(r'\.head\.w\d+\.', '.', tmp)
         if author_avatar.endswith('pp48.gif'):
-            author_avatar = ''
+            author_avatar = None
         author_name = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
 
@@ -81,7 +85,7 @@ class MafengwoQaSpider(scrapy.Spider):
         if tmp and tmp[0].strip():
             topic = tmp[0].strip()
         else:
-            topic = ''
+            topic = None
 
         raw_tags = response.selector.xpath(
             '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-tags"]/a[@class="a-tag"]/text()').extract()
@@ -90,7 +94,8 @@ class MafengwoQaSpider(scrapy.Spider):
         match = re.search(r'detail-(\d+)\.html', response.url)
         qid = int(match.group(1))
 
-        item = MafengwoQuestion()
+        item = QuestionItem()
+        item['source'] = 'mafengwo'
         item['qid'] = qid
         item['title'] = title
         item['author_nickname'] = author_name
@@ -99,7 +104,8 @@ class MafengwoQaSpider(scrapy.Spider):
             item['author_avatar'] = author_avatar
             item['file_urls'] = [author_avatar]
         item['timestamp'] = timestamp
-        item['topic'] = topic
+        if topic:
+            item['topic'] = topic
         item['contents'] = contents
         item['tags'] = tags
         item['view_cnt'] = view_cnt
@@ -133,7 +139,7 @@ class MafengwoQaSpider(scrapy.Spider):
             tmp = author_node.xpath('./a/img/@src').extract()[0]
             author_avatar = re.sub(r'\.head\.w\d+\.', '.', tmp)
             if author_avatar.endswith('pp48.gif'):
-                author_avatar = ''
+                author_avatar = None
 
             content_node = answer_node.xpath('./div[contains(@class,"answer-content")]')[0]
 
@@ -144,7 +150,7 @@ class MafengwoQaSpider(scrapy.Spider):
 
             accepted = bool(answer_node.xpath('.//div[contains(@class,"answer-best")]'))
 
-            raw_contents = content_node.xpath('.//dl/dd[@class="_j_answer_html"]/text()').extract()[0]
+            raw_contents = content_node.xpath('.//dl/dd[@class="_j_answer_html"]').extract()[0]
             contents = html2text(raw_contents)
 
             try:
@@ -153,7 +159,8 @@ class MafengwoQaSpider(scrapy.Spider):
                 self.logger.debug(u'Invalid vote count: %s' % answer_node.extract()[0])
                 vote_cnt = 0
 
-            item = MafengwoAnswer()
+            item = AnswerItem()
+            item['source'] = 'mafengwo'
             item['qid'] = qid
             item['aid'] = aid
             item['author_nickname'] = author_name

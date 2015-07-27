@@ -4,7 +4,8 @@ from scrapy import Field, Item
 __author__ = 'zephyre'
 
 
-class MafengwoQuestion(Item):
+class QuestionItem(Item):
+    source = Field()
     qid = Field()
     title = Field()
     author_nickname = Field()
@@ -19,7 +20,8 @@ class MafengwoQuestion(Item):
     files = Field()
 
 
-class MafengwoAnswer(Item):
+class AnswerItem(Item):
+    source = Field()
     qid = Field()
     aid = Field()
     author_nickname = Field()

@@ -38,19 +38,17 @@ def parse_time(time_str, tz=8):
     if m:
         return shift_time(timedelta(days=int(m.group(1))))
 
-    fmt = '%y/%m/%d %H:%M'
-    try:
-        return long((datetime.strptime(time_str, fmt) - timedelta(seconds=tz * 3600) - datetime.utcfromtimestamp(
-            0)).total_seconds() * 1000)
-    except (UnicodeEncodeError, ValueError):
-        pass
+    def parse_from_fmt(time_fmt):
+        try:
+            return long((datetime.strptime(time_str, time_fmt) - timedelta(
+                seconds=tz * 3600) - datetime.utcfromtimestamp(0)).total_seconds() * 1000)
+        except (UnicodeEncodeError, ValueError):
+            return None
 
-    fmt = '%Y-%m-%d %H:%M'
-    try:
-        return long((datetime.strptime(time_str, fmt) - timedelta(seconds=tz * 3600) - datetime.utcfromtimestamp(
-            0)).total_seconds() * 1000)
-    except (UnicodeEncodeError, ValueError):
-        pass
+    for fmt in ['%y/%m/%d %H:%M', '%Y-%m-%d %H:%M']:
+        timestamp = parse_from_fmt(fmt)
+        if timestamp:
+            return timestamp
 
     raise ValueError(u'Invalid time string: %s' % time_str)
 
