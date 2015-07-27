@@ -14,13 +14,14 @@ BOT_NAME = 'andaman'
 SPIDER_MODULES = ['andaman.spiders']
 NEWSPIDER_MODULE = 'andaman.spiders'
 
-MONGO_URI = ['localhost']
-MONGO_PORT = 27017
-# MONGO_HOST = ['119.254.100.93']
-# MONGO_PORT = ['32001']
-# MONGO_USER = ['scrapy']
-# MONGO_PASSWD = ['trat2eM8Gej0aJ4d']
-# MONGO_DBNAME = ['scrapy']
+# MONGO_URI = ['localhost']
+# MONGO_PORT = 27017
+MONGO_HOST = ['119.254.100.93']
+MONGO_PORT = ['32001']
+MONGO_USER = ['scrapy']
+MONGO_PASSWD = ['trat2eM8Gej0aJ4d']
+MONGO_DBNAME = ['scrapy']
+DYNAMIC_PROXY_ENABLED = True
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'andaman (+http://www.yourdomain.com)'
@@ -69,11 +70,8 @@ DOWNLOADER_MIDDLEWARES = {
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-<<<<<<< HEAD
-    'andaman.pipelines.BaiduNotePipeline': 300,
-=======
+    'andaman.pipelines.baidu.BaiduNotePipeline': 300,
     'andaman.pipelines.proxy.ProxyPipeline': 100
->>>>>>> dev
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

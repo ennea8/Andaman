@@ -32,9 +32,17 @@ class BaiduNoteSpider(scrapy.Spider):
         self.note_limit = (self.note_limit / step_size + 1) * step_size
         self.log('Spider started. Note type: %d, offset: %d, count: %d'
                  % (self.note_type, self.note_offset, self.note_limit), level=log.INFO)
+
+        # 每个生成request的函数，valid放在request前
+        # request生成时固定加个meta={'valid': valid}
+        def valid(response):
+            is_valid = True
+            return is_valid
         return imap(lambda pn: scrapy.Request(
-            'http://lvyou.baidu.com/search/ajax/searchnotes?format=ajax&type=3&pn=%d&rn=20' % pn),
+            'http://lvyou.baidu.com/search/ajax/searchnotes?format=ajax&type=3&pn=%d&rn=20' % pn,
+             meta={'valid': valid}),
                     xrange(self.note_offset, self.note_limit, step_size))
+
 
     def parse(self, response):
         """
@@ -76,11 +84,16 @@ class BaiduNoteSpider(scrapy.Spider):
             one_note['publish_time'] = long(entry['publish_time']) * 1000L
             one_note['brief_album'] = map(image_builder, [x['pic_url'] for x in entry['album_pic_list']])
 
+            # 每个生成request的函数，valid放在request前
+            # request生成时固定加个meta={'valid': valid}
+            def valid(response):
+                is_valid = True
+                return is_valid
             # 生成正文的请求,下一步才是解析获得的页面，包括PostItem和path
             req = scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-0' % one_note['note_id'],
                                  callback=self.parse_detail,
                                  meta={'one_note': one_note, 'max_page': 0, 'current_page': 0,
-                                       'place_href': []})
+                                       'place_href': [], 'valid': valid})
 
             return req
 
@@ -151,10 +164,16 @@ class BaiduNoteSpider(scrapy.Spider):
                     yield place
         else:
             current_page += 1
+
+            # 每个生成request的函数，valid放在request前
+            # request生成时固定加个meta={'valid': valid}
+            def valid(response):
+                is_valid = True
+                return is_valid
             yield scrapy.Request(url='http://lvyou.baidu.com/notes/%s/d-%d' % (note_id, current_page),
-                                 callback=self.parse_detail,
-                                 meta={'one_note': one_note, 'max_page': max_page, 'current_page': current_page,
-                                       'place_href': place_href})
+                                  callback=self.parse_detail,
+                                  meta={'one_note': one_note, 'max_page': max_page, 'current_page': current_page,
+                                        'place_href': place_href, 'valid': valid})
     # 输入输出要重新定
     # 关于place的所有处理都包含在这个函数里
     # 用来处理首次的place处理，后续的处理包含在parse_href中
@@ -192,9 +211,15 @@ class BaiduNoteSpider(scrapy.Spider):
                     create_item(one_note)
             else:
                 tmp_url = 'http://lvyou.baidu.com%s' % y
+
+                # 每个生成request的函数，valid放在request前
+                # request生成时固定加个meta={'valid': valid}
+                def valid(response):
+                    is_valid = True
+                    return is_valid
                 yield scrapy.Request(url=tmp_url, callback=self.parse_href,
                                      meta={'dont_redirect': True, 'handle_httpstatus_list': [301, 302],
-                                           'one_note': one_note, 're_surl': re_surl, 'key': y})
+                                           'one_note': one_note, 're_surl': re_surl, 'key': y, 'valid': valid})
 
     def parse_href(self, response):
         meta = response.meta
@@ -223,13 +248,27 @@ class BaiduNoteSpider(scrapy.Spider):
                         yield item
             else:
                 tmp_url = 'http://lvyou.baidu.com%s' % x
+
+                # 每个生成request的函数，valid放在request前
+                # request生成时固定加个meta={'valid': valid}
+                def valid(response):
+                    is_valid = True
+                    return is_valid
                 yield scrapy.Request(url=tmp_url, callback=self.parse_href,
                                      meta={'dont_redirect': True, 'handle_httpstatus_list': [301, 302],
-                                           'one_note': one_note, 're_surl': re_surl, 'key': x})
+                                           'one_note': one_note, 're_surl': re_surl, 'key': x, 'valid': valid})
 
 def create_item(one_note):
     item = BaiduNoteItem()
     item['one_note'] = one_note
 
     yield item
+
+# 可能会有多个valid函数，每个request对应的response都要验证，每个request根据parse_response处理添加valid函数
+def valid(response):
+    # 做为接口保留，后续可加
+    # sel = scrapy.Selector(response)
+    is_valid = True
+
+    return is_valid
 
