@@ -56,24 +56,24 @@ MONGO_PORT = 27017
 
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
-#    'andaman.middlewares.MyCustomDownloaderMiddleware': 543,
-#}
+DOWNLOADER_MIDDLEWARES = {
+    'andaman.middlewares.dynamicproxy.DynamicProxy': 520,
+}
 
 # Enable or disable extensions
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
-#EXTENSIONS = {
-#    'scrapy.telnet.TelnetConsole': None,
-#}
+EXTENSIONS = {
+    'andaman.extensions.dynamicproxy.DynamicProxyExtension': 100
+#    'scrapy.telnet.TelnetConsole': None
+}
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-<<<<<<< HEAD
     'andaman.pipelines.BaiduNotePipeline': 300,
-=======
-    'andaman.pipelines.proxy.ProxyPipeline': 100
->>>>>>> dev
+    'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
+    'andaman.pipelines.proxy.ProxyPipeline': 100,
+    'andaman.pipelines.qa.QAPipeline': 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

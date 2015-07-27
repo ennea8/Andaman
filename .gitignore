@@ -7,3 +7,10 @@ baidu_key.cfg
 tmp
 common.cfg
 conf/*.yaml
+build/
+dbs/
+project.egg-info/
+setup.py
+*.pid
+scrapy.cfg
+andaman.egg-info/
