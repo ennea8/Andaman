@@ -32,17 +32,9 @@ class BaiduNoteSpider(scrapy.Spider):
         self.note_limit = (self.note_limit / step_size + 1) * step_size
         self.log('Spider started. Note type: %d, offset: %d, count: %d'
                  % (self.note_type, self.note_offset, self.note_limit), level=log.INFO)
-
-        # 每个生成request的函数，valid放在request前
-        # request生成时固定加个meta={'valid': valid}
-        def valid(response):
-            is_valid = True
-            return is_valid
         return imap(lambda pn: scrapy.Request(
-            'http://lvyou.baidu.com/search/ajax/searchnotes?format=ajax&type=3&pn=%d&rn=20' % pn,
-             meta={'valid': valid}),
+            'http://lvyou.baidu.com/search/ajax/searchnotes?format=ajax&type=3&pn=%d&rn=20' % pn),
                     xrange(self.note_offset, self.note_limit, step_size))
-
 
     def parse(self, response):
         """

@@ -14,14 +14,13 @@ BOT_NAME = 'andaman'
 SPIDER_MODULES = ['andaman.spiders']
 NEWSPIDER_MODULE = 'andaman.spiders'
 
-# MONGO_URI = ['localhost']
-# MONGO_PORT = 27017
-MONGO_HOST = ['119.254.100.93']
-MONGO_PORT = ['32001']
-MONGO_USER = ['scrapy']
-MONGO_PASSWD = ['trat2eM8Gej0aJ4d']
-MONGO_DBNAME = ['scrapy']
-DYNAMIC_PROXY_ENABLED = True
+MONGO_URI = ['localhost']
+MONGO_PORT = 27017
+# MONGO_HOST = ['119.254.100.93']
+# MONGO_PORT = ['32001']
+# MONGO_USER = ['scrapy']
+# MONGO_PASSWD = ['trat2eM8Gej0aJ4d']
+# MONGO_DBNAME = ['scrapy']
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'andaman (+http://www.yourdomain.com)'
