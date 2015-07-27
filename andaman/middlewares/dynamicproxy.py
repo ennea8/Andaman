@@ -1,5 +1,6 @@
 # coding=utf-8
 import random
+from scrapy.exceptions import IgnoreRequest
 
 __author__ = 'zephyre'
 
@@ -104,6 +105,11 @@ class DynamicProxy(object):
             return response
 
         self._strip_meta(request.meta)
+        # 如果返回的结果为空，说明有错误
+        if not response.body.strip():
+            msg = 'Empty response body returned: %s'%request.url
+            spider.logger.warning(msg)
+            response.status = 400
         return response
 
     def process_exception(self, request, exception, spider):

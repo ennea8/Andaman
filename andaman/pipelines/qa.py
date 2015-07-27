@@ -4,9 +4,7 @@ import requests
 __author__ = 'zephyre'
 
 
-class MafengwoQAPipeline(object):
-    spiders = ['mafengwo-qa']
-
+class QAPipeline(object):
     @classmethod
     def from_crawler(cls, crawler):
         return cls(crawler.settings)
@@ -67,14 +65,13 @@ class MafengwoQAPipeline(object):
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
     def process_item(self, item, spider):
-        if getattr(spider, 'name', '') not in self.spiders:
-            return item
-
         # 判断是问题还是回答
-        if type(item).__name__ == 'MafengwoQuestion':
-            return self.process_question(item, spider)
-        elif type(item).__name__ == 'MafengwoAnswer':
-            return self.process_answer(item, spider)
+        if type(item).__name__ == 'QuestionItem':
+            return self.process_qa(item, spider, 'QA_Question', 'qid')
+        elif type(item).__name__ == 'AnswerItem':
+            return self.process_qa(item, spider, 'QA_Answer', 'aid')
+        else:
+            return item
 
     def process_qa(self, item, spider, col_name, pk_name):
         data = {}
@@ -105,9 +102,3 @@ class MafengwoQAPipeline(object):
         col.update({pk_name: item[pk_name]}, {'$set': data}, upsert=True)
 
         return item
-
-    def process_question(self, item, spider):
-        return self.process_qa(item, spider, 'MafengwoQuestion', 'qid')
-
-    def process_answer(self, item, spider):
-        return self.process_qa(item, spider, 'MafengwoAnswer', 'aid')

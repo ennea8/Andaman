@@ -65,7 +65,7 @@ EXTENSIONS = {
 ITEM_PIPELINES = {
     'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     'andaman.pipelines.proxy.ProxyPipeline': 100,
-    'andaman.pipelines.mafengwo.MafengwoQAPipeline': 100
+    'andaman.pipelines.qa.QAPipeline': 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
