@@ -65,15 +65,12 @@ class QAPipeline(object):
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
     def process_item(self, item, spider):
-        # 判断是问题还是回答
-        if type(item).__name__ == 'QuestionItem':
-            return self.process_qa(item, spider, 'QA_Question', 'qid')
-        elif type(item).__name__ == 'AnswerItem':
-            return self.process_qa(item, spider, 'QA_Answer', 'aid')
+        if type(item).__name__ == 'QAItem':
+            return self.process_qa(item, spider)
         else:
             return item
 
-    def process_qa(self, item, spider, col_name, pk_name):
+    def process_qa(self, item, spider):
         data = {}
         for field in item.fields:
             if field in ['files', 'file_urls']:
@@ -98,7 +95,8 @@ class QAPipeline(object):
         if not self.mongo:
             self.mongo = self._get_mongo_db(self._get_mongo_uri(self.etcd_node))
 
-        col = getattr(self.mongo, col_name)
-        col.update({pk_name: item[pk_name]}, {'$set': data}, upsert=True)
+        col = self.mongo.QA
+        aid = item.get('aid', None)
+        col.update({'qid': item['qid'], 'aid': aid}, {'$set': data}, upsert=True)
 
         return item
