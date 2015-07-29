@@ -67,7 +67,7 @@ class DynamicProxy(object):
 
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
-    @set_interval(30)
+    @set_interval(1800)
     def fetch_proxies_schedule(self):
         self.fetch_proxies()
 
