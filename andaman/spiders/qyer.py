@@ -5,7 +5,7 @@ import re
 import scrapy
 from scrapy.http import FormRequest, Request
 
-from andaman.items.qa import QuestionItem, AnswerItem
+from andaman.items.qa import QAItem
 from andaman.utils.html import html2text, parse_time
 
 
@@ -85,7 +85,8 @@ class QyerQaSpider(scrapy.Spider):
         else:
             topic = None
 
-        item = QuestionItem()
+        item = QAItem()
+        item['type'] = 'question'
         item['source'] = 'qyer'
         item['qid'] = qid
         item['title'] = title
@@ -116,7 +117,8 @@ class QyerQaSpider(scrapy.Spider):
 
             vote_cnt = int(node.xpath('.//a[contains(@class,"jsaskansweruseful")]/span/text()').extract()[0])
 
-            item = AnswerItem()
+            item = QAItem()
+            item['type'] = 'answer'
             item['source'] = 'qyer'
             item['qid'] = qid
             item['aid'] = aid

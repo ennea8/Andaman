@@ -8,7 +8,7 @@ from scrapy.http import Request
 from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
-from andaman.items.qa import QuestionItem, AnswerItem
+from andaman.items.qa import QAItem
 
 
 __author__ = 'zephyre'
@@ -94,8 +94,9 @@ class MafengwoQaSpider(scrapy.Spider):
         match = re.search(r'detail-(\d+)\.html', response.url)
         qid = int(match.group(1))
 
-        item = QuestionItem()
+        item = QAItem()
         item['source'] = 'mafengwo'
+        item['type'] = 'question'
         item['qid'] = qid
         item['title'] = title
         item['author_nickname'] = author_name
@@ -159,7 +160,8 @@ class MafengwoQaSpider(scrapy.Spider):
                 self.logger.debug(u'Invalid vote count: %s' % answer_node.extract()[0])
                 vote_cnt = 0
 
-            item = AnswerItem()
+            item = QAItem()
+            item['type'] = 'answer'
             item['source'] = 'mafengwo'
             item['qid'] = qid
             item['aid'] = aid
