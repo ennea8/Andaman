@@ -1,9 +1,37 @@
 # coding=utf-8
+import logging
 import random
-from scrapy import log
-from scrapy.exceptions import IgnoreRequest
+import threading
+
 
 __author__ = 'zephyre'
+
+
+def set_interval(interval):
+    """
+    定时执行某个函数
+    :param interval:
+    :return:
+    """
+
+    import threading
+
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            stopped = threading.Event()
+
+            def loop():  # executed in another thread
+                while not stopped.wait(interval):  # until stopped
+                    function(*args, **kwargs)
+
+            t = threading.Thread(target=loop)
+            t.daemon = True  # stop if the program exits
+            t.start()
+            return stopped
+
+        return wrapper
+
+    return decorator
 
 
 class DynamicProxy(object):
@@ -12,19 +40,18 @@ class DynamicProxy(object):
         return cls(crawler.settings)
 
     def __init__(self, settings):
+        self.logger = logging.getLogger('dynamicproxy')
         self.crawler_settings = settings
         self.etcd_node = self._get_etcd(settings)
         self.proxies = {}
-        self.proxies_dict = {}
-        self.disabled_proxies = {}
-        self.max_fail_cnt = 5
+        self.disabled_proxies = set([])
+        self._lock = threading.Lock()
+        self.fetch_proxies()
+
+        self._schedule = self.fetch_proxies_schedule()
 
         # 默认情况下，该中间件处于关闭状态
         self.enabled = settings.getbool('DYNAMIC_PROXY_ENABLED', False)
-        if self.enabled:
-            self.proxies = self.fetch_proxies()
-            # 生成proxy:key的字典
-            self.proxies_dict = {tmp[1]['proxy']: tmp[0] for tmp in self.proxies.items()}
 
     @staticmethod
     def _get_etcd(settings):
@@ -40,14 +67,23 @@ class DynamicProxy(object):
 
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
+    @set_interval(30)
+    def fetch_proxies_schedule(self):
+        self.fetch_proxies()
+
     def fetch_proxies(self):
         import requests
 
-        # r1 = requests.get('http://www.baidu.com')
+        self.logger.info('Fetching proxies...')
 
         response = requests.get(
             'http://%s:%d/v2/keys/proxies/?recursive=true' % (self.etcd_node['host'], self.etcd_node['port']),
             auth=self.etcd_node['auth'])
+
+        def is_valid(proxy_info):
+            # 取得代理服务器的延迟限制。默认为5秒
+            max_latency = self.crawler_settings.get('DYNAMIC_PROXY_MAX_LATENCY', 5)
+            return proxy_info['latency'] < max_latency and proxy_info['proxy'] not in self.disabled_proxies
 
         def build_proxy(entry):
             if 'nodes' in entry:
@@ -58,48 +94,63 @@ class DynamicProxy(object):
                 if 'latency' in ret:
                     ret['latency'] = float(ret['latency'])
 
-                if 'timestamp' in ret and 'latency' in ret:
-                    return entry['key'].split('/')[-1], ret
+                if is_valid(ret):
+                    proxy = ret.pop('proxy')
+                    return proxy, ret
                 else:
-                    return None
+                    return
             else:
-                return None
+                return
 
-        proxies = {tmp[0]: tmp[1] for tmp in map(build_proxy, response.json()['node']['nodes']) if tmp}
-        # 去除已经失效的代理服务器
-        available_proxies = {tmp[0]: tmp[1] for tmp in proxies.items() if tmp[0] not in self.disabled_proxies}
+        try:
+            self._lock.acquire()
+            self.proxies.update({tmp[0]: tmp[1] for tmp in map(build_proxy, response.json()['node']['nodes']) if tmp})
+        finally:
+            self._lock.release()
 
-        return available_proxies
+        self.logger.info('Completed fetching proxies. Total available proxies: %d' % len(self.proxies))
 
-    def deregister(self, proxies_key, spider):
+    def deregister(self, proxy, spider):
         """
         注销某个代理
+        注意：并非线程安全
         """
-        if proxies_key in self.proxies:
-            # 将此代理从可用porxies中移出
-            self.proxies.pop(proxies_key)
-            # 将此代理放入不可用proxy列表中
-            self.disabled_proxies.setdefault(proxies_key)
-            spider.log('Proxy %s disabled' % proxies_key, log.WARNING)
+        # 将此代理从可用porxies中移出
+        self.proxies.pop(proxy)
+        # 将此代理放入不可用proxy列表中
+        self.disabled_proxies.add(proxy)
+        self.logger.warning('Proxy %s disabled. Remaining available proxies: %d' % (proxy, len(self.proxies)))
 
     def add_fail_cnt(self, proxy, spider):
         """
         登记某个代理的失败次数
         """
-        proxies_key = self.proxies_dict[proxy]
-        if proxies_key:
-            self.proxies[proxies_key]['fail_cnt'] += 1
-            # 失则次数超过最大值则注销此代理
-            if self.proxies[proxies_key]['fail_cnt'] > self.max_fail_cnt:
-                self.deregister(proxies_key, spider)
+        max_fail_cnt = self.crawler_settings.get('DYNAMIC_PROXY_MAX_FAIL', 5)
+
+        try:
+            self._lock.acquire()
+            self.proxies[proxy]['fail_cnt'] += 1
+            if self.proxies[proxy]['fail_cnt'] > max_fail_cnt:
+                self.deregister(proxy, spider)
+        except KeyError:
+            pass
+        finally:
+            self._lock.release()
 
     def reset_fail_cnt(self, proxy, spider):
         """
         重置某个代理的失败次数统计
         """
-        if proxy in self.proxies_dict:
-            proxies_key = self.proxies_dict[proxy]
-            self.proxies[proxies_key]['fail_cnt'] = 0
+        if self.proxies[proxy]['fail_cnt'] == 0:
+            return
+
+        try:
+            self._lock.acquire()
+            self.proxies[proxy]['fail_cnt'] = 0
+        except KeyError:
+            pass
+        finally:
+            self._lock.release()
 
     def _pick_proxy(self, spider):
         """
@@ -109,28 +160,24 @@ class DynamicProxy(object):
             total_cnt = len(self.proxies)
             if total_cnt == 0:
                 spider.logger.warning('The dynamic proxy pool is empty.')
-                return None
+                return
             else:
-                idx = random.randint(0, total_cnt-1)
+                idx = random.randint(0, total_cnt - 1)
                 try:
-                    # values: [ret{'proxy':  , 'fail_cnt': }, ...]
-                    return self.proxies.values()[idx]
+                    proxy = self.proxies.keys()[idx]
+                    self.logger.debug('Picked proxy: %s' % proxy)
+                    return proxy
                 except IndexError:
                     continue
 
     def process_request(self, request, spider):
-        if not self.enabled or 'proxy' in request.meta:
+        # 有ignore_dynamic_proxy标志，且值为True，则不进行加代理操作
+        if not self.enabled or 'proxy' in request.meta or 'ignore_dynamic_proxy' in request.meta:
             return
 
-        # 有ignore_dynamic_proxy标志，且值为True，则不进行加代理操作
-        if 'ignore_dynamic_proxy' in request.meta:
-            if request.meta['ignore_dynamic_proxy'] == True:
-                return
-
         proxy = self._pick_proxy(spider)
-        # proxy= {'proxy': , 'fail_cnt':  }
         if proxy:
-            request.meta['proxy'] = proxy['proxy']
+            request.meta['proxy'] = proxy
             request.meta['dynamic_proxy_pool'] = True
 
     @staticmethod
@@ -160,12 +207,11 @@ class DynamicProxy(object):
         # scrapy中retryMiddleware为500，要处理的http code在retry中处理后，再经过此中间件
         # 此中间件的值要设置的大于500，即下载器下载的response要先经过此中间件，再经过retry中间件
         # 分两种情况处理，一是status大于等于400，判定失败
-        #                二是status等于200，但内容不对时也判定失败，这个后面遇到是再加,目前判定为对，抛出response即可
+        # 二是status等于200，但内容不对时也判定失败，这个后面遇到是再加,目前判定为对，抛出response即可
 
         # 认证标志is_valid
-        validator_func = meta['valid'] if 'valid' in meta else lambda _:True
-        is_valid = getattr(response, 'status', 500) and validator_func(response) \
-                   and response.body.strip()
+        validator_func = meta['dynamic_proxy_validor'] if 'dynamic_proxy_validator' in meta else lambda _: True
+        is_valid = getattr(response, 'status', 500) < 400 and response.body.strip() and validator_func(response)
 
         # 先只考虑proxy失效的情况，暂定：若是网址失效，由retry处理，网页重试次数由retry处理
         # 对proxy出错的处理：相应的计数加1，去除proxy，抛出requset，

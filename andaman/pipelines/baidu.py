@@ -54,21 +54,23 @@ class AndamanPipeline(object):
     def process_item(self, item, spider):
         return item
 
+
 class BaiduNotePipeline(AndamanPipeline):
+
     def process_item(self, item, spider):
+        if type(item).__name__ == 'BaiduNoteItem':
+            self.spiders = spider.name
 
-        self.spiders = spider.name
-
-        # 连接db,建Spider的db
-        db = self.conn[self.mongo_dbname[0]]
-        # used for local test
-        # db = self.conn[spider.name]
-        one_note = item['one_note']
-        query = {'note_id': one_note['note_id']}
-        if isinstance(item, BaiduNoteItem):
-            coll = db['BaiduNoteItem']
-            coll.update(query, {'$set': one_note}, upsert=True)
-            # 更新此条数据后，紧接着开始清洗
+            # 连接db,建Spider的db
+            db = self.conn[self.mongo_dbname[0]]
+            # used for local test
+            # db = self.conn[spider.name]
+            one_note = item['one_note']
+            query = {'note_id': one_note['note_id']}
+            if isinstance(item, BaiduNoteItem):
+                coll = db['BaiduNoteItem']
+                coll.update(query, {'$set': one_note}, upsert=True)
+                # 更新此条数据后，紧接着开始清洗
 
         return item
 
