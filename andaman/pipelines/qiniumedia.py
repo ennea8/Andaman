@@ -3,7 +3,6 @@ import json
 import sys
 
 from scrapy.http import Response
-
 from scrapy.pipelines.files import FilesPipeline
 from twisted.internet import threads
 from qiniu import Auth, BucketManager
@@ -89,7 +88,18 @@ class QiniuPipeline(FilesPipeline):
     DEFAULT_FILES_URLS_FIELD = 'file_urls'
     DEFAULT_FILES_RESULT_FIELD = 'files'
 
-    def __init__(self, bucket, settings=None):
+    def __init__(self, settings=None):
+        """
+        初始化
+        :param settings:
+        :return:
+        """
+        # 存放到哪个bucket中
+        bucket = settings.get('QINIU_BUCKET', 'aizou')
+
+        # 默认情况下，图像在七牛中的key，是由图像的url等决定的。但是，也可以为key指定一个前缀。默认为''
+        self.key_prefix = settings.get('QINIU_KEY_PREFIX', '')
+
         self.store = QiniuFilesStore(bucket, settings)
         super(FilesPipeline, self).__init__(download_func=self.fetch)
 
@@ -101,18 +111,17 @@ class QiniuPipeline(FilesPipeline):
 
     @classmethod
     def from_settings(cls, settings):
-        bucket = settings.get('QINIU_BUCKET', 'aizou')
-
         cls.FILES_URLS_FIELD = settings.get('FILES_URLS_FIELD', cls.DEFAULT_FILES_URLS_FIELD)
         cls.FILES_RESULT_FIELD = settings.get('FILES_RESULT_FIELD', cls.DEFAULT_FILES_RESULT_FIELD)
         cls.EXPIRES = settings.get('QINIU_EXPIRE', cls.DEFAULT_EXPIRES)
 
-        return cls(bucket, settings=settings)
+        return cls(settings=settings)
 
     def file_path(self, request, response=None, info=None):
         from scrapy.utils.request import request_fingerprint
 
-        return request_fingerprint(request)
+        raw_key = request_fingerprint(request)
+        return '%s%s' % (self.key_prefix, raw_key)
 
     def file_downloaded(self, response, request, info):
         return json.loads(response.body)['hash']
