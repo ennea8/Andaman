@@ -75,7 +75,8 @@ class QyerQaSpider(scrapy.Spider):
         tags = [html2text(tmp) for tmp in q_contents.xpath(
             './div[contains(@class,"ask_detail_content_tag")]/a[@href and @class="ask_tag"]').extract()]
 
-        time_str = q_contents.xpath('./div[contains(@class,"mt10")]/p[@class="fl"]/text()').extract()[0]
+        time_str = q_contents.xpath('./div[contains(@class,"mt10")]//p[contains(@class,"fl") and '
+                                    'contains(@class,"asker")]/span/text()').extract()[0]
         timestamp = self._get_timestamp(time_str)
 
         tmp = q_contents.xpath(
