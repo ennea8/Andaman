@@ -46,12 +46,13 @@ class DynamicProxy(object):
         self.proxies = {}
         self.disabled_proxies = set([])
         self._lock = threading.Lock()
-        self.fetch_proxies()
 
         self._schedule = self.fetch_proxies_schedule()
 
         # 默认情况下，该中间件处于关闭状态
         self.enabled = settings.getbool('DYNAMIC_PROXY_ENABLED', False)
+        if self.enabled:
+            self.fetch_proxies()
 
     @staticmethod
     def _get_etcd(settings):
