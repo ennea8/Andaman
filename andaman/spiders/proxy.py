@@ -2,7 +2,7 @@
 import json
 from urlparse import urljoin
 import re
-import time
+from datetime import datetime
 
 import scrapy
 from scrapy.http import Request
@@ -22,22 +22,6 @@ class YoudailiSpider(scrapy.Spider):
         # 已经处理过的代理服务器
         self.processed_proxies = set([])
 
-    @staticmethod
-    def _get_etcd(settings):
-
-        user = settings.get('ETCD_USER', '')
-        password = settings.get('ETCD_PASSWORD', '')
-
-        from requests.utils import to_native_string
-        from base64 import b64encode
-
-        if user and password:
-            auth = 'Basic ' + to_native_string(b64encode(('%s:%s' % (user, password)).encode('latin1')).strip())
-        else:
-            auth = None
-
-        return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
-
     def start_requests(self):
         settings = self.crawler.settings
 
@@ -51,11 +35,6 @@ class YoudailiSpider(scrapy.Spider):
             for url in ['http://www.youdaili.net/Daili/guonei/list_%d.html' % page for page in
                         xrange(1, pages_cnt + 1)]:
                 yield Request(url=url, callback=self.parse)
-        elif target == 'etcd':
-            etcd_node = self._get_etcd(settings)
-            url = 'http://%s:%d/v2/keys/proxies/?recursive=true' % (etcd_node['host'], etcd_node['port'])
-            headers = {'Authorization': etcd_node['auth']} if etcd_node['auth'] else {}
-            yield Request(url=url, headers=headers, callback=self.update_proxies)
 
     def update_proxies(self, response):
         from urlparse import urlparse
@@ -208,9 +187,12 @@ class YoudailiSpider(scrapy.Spider):
             item['scheme'] = 'http'
             item['desc'] = desc
             item['latency'] = sum(results) / len(results)
-            item['verifiedTime'] = long(time.time() * 1000)
+            item['validate_time'] = datetime.utcnow()
+            item['validate_by'] = 'baidu'
 
             if meta['update_existing']:
                 item['action'] = 'update_latency'
+            else:
+                item['action'] = 'default'
 
             yield item

@@ -1,91 +1,102 @@
 # coding=utf-8
-import hashlib
+from datetime import datetime
 
-import requests
-from scrapy.exceptions import DropItem
-
+from mongoengine import Document, EmbeddedDocument, EmbeddedDocumentField, StringField, IntField, FloatField, \
+    DateTimeField, MapField, connect
 
 __author__ = 'zephyre'
 
 
+class ValidationResult(EmbeddedDocument):
+    # 延迟大小，单位为秒
+    latency = FloatField(min_value=0, required=True)
+
+    # 更新时间戳
+    val_time = DateTimeField(db_field='valTime', required=True)
+
+
+class ProxyDocument(Document):
+    # 代理服务器的scheme, 取值为http或https
+    scheme = StringField(required=True, default='http', choices=['http', 'https'])
+
+    # 代理服务器的地址
+    host = StringField(required=True)
+
+    # 代理服务器的端口
+    port = IntField(min_value=1, max_value=65535, required=True)
+
+    # 代理服务器的用户名（可选）
+    user = StringField(null=True)
+
+    # 代理服务器的密码（可选）
+    password = StringField(null=True)
+
+    # 代理服务器的描述
+    desc = StringField(null=True)
+
+    # 最后一次更新验证结果的时间
+    last_mod = DateTimeField(db_field='lastMod', required=True)
+
+    # 代理服务器的验证结果，key为验证对象的名称，比如baidu，google等
+    validation = MapField(field=EmbeddedDocumentField(ValidationResult))
+
+    meta = {'collection': 'Proxy',
+            'indexes': [{'fields': ['scheme', 'host', 'port'], 'unique': True},
+                        {'fields': ['last_mod'], 'expireAfterSeconds': 3600 * 24 * 7}]}
+
+
 class ProxyPipeline(object):
-    spiders = ['youdaili']
-
     def __init__(self):
-        import logging
-
-        logging.getLogger("requests").setLevel(logging.WARNING)
+        self._conn = {}
 
     @staticmethod
-    def _get_etcd(settings):
-        from requests.auth import HTTPBasicAuth
-
-        user = settings.get('ETCD_USER', '')
-        password = settings.get('ETCD_PASSWORD', '')
-
-        if user and password:
-            auth = HTTPBasicAuth(user, password)
-        else:
-            auth = None
-
-        return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
+    def init_db(settings):
+        mongos = settings.getdict('ANDAMAN_SERVICES')['mongo']
+        endpoints = ['%s:%d' % (server['host'], server['port']) for server in mongos.values()]
+        mongo_conf = settings.getdict('ANDAMAN_CONF')['mongo']
+        user = mongo_conf['user']
+        password = mongo_conf['password']
+        db = mongo_conf['db']
+        mongo_uri = 'mongodb://%s:%s@%s/%s' % (user, password, ','.join(endpoints), db)
+        return connect(host=mongo_uri)
 
     def process_item(self, item, spider):
-        if getattr(spider, 'name', '') not in self.spiders:
+        if getattr(spider, 'name', '') != 'youdaili':
             return item
 
+        # 惰性初始化数据库
         settings = spider.crawler.settings
-        etcd_node = self._get_etcd(settings)
-        auth = etcd_node['auth']
+        spider_name = spider.name
+        if spider_name not in self._conn:
+            conn = self.init_db(settings)
+            if conn:
+                self._conn[spider_name] = conn
 
+        scheme = item['scheme']
         host = item['host']
         port = item['port']
-        scheme = item['scheme']
         proxy = '%s://%s:%d' % (scheme, host, port)
+        desc = item['desc']
+        validate_by = item['validate_by']
+        validate_time = item['validate_time']
+        latency = item['latency']
 
-        m = hashlib.md5(proxy)
-        digest = m.hexdigest()
+        action = item['action']
+        if action == 'discard':
+            spider.logger.debug('Removing proxy: %s' % proxy)
+            ops = {'unset__validation__%s' % validate_by: 1, 'set__last_mod': datetime.utcnow()}
+            ProxyDocument.objects(scheme=scheme, host=host, port=port).update_one(**ops)
+        elif action == 'update_latency':
+            spider.logger.debug('Updating existing proxy: %s' % proxy)
+            ops = {'set__validation__%s__latency' % validate_by: latency, 'set__last_mod': validate_time}
+            ProxyDocument.objects(scheme=scheme, host=host, port=port).update_one(**ops)
+        elif action == 'default':
+            spider.logger.debug('Adding proxy: %s' % proxy)
+            ops = {'set__desc': desc,
+                   'set__validation__%s__latency' % validate_by: latency,
+                   'set__validation__%s__val_time' % validate_by: validate_time,
+                   'set__last_mod': validate_time}
+            ProxyDocument.objects(scheme=scheme, host=host, port=port).update_one(upsert=True, **ops)
 
-        key = '/proxies/%s' % digest
-        base_url = 'http://%s:%d/v2/keys%s' % (etcd_node['host'], etcd_node['port'], key)
-
-        action = item['action'] if 'action' in item else 'default'
-
-        try:
-            if action == 'discard':
-                spider.logger.info('Removing proxy %s: %s' % (digest, proxy))
-                self._process_response(requests.delete(base_url + '?dir=true&recursive=true', auth=auth), spider)
-            elif action == 'update_latency':
-                self._process_response(
-                    requests.put(base_url + '/latency', auth=auth, data={'value': item['latency']}), spider)
-                self._process_response(
-                    requests.put(base_url + '/timestamp', auth=auth, data={'value': item['verifiedTime']}), spider)
-            else:
-                # 默认每个代理服务器项目存活3天
-                ttl = settings.getint('ETCD_TTL', 3600 * 24 * 3)
-
-                requests.put(base_url, auth=auth, data={'ttl': ttl, 'dir': True})
-                self._process_response(requests.put(base_url + '/proxy', auth=auth, data={'value': proxy}), spider)
-                self._process_response(requests.put(base_url + '/desc', auth=auth, data={'value': item['desc']}),
-                                       spider)
-                self._process_response(requests.put(base_url + '/latency', auth=auth, data={'value': item['latency']}),
-                                       spider)
-                self._process_response(
-                    requests.put(base_url + '/timestamp', auth=auth, data={'value': item['verifiedTime']}), spider)
-                return item
-        except IOError:
-            raise DropItem
-
-    @staticmethod
-    def _process_response(response, spider):
-        status_code = response.status_code
-
-        if status_code > 400:
-            if status_code == 401:
-                spider.logger.warning('Insufficient credentials')
-                raise IOError
-            else:
-                spider.logger.warning('Something went wrong with the etcd service: status_code=%d, %s',
-                                      (response.status_code, response))
-                raise IOError
+        return item
 
