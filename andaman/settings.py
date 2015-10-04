@@ -14,14 +14,6 @@ BOT_NAME = 'andaman'
 SPIDER_MODULES = ['andaman.spiders']
 NEWSPIDER_MODULE = 'andaman.spiders'
 
-# MONGO_URI = ['localhost']
-# MONGO_PORT = 27017
-MONGO_HOST = ['119.254.100.93']
-MONGO_PORT = ['32001']
-MONGO_USER = ['scrapy']
-MONGO_PASSWD = ['trat2eM8Gej0aJ4d']
-MONGO_DBNAME = ['scrapy']
-
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'andaman (+http://www.yourdomain.com)'
 
@@ -57,23 +49,25 @@ MONGO_DBNAME = ['scrapy']
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    'andaman.middlewares.dynamicproxy.DynamicProxy': 520,
+    # 'andaman.middlewares.dynamicproxy.DynamicProxy': 520,
 }
 
 # Enable or disable extensions
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
 EXTENSIONS = {
-    'andaman.extensions.dynamicproxy.DynamicProxyExtension': 100
+    # 'andaman.extensions.dynamicproxy.DynamicProxyExtension': 100
+    'andaman.extensions.etcdconf.EtcdConf': 100
 #    'scrapy.telnet.TelnetConsole': None
 }
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'andaman.pipelines.baidu.BaiduNotePipeline': 300,
-    'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
-    'andaman.pipelines.proxy.ProxyPipeline': 100,
-    'andaman.pipelines.qa.QAPipeline': 100
+    'andaman.pipelines.proxy.ProxyPipeline': 100
+    # 'andaman.pipelines.baidu.BaiduNotePipeline': 300,
+    # 'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
+    # 'andaman.pipelines.proxy.ProxyPipeline': 100,
+    # 'andaman.pipelines.qa.QAPipeline': 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

@@ -6,6 +6,7 @@ from twisted.internet import reactor
 from scrapy.crawler import CrawlerRunner
 from scrapy import log
 from scrapy import Spider
+from andaman.spiders.proxy import YoudailiSpider
 
 
 __author__ = 'zephyre'
@@ -142,14 +143,10 @@ def register_pipelines():
 
 def main():
     spider_map = register_spiders()
-    pipelines = register_pipelines()
 
     from scrapy.utils.log import configure_logging
 
     settings = Settings()
-
-    # 加载系统中存在的Pipeline
-    settings.set('ITEM_PIPELINES', {p: 100 for p in pipelines.keys()})
 
     ret = imp.find_module('settings', ['andaman'])
     settings_module = imp.load_module('settings', *ret)
