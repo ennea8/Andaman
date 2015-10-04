@@ -1,5 +1,0 @@
-application: Andaman
-version: "1.0"
-
-include:
-  - "*.yaml"
