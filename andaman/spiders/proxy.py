@@ -14,6 +14,15 @@ __author__ = 'zephyre'
 
 
 class YoudailiSpider(scrapy.Spider):
+    """
+    通过youdaili.net网站，抓取代理服务器列表
+
+    相关设置：
+    * YOUDAILI_TARGET: 目前仅支持web，默认为web
+    * YOUDAILI_PAGES_CNT: 抓取网站前多少页的代理服务器数据，默认为1
+    * YOUDAILI_REQUEST_CNT: 验证代理服务器的时候，访问多次，将每一次访问的延迟综合起来，取其平均值，默认为5次
+    * YOUDAILI_MATCH: 验证代理服务器所使用的字符串
+    """
     name = 'youdaili'
 
     def __init__(self, *args, **kwargs):
