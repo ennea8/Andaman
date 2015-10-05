@@ -27,7 +27,7 @@ class EtcdConf(object):
         :return:
         """
         from requests.auth import HTTPBasicAuth
-        from pyconf import build
+        from lib.pyconf import build
 
         user = settings.get('ETCD_USER')
         password = settings.get('ETCD_PASSWORD')
