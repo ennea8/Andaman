@@ -1,18 +1,23 @@
 # coding=utf-8
 from urlparse import urljoin
 import re
-
 import scrapy
 from scrapy.http import FormRequest, Request
-
-from andaman.items.qa import QAItem
 from andaman.utils.html import html2text, parse_time
+from andaman.items.qa import QAItem
 
 
 __author__ = 'zephyre'
 
 
 class QyerQaSpider(scrapy.Spider):
+    """
+    抓取穷游问答的内容
+
+    Settings:
+    * QYER_QA_PAGES_CNT: 抓取前多少页的内容
+    * QYER_QA_TYPE: 抓取的问题的种类。0: 最新问题, 1: 热门问题, 2: 待回答问题
+    """
     name = 'qyer-qa'
 
     def start_requests(self):
@@ -39,11 +44,22 @@ class QyerQaSpider(scrapy.Spider):
             yield Request(url=urljoin(response.url, href), callback=self.parse_question)
 
     def parse_question(self, response):
+        """
+        解析问题详情页面
+
+        @url http://ask.qyer.com/question/896699.html
+        @returns requests 5 10
+        @returns items 0
+        :return:
+        """
         sel = response.selector
 
         # 相关问题
-        for href in sel.xpath('//div[contains(@class,"ask_sidebar")]//div[contains(@class,"ask_detail_do")]'
-                              '/ul[contains(@class,"mt5")]/li//a[@title and @href]/@href').extract():
+        related_href = set(sel.xpath('//div[contains(@class,"ask_sidebar")]//div[contains(@class,"ask_detail_do")]'
+                                 '/ul[contains(@class,"mt5")]/li//a[@title and @href]/@href').extract())
+        for href in re.findall(r'href="(/question/\d+\.html)"', response.body):
+            related_href.add(href)
+        for href in related_href:
             yield Request(url=urljoin(response.url, href), callback=self.parse_question)
 
         qid = int(re.search(r'question/(\d+)\.html', response.url).group(1))
@@ -100,12 +116,21 @@ class QyerQaSpider(scrapy.Spider):
         yield Request(url=user_url, meta={'item': item}, callback=self.parse_user)
 
     def parse_answers(self, response):
+        """
+        解析某个问题的回答列表
+
+        @url http://ask.qyer.com/index.php?action=ajaxanswer&qid=896699&orderway=use&page=1
+        @returns requests 0
+        @returns items 10 20
+        @scrapes type source qid aid author_nickname author_id timestamp vote_cnt contents
+        :return:
+        """
         sel = response.selector
-        qid = response.meta['qid']
+        qid = response.meta.get('qid', -1)
         for node in sel.xpath('//div[contains(@class,"ask_detail_comment")]/div[contains(@class,"jsanswerbox")]'):
             aid = int(node.xpath('.//a[@href and contains(@class,"jsjubaoanswer") and @value]/@value').extract()[0])
             user_node = node.xpath('./div[@class="mod_discuss_face"]/div[@class="ui_headPort" and @alt]')[0]
-            author_id = user_node.xpath('./@alt').extract()[0]
+            author_id = int(user_node.xpath('./@alt').extract()[0])
             avatar_node = user_node.xpath('./a[@href]/img[@src and @alt]')[0]
 
             author_avatar = self._get_avatar(avatar_node.xpath('./@src').extract()[0])
@@ -149,7 +174,17 @@ class QyerQaSpider(scrapy.Spider):
         return parse_time(time_str)
 
     def parse_user(self, response):
-        item = response.meta['item']
+        """
+        获得用户的详细信息
+
+        @url http://www.qyer.com/u/4511680
+        @returns requests 0
+        @returns item 1
+        @scrapes author_nickname author_id
+        :param response:
+        :return:
+        """
+        item = response.meta.get('item', QAItem())
 
         item['author_id'] = int(re.search(r'/u/(\d+)$', response.url).group(1))
 
