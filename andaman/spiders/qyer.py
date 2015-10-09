@@ -5,7 +5,6 @@ import scrapy
 from scrapy.http import FormRequest, Request
 from andaman.utils.html import html2text, parse_time
 from andaman.items.qa import QAItem
-from scrapy.shell import inspect_response
 
 
 __author__ = 'zephyre'
@@ -131,7 +130,7 @@ class QyerQaSpider(scrapy.Spider):
         for node in sel.xpath('//div[contains(@class,"ask_detail_comment")]/div[contains(@class,"jsanswerbox")]'):
             aid = int(node.xpath('.//a[@href and contains(@class,"jsjubaoanswer") and @value]/@value').extract()[0])
             user_node = node.xpath('./div[@class="mod_discuss_face"]/div[@class="ui_headPort" and @alt]')[0]
-            author_id = user_node.xpath('./@alt').extract()[0]
+            author_id = int(user_node.xpath('./@alt').extract()[0])
             avatar_node = user_node.xpath('./a[@href]/img[@src and @alt]')[0]
 
             author_avatar = self._get_avatar(avatar_node.xpath('./@src').extract()[0])
