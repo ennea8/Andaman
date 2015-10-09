@@ -7,6 +7,9 @@ __author__ = 'zephyre'
 class QAPipeline(object):
     @classmethod
     def from_crawler(cls, crawler):
+        if not crawler.settings.getbool('PIPELINE_QA_ENABLED', False):
+            from scrapy.exceptions import NotConfigured
+            raise NotConfigured
         return cls(crawler.settings)
 
     @staticmethod
@@ -65,10 +68,7 @@ class QAPipeline(object):
         return {'host': settings.get('ETCD_HOST', 'etcd'), 'port': settings.getint('ETCD_PORT', 2379), 'auth': auth}
 
     def process_item(self, item, spider):
-        if type(item).__name__ == 'QAItem':
-            return self.process_qa(item, spider)
-        else:
-            return item
+        return self.process_qa(item, spider)
 
     def process_qa(self, item, spider):
         data = {}

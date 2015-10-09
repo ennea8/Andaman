@@ -49,25 +49,23 @@ NEWSPIDER_MODULE = 'andaman.spiders'
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    # 'andaman.middlewares.dynamicproxy.DynamicProxy': 520,
+    'andaman.middlewares.AndamanProxyMiddleware': 1100
 }
 
 # Enable or disable extensions
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
 EXTENSIONS = {
-    # 'andaman.extensions.dynamicproxy.DynamicProxyExtension': 100
     'andaman.extensions.etcdconf.EtcdConf': 100
-#    'scrapy.telnet.TelnetConsole': None
 }
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'andaman.pipelines.proxy.ProxyPipeline': 100
+    'andaman.pipelines.proxy.ProxyPipeline': 100,
     # 'andaman.pipelines.baidu.BaiduNotePipeline': 300,
     # 'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     # 'andaman.pipelines.proxy.ProxyPipeline': 100,
-    # 'andaman.pipelines.qa.QAPipeline': 100
+    'andaman.pipelines.qa.QAPipeline': 110
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

@@ -46,6 +46,13 @@ class ProxyDocument(Document):
 
 
 class ProxyPipeline(object):
+    @classmethod
+    def from_crawler(cls, crawler):
+        if not crawler.settings.getbool('PIPELINE_PROXY_ENABLED', False):
+            from scrapy.exceptions import NotConfigured
+            raise NotConfigured
+        return cls()
+
     def __init__(self):
         self._conn = {}
 
@@ -61,9 +68,6 @@ class ProxyPipeline(object):
         return connect(host=mongo_uri)
 
     def process_item(self, item, spider):
-        if getattr(spider, 'name', '') != 'youdaili':
-            return item
-
         # 惰性初始化数据库
         settings = spider.crawler.settings
         spider_name = spider.name
