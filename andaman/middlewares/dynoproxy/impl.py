@@ -70,6 +70,7 @@ class DynoProxyMiddleware(object):
 
     def add_fail_cnt(self, proxy, spider):
         fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
+        self.proxy_pool[proxy]['fail_cnt'] = fail_cnt
         if fail_cnt > self.max_fail:
             self.deregister_proxy(proxy, spider)
 
