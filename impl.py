@@ -1,4 +1,5 @@
 # coding=utf-8
+import logging
 from scrapy.exceptions import NotConfigured
 
 __author__ = 'zephyre'
@@ -66,13 +67,19 @@ class DynoProxyMiddleware(object):
         return meta
 
     def reset_fail_cnt(self, proxy, spider):
-        self.proxy_pool[proxy]['fail_cnt'] = 0
+        try:
+            self.proxy_pool[proxy]['fail_cnt'] = 0
+        except KeyError:
+            pass
 
     def add_fail_cnt(self, proxy, spider):
-        fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
-        self.proxy_pool[proxy]['fail_cnt'] = fail_cnt
-        if fail_cnt > self.max_fail:
-            self.deregister_proxy(proxy, spider)
+        try:
+            fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
+            self.proxy_pool[proxy]['fail_cnt'] = fail_cnt
+            if fail_cnt > self.max_fail:
+                self.deregister_proxy(proxy, spider)
+        except KeyError:
+            pass
 
     def deregister_proxy(self, proxy, spider):
         """
@@ -81,7 +88,8 @@ class DynoProxyMiddleware(object):
         :param spider:
         :return:
         """
-        spider.logger.warn('Removing %s from the proxy pool' % proxy)
+        logging.getLogger('scrapy').warning(
+            'Removing %s from the proxy pool. %d proxies left.' % (proxy, len(self.proxy_pool)))
         self.disabled_proxies.add(proxy)
         try:
             del self.proxy_pool[proxy]
