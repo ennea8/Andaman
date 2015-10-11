@@ -9,7 +9,6 @@ from twisted.internet import threads
 from qiniu import Auth, BucketManager
 from scrapy.exceptions import NotConfigured
 
-
 __author__ = 'zephyre'
 
 
@@ -101,7 +100,7 @@ class QiniuPipeline(FilesPipeline):
             raise NotConfigured
         self.store = QiniuFilesStore(bucket, settings)
 
-        self.key_prefix = settings.get('PIPELINE_QINIU_KEY_PREFIX')
+        self.key_prefix = (settings.get('PIPELINE_QINIU_KEY_PREFIX') or '').strip()
         if not self.key_prefix:
             logging.getLogger('scrapy').error('PIPELINE_QINIU_KEY_PREFIX not specified')
             raise NotConfigured
