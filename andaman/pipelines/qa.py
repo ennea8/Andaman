@@ -131,7 +131,23 @@ class QAPipeline(object):
         entry.contents = (item.get('contents') or '').strip()
         entry.author = (item.get('author_nickname') or '').strip()
         entry.author_id = item.get('author_id')
-        entry.avatar = (item.get('author_avatar') or '').strip()
+
+        # 按次序，分别在images, files和author_avatar中查找头像的url
+        raw_avatar = (item.get('author_avatar') or '').strip()
+        avatar = None
+        for field in ('images', 'files'):
+            if field not in item:
+                continue
+            for f in item[field]:
+                if f['url'].strip() != raw_avatar:
+                    continue
+                avatar = f['path']
+                break
+            if avatar:
+                break
+        avatar = avatar or ''
+        entry.avatar = avatar
+
         entry.timestamp = datetime.utcfromtimestamp(int(item['timestamp']/1000))
 
         return entry
