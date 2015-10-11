@@ -1,10 +1,11 @@
 # coding=utf-8
+import logging
+import threading
 from scrapy.exceptions import NotConfigured
 from mongoengine import connect
 
 from andaman.middlewares.dynoproxy import DynoProxyMiddleware
 from andaman.pipelines.proxy import ProxyDocument
-
 
 __author__ = 'zephyre'
 
@@ -15,7 +16,6 @@ def set_interval(interval):
     :param interval:
     :return:
     """
-    import threading
 
     def decorator(function):
         def wrapper(*args, **kwargs):
@@ -36,6 +36,14 @@ def set_interval(interval):
 
 
 class AndamanProxyMiddleware(DynoProxyMiddleware):
+    """
+    设置项：
+
+    * DYNO_PROXY_VAL_SRC: 代理服务器的验证对象
+    * DYNO_PROXY_REFRESH_INTERVAL: 代理服务器的最大延迟（秒）
+    * DYNO_PROXY_REFRESH_INTERVAL: 代理服务器的刷新频率（秒）
+    """
+
     @classmethod
     def from_crawler(cls, crawler):
         if not crawler.settings.getbool('DYNO_PROXY_ENABLED'):
@@ -87,9 +95,25 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
 
         self.validation_src = settings.get('DYNO_PROXY_VAL_SRC', 'baidu')
         self.max_latency = settings.get('DYNO_PROXY_MAX_LATENCY', 1)
+        self.refresh_interval = settings.get('DYNO_PROXY_REFRESH_INTERVAL', 1800)
 
         # Initializing the proxy pool
+        # self.update_proxy_pool()
+        self.schedule_proxies_refresh()
+
+    def schedule_proxies_refresh(self):
         self.update_proxy_pool()
+
+        interval = self.refresh_interval
+        stopped = threading.Event()
+
+        def loop():  # executed in another thread
+            while not stopped.wait(interval):  # until stopped
+                self.update_proxy_pool()
+
+        t = threading.Thread(target=loop)
+        t.daemon = True  # stop if the program exits
+        t.start()
 
     def update_proxy_pool(self):
         proxy_map = {entry[0]: {'fail_cnt': 0, 'latency': entry[1]} for entry in
@@ -99,6 +123,5 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
         for k, v in proxy_map.items():
             self.proxy_pool[k] = v
 
-    @set_interval(1800)
-    def refresh_proxies(self):
-        self.update_proxy_pool()
+        logging.getLogger('scrapy').info(
+            'Proxy pool has been updated. There are %d proxies in all' % len(self.proxy_pool))

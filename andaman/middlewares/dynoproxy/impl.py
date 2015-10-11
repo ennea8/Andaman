@@ -1,4 +1,5 @@
 # coding=utf-8
+import logging
 from scrapy.exceptions import NotConfigured
 
 __author__ = 'zephyre'
@@ -35,7 +36,7 @@ class DynoProxyMiddleware(object):
 
     def process_request(self, request, spider):
         # Conditions in which the dyno-proxy mechanism is bypassed
-        if 'proxy' in request.meta or getattr(request.meta, 'dyno_proxy_ignored', False):
+        if 'proxy' in request.meta or request.meta.get('dyno_proxy_ignored'):
             return
 
         import random
@@ -66,12 +67,19 @@ class DynoProxyMiddleware(object):
         return meta
 
     def reset_fail_cnt(self, proxy, spider):
-        self.proxy_pool[proxy]['fail_cnt'] = 0
+        try:
+            self.proxy_pool[proxy]['fail_cnt'] = 0
+        except KeyError:
+            pass
 
     def add_fail_cnt(self, proxy, spider):
-        fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
-        if fail_cnt > self.max_fail:
-            self.deregister_proxy(proxy, spider)
+        try:
+            fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
+            self.proxy_pool[proxy]['fail_cnt'] = fail_cnt
+            if fail_cnt > self.max_fail:
+                self.deregister_proxy(proxy, spider)
+        except KeyError:
+            pass
 
     def deregister_proxy(self, proxy, spider):
         """
@@ -80,7 +88,8 @@ class DynoProxyMiddleware(object):
         :param spider:
         :return:
         """
-        spider.logger.warn('Removing %s from the proxy pool' % proxy)
+        logging.getLogger('scrapy').warning(
+            'Removing %s from the proxy pool. %d proxies left.' % (proxy, len(self.proxy_pool)))
         self.disabled_proxies.add(proxy)
         try:
             del self.proxy_pool[proxy]
@@ -100,8 +109,12 @@ class DynoProxyMiddleware(object):
         # * the status code is less than 400
         # * the response body is not empty
         # * the validator_func returns true
-        validator_func = getattr(meta, 'dyno_proxy_validator', lambda _: True)
-        is_valid = getattr(response, 'status', 500) < 400 and response.body.strip() and validator_func(response)
+        validator_func = meta.get('dyno_proxy_validator')
+        if validator_func:
+            is_valid = validator_func(response)
+        else:
+            status_code = getattr(response, 'status', 500)
+            is_valid = 200 <= status_code < 400 and response.body.strip()
 
         if is_valid:
             self.reset_fail_cnt(proxy, spider)
