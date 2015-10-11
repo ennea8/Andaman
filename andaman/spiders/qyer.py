@@ -6,7 +6,6 @@ from scrapy.http import FormRequest, Request
 from andaman.utils.html import html2text, parse_time
 from andaman.items.qa import QAItem
 
-
 __author__ = 'zephyre'
 
 
@@ -37,11 +36,57 @@ class QyerQaSpider(scrapy.Spider):
                               formdata={'action': 'indexmore', 'start': str(page * page_size), 'type': str(qa_type),
                                         'from': str(0)})
 
+    @staticmethod
+    def _validate_response(response):
+        """
+        验证response是否有效
+
+        验证标准：
+
+        * status code为2XX, 3XX
+        * 非空
+        * 不能类似下面这样的响应：
+
+            <html xmlns="http://www.w3.org/1999/xhtml">
+            <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+            <title>正在审核中</title>
+            <link rel="shortcut icon" href="http://www.qyer.com/favicon.ico" />
+            <link href="http://static.qyer.com/css/common/base.css" rel="stylesheet" type="text/css" />
+            <link href="http://static.qyer.com/css/login/skip.css" rel="stylesheet" type="text/css" />
+            </head>
+
+            <body>
+            <div style="display: none;"><!--{$res.synlogin}--></div>
+            <div class="skip_wap">
+                    <div class="skip_cnt">
+                            <h1 class="icon_skip_warn">啊哦，您查看的内容有点小毛病，正在小黑屋进行例行“体检”。请耐心等待体检后的结果再来浏览吧！</h1>
+                    </div>
+            </div>
+            </body>
+            </html>
+        """
+        status_code = getattr(response, 'status', 500)
+        if status_code < 200 or status_code >= 400 or not response.body.strip():
+            return False
+
+        if not hasattr(response, 'selector'):
+            # 有些response，比如图像等，没有selector
+            return True
+
+        sel = response.selector
+        tmp = sel.xpath('//title/text()').extract()
+        if tmp:
+            return tmp[0].strip() != u'正在审核中'
+        else:
+            return True
+
     def parse(self, response):
         sel = response.selector
         for href in sel.xpath('//div[contains(@class,"ask_item_main_item_list")]//*[@class='
                               '"ask_item_main_item_list_title"]/a[@href]/@href').extract():
-            yield Request(url=urljoin(response.url, href), callback=self.parse_question)
+            yield Request(url=urljoin(response.url, href), callback=self.parse_question,
+                          meta={'dyno_proxy_validator': self._validate_response})
 
     def parse_question(self, response):
         """
@@ -56,17 +101,18 @@ class QyerQaSpider(scrapy.Spider):
 
         # 相关问题
         related_href = set(sel.xpath('//div[contains(@class,"ask_sidebar")]//div[contains(@class,"ask_detail_do")]'
-                                 '/ul[contains(@class,"mt5")]/li//a[@title and @href]/@href').extract())
+                                     '/ul[contains(@class,"mt5")]/li//a[@title and @href]/@href').extract())
         for href in re.findall(r'href="(/question/\d+\.html)"', response.body):
             related_href.add(href)
         for href in related_href:
-            yield Request(url=urljoin(response.url, href), callback=self.parse_question)
+            yield Request(url=urljoin(response.url, href), callback=self.parse_question,
+                          meta={'dyno_proxy_validator': self._validate_response})
 
         qid = int(re.search(r'question/(\d+)\.html', response.url).group(1))
 
         # 回答
         yield Request(url='http://ask.qyer.com/index.php?action=ajaxanswer&qid=%d&orderway=use&page=1' % qid,
-                      callback=self.parse_answers, meta={'qid': qid})
+                      callback=self.parse_answers, meta={'qid': qid, 'dyno_proxy_validator': self._validate_response})
 
         try:
             q_details = sel.xpath('//div[contains(@class,"ask_item_main")]//div[contains(@class,'
@@ -113,7 +159,8 @@ class QyerQaSpider(scrapy.Spider):
         item['tags'] = tags
         item['timestamp'] = timestamp
 
-        yield Request(url=user_url, meta={'item': item}, callback=self.parse_user)
+        yield Request(url=user_url, meta={'item': item, 'dyno_proxy_validator': self._validate_response},
+                      callback=self.parse_user)
 
     def parse_answers(self, response):
         """
@@ -204,4 +251,3 @@ class QyerQaSpider(scrapy.Spider):
             '//div[@class="infos"]/*[@class="name"]/*[@data-bn-ipg="usercenter-username"]/text()').extract()[0]
 
         yield item
-
