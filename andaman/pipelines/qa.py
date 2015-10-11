@@ -40,7 +40,7 @@ class Question(BaseEntry):
     title = StringField(min_length=1, required=True)
 
     # 问题的主题（比如：『美国』板块）
-    topic = StringField(min_length=1, max_length=20)
+    topic = ListField(StringField(min_length=1, max_length=20))
 
     # 标签
     tags = ListField(StringField(min_length=1, max_length=20))
@@ -162,7 +162,7 @@ class QAPipeline(object):
         """
         entry.qid = item['qid']
         entry.title = item['title']
-        entry.topic = (item.get('topic') or '').strip() or None
+        entry.topic = item.get('topic')
         entry.tags = filter(lambda v: v.strip(), [tmp.strip() for tmp in item.get('tags', [])])
         return entry
 

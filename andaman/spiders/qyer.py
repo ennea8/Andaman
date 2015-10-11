@@ -93,7 +93,7 @@ class QyerQaSpider(scrapy.Spider):
         解析问题详情页面
 
         @url http://ask.qyer.com/question/896699.html
-        @returns requests 5 10
+        @returns requests 5 30
         @returns items 0
         :return:
         """
@@ -111,8 +111,9 @@ class QyerQaSpider(scrapy.Spider):
         qid = int(re.search(r'question/(\d+)\.html', response.url).group(1))
 
         # 回答
-        yield Request(url='http://ask.qyer.com/index.php?action=ajaxanswer&qid=%d&orderway=use&page=1' % qid,
-                      callback=self.parse_answers, meta={'qid': qid, 'dyno_proxy_validator': self._validate_response})
+        response.meta['qid'] = qid
+        for req in self.parse_answers(response):
+            yield req
 
         try:
             q_details = sel.xpath('//div[contains(@class,"ask_item_main")]//div[contains(@class,'
@@ -137,27 +138,34 @@ class QyerQaSpider(scrapy.Spider):
         tags = [html2text(tmp) for tmp in q_contents.xpath(
             './div[contains(@class,"ask_detail_content_tag")]/a[@href and @class="ask_tag"]').extract()]
 
-        time_str = q_contents.xpath('./div[contains(@class,"mt10")]//p[contains(@class,"fl") and '
-                                    'contains(@class,"asker")]/span/text()').extract()[0]
-        timestamp = self._get_timestamp(time_str)
+        timestamp = None
+        for time_str in q_contents.xpath('./div[contains(@class,"question-info")]//p[contains(@class,"asker")]/span'
+                                         '/text()').extract():
+            try:
+                timestamp = self._get_timestamp(time_str)
+                break
+            except ValueError:
+                continue
 
         tmp = q_contents.xpath(
-            './div[contains(@class,"mt10")]/span[contains(@class,"fl")]/a[@title and @href]/@title').extract()
+            './div[contains(@class,"question-info")]/div[contains(@class,"from-bbs")]/a[@title and @href]')
         if tmp:
-            topic = tmp[0]
+            tmp = tmp[0]
+            topic_list = [t.strip() for t in tmp.xpath('./@title').extract()[0].split('/') if t.strip()]
         else:
-            topic = None
+            topic_list = []
 
         item = QAItem()
         item['type'] = 'question'
         item['source'] = 'qyer'
         item['qid'] = qid
         item['title'] = title
-        if topic:
-            item['topic'] = topic
+        if topic_list:
+            item['topic'] = topic_list
         item['contents'] = contents
         item['tags'] = tags
-        item['timestamp'] = timestamp
+        if timestamp:
+            item['timestamp'] = timestamp
 
         yield Request(url=user_url, meta={'item': item, 'dyno_proxy_validator': self._validate_response},
                       callback=self.parse_user)
@@ -183,12 +191,19 @@ class QyerQaSpider(scrapy.Spider):
             author_avatar = self._get_avatar(avatar_node.xpath('./@src').extract()[0])
             author_nickname = avatar_node.xpath('./@alt').extract()[0]
 
-            time_str = node.xpath('.//div[@class="jsanswercontent"]/a[1]/following-sibling::node()').extract()[0]
+            # time_str = node.xpath('.//div[@class="jsanswercontent"]/a[1]/following-sibling::node()').extract()[0]
+            time_str = node.xpath('.//div[@class="jsanswercontent"]/div[@class="mod_discuss_box_name"]'
+                                  '/text()').extract()[-1]
+
+            from scrapy.shell import inspect_response
+            # inspect_response(response, self)
+
             timestamp = self._get_timestamp(time_str)
 
             contents = html2text(node.xpath('.//div[contains(@class,"mod_discuss_box_text")]').extract()[0])
 
-            vote_cnt = int(node.xpath('.//a[contains(@class,"jsaskansweruseful")]/span/text()').extract()[0])
+            vote_cnt = int(node.xpath('.//a[contains(@class,"jsaskansweruseful")]/span[@class="upvote-count"]'
+                                      '/text()').extract()[0])
 
             item = QAItem()
             item['type'] = 'answer'
@@ -217,7 +232,10 @@ class QyerQaSpider(scrapy.Spider):
 
     @staticmethod
     def _get_timestamp(time_str):
-        time_str = re.search(r'\s*\|(.+)', time_str).group(1).strip()
+        try:
+            time_str = re.search(r'\s*\|(.+)', time_str).group(1).strip()
+        except AttributeError:
+            raise ValueError('Invalid time string: %s' % time_str)
         return parse_time(time_str)
 
     def parse_user(self, response):
