@@ -36,7 +36,7 @@ class DynoProxyMiddleware(object):
 
     def process_request(self, request, spider):
         # Conditions in which the dyno-proxy mechanism is bypassed
-        if 'proxy' in request.meta or getattr(request.meta, 'dyno_proxy_ignored', False):
+        if 'proxy' in request.meta or request.meta.get('dyno_proxy_ignored'):
             return
 
         import random
@@ -109,8 +109,12 @@ class DynoProxyMiddleware(object):
         # * the status code is less than 400
         # * the response body is not empty
         # * the validator_func returns true
-        validator_func = getattr(meta, 'dyno_proxy_validator', lambda _: True)
-        is_valid = getattr(response, 'status', 500) < 400 and response.body.strip() and validator_func(response)
+        validator_func = meta.get('dyno_proxy_validator')
+        if validator_func:
+            is_valid = validator_func(response)
+        else:
+            status_code = getattr(response, 'status', 500)
+            is_valid = 200 <= status_code < 400 and response.body.strip()
 
         if is_valid:
             self.reset_fail_cnt(proxy, spider)
