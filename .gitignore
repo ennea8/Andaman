@@ -14,3 +14,5 @@ setup.py
 *.pid
 scrapy.cfg
 andaman.egg-info/
+
+andaman/settings_priv.py

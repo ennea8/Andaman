@@ -63,8 +63,7 @@ EXTENSIONS = {
 ITEM_PIPELINES = {
     'andaman.pipelines.proxy.ProxyPipeline': 100,
     # 'andaman.pipelines.baidu.BaiduNotePipeline': 300,
-    # 'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
-    # 'andaman.pipelines.proxy.ProxyPipeline': 100,
+    'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     'andaman.pipelines.qa.QAPipeline': 110
 }
 
@@ -86,3 +85,10 @@ ITEM_PIPELINES = {
 #HTTPCACHE_DIR='httpcache'
 #HTTPCACHE_IGNORE_HTTP_CODES=[]
 #HTTPCACHE_STORAGE='scrapy.extensions.httpcache.FilesystemCacheStorage'
+
+# Qiniu pipeline settings
+PIPELINE_QINIU_BUCKET="aizou"
+
+# Download settings
+RETRY_TIMES=5
+DOWNLOAD_TIMEOUT=10

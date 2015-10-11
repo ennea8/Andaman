@@ -1,33 +1,22 @@
 # coding=utf-8
 import json
+import logging
 import sys
 
 from scrapy.http import Response
 from scrapy.pipelines.files import FilesPipeline
 from twisted.internet import threads
 from qiniu import Auth, BucketManager
-
+from scrapy.exceptions import NotConfigured
 
 __author__ = 'zephyre'
 
 
 class QiniuFilesStore(object):
-    def _get_key(self, key):
-        from andaman.utils import etcd
-
-        etcd_info = etcd.get_etcd_info(self.settings)
-        return etcd.get_etcd_key(etcd_info, '/project-conf/andaman/qiniu/%s' % key).encode('utf-8')
-
     def get_access_key(self):
-        if not self._access_key:
-            ak = self._get_key('accessKey')
-            self._access_key = ak
         return self._access_key
 
     def get_secret_key(self):
-        if not self._secret_key:
-            sk = self._get_key('secretKey')
-            self._secret_key = sk
         return self._secret_key
 
     def get_bucket_mgr(self):
@@ -49,8 +38,12 @@ class QiniuFilesStore(object):
         self.bucket = bucket
         self.settings = settings
 
-        self._access_key = None
-        self._secret_key = None
+        self._access_key = settings.get('PIPELINE_QINIU_AK')
+        self._secret_key = settings.get('PIPELINE_QINIU_SK')
+        if not self._access_key or not self._secret_key:
+            logging.getLogger('scrapy').error('PIPELINE_QINIU_AK or PIPELINE_QINIU_SK not specified.')
+            raise NotConfigured
+
         self._bucket_mgr = None
 
     def get_file_stat(self, key):
@@ -83,7 +76,13 @@ class QiniuFilesStore(object):
 
 
 class QiniuPipeline(FilesPipeline):
-    DEFAULT_EXPIRES = sys.maxint
+    """
+    设置项：
+
+    * PIPELINE_QINIU_ENABLED: 是否启用本pipeline
+    * PIPELINE_QINIU_BUCKET: 存放在哪个bucket中
+    * PIPELINE_QINIU_KEY_PREFIX: 资源在七牛中的key的名称为：prefix + hash(request.url)
+    """
     MEDIA_NAME = "file"
     DEFAULT_FILES_URLS_FIELD = 'file_urls'
     DEFAULT_FILES_RESULT_FIELD = 'files'
@@ -95,15 +94,21 @@ class QiniuPipeline(FilesPipeline):
         :return:
         """
         # 存放到哪个bucket中
-        bucket = settings.get('QINIU_BUCKET', 'aizou')
-
-        # 默认情况下，图像在七牛中的key，是由图像的url等决定的。但是，也可以为key指定一个前缀。默认为''
-        self.key_prefix = settings.get('QINIU_KEY_PREFIX', '')
-
+        bucket = settings.get('PIPELINE_QINIU_BUCKET')
+        if not bucket:
+            logging.getLogger('scrapy').error('PIPELINE_QINIU_BUCKET not specified')
+            raise NotConfigured
         self.store = QiniuFilesStore(bucket, settings)
+
+        self.key_prefix = (settings.get('PIPELINE_QINIU_KEY_PREFIX') or '').strip()
+        if not self.key_prefix:
+            logging.getLogger('scrapy').error('PIPELINE_QINIU_KEY_PREFIX not specified')
+            raise NotConfigured
+
         super(FilesPipeline, self).__init__(download_func=self.fetch)
 
     def fetch(self, request, spider):
+        """download_func"""
         key = self.file_path(request)
         ret = self.store.fetch_file(request.url, key)
 
@@ -111,9 +116,11 @@ class QiniuPipeline(FilesPipeline):
 
     @classmethod
     def from_settings(cls, settings):
+        if not settings.getbool('PIPELINE_QINIU_ENABLED', False):
+            raise NotConfigured
         cls.FILES_URLS_FIELD = settings.get('FILES_URLS_FIELD', cls.DEFAULT_FILES_URLS_FIELD)
         cls.FILES_RESULT_FIELD = settings.get('FILES_RESULT_FIELD', cls.DEFAULT_FILES_RESULT_FIELD)
-        cls.EXPIRES = settings.get('QINIU_EXPIRE', cls.DEFAULT_EXPIRES)
+        cls.EXPIRES = settings.getint('FILES_EXPIRES', sys.maxint)
 
         return cls(settings=settings)
 
