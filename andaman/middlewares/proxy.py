@@ -94,8 +94,8 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
         self._conn = self.init_db(settings)
 
         self.validation_src = settings.get('DYNO_PROXY_VAL_SRC', 'baidu')
-        self.max_latency = settings.get('DYNO_PROXY_MAX_LATENCY', 1)
-        self.refresh_interval = settings.get('DYNO_PROXY_REFRESH_INTERVAL', 1800)
+        self.max_latency = settings.getfloat('DYNO_PROXY_MAX_LATENCY', 1)
+        self.refresh_interval = settings.getint('DYNO_PROXY_REFRESH_INTERVAL', 1800)
 
         # Initializing the proxy pool
         # self.update_proxy_pool()
