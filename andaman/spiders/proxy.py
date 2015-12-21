@@ -9,7 +9,6 @@ from scrapy.http import Request
 
 from andaman.items.proxy import ProxyItem
 
-
 __author__ = 'zephyre'
 
 
@@ -89,7 +88,10 @@ class YoudailiSpider(scrapy.Spider):
 
     def parse(self, response):
         """
-        处理：http://www.youdaili.net/Daili/http/list_1.html
+        处理发布代理的帖子的列表
+        @url http://www.youdaili.net/Daili/http/list_1.html
+        @returns items 0 0
+        @returns requests 15 15
         """
         for href in response.selector.xpath(
                 '//div[@class="newslist_body"]/ul[@class="newslist_line"]/li/a[@href]/@href'):
@@ -98,12 +100,12 @@ class YoudailiSpider(scrapy.Spider):
 
     def parse_proxy_list(self, response):
         """
-        处理：http://www.youdaili.net/Daili/http/3449_1.html
-        :param response:
-        :return:
+        处理代理列表
+        @url http://www.youdaili.net/Daili/http/3986.html
+        @returns requests 154 154
         """
         # 如果是第一页，需要处理分页
-        if response.meta['page'] == 1:
+        if response.meta.get('page', 1) == 1:
             for node in response.selector.xpath('//div[@class="dede_pages"]/ul[@class="pagelist"]/li/a[@href]'):
                 try:
                     page_num = int(node.xpath('./text()').extract()[0])

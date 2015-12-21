@@ -3,6 +3,7 @@ from datetime import datetime
 
 from mongoengine import Document, EmbeddedDocument, EmbeddedDocumentField, StringField, IntField, FloatField, \
     DateTimeField, MapField, connect
+import logging
 
 __author__ = 'zephyre'
 
@@ -58,14 +59,16 @@ class ProxyPipeline(object):
 
     @staticmethod
     def init_db(settings):
-        mongos = settings.getdict('ANDAMAN_SERVICES')['mongo']
-        endpoints = ['%s:%d' % (server['host'], server['port']) for server in mongos.values()]
-        mongo_conf = settings.getdict('ANDAMAN_CONF')['mongo']
-        user = mongo_conf['user']
-        password = mongo_conf['password']
-        db = mongo_conf['db']
-        mongo_uri = 'mongodb://%s:%s@%s/%s' % (user, password, ','.join(endpoints), db)
-        return connect(host=mongo_uri)
+        """
+        初始化MongoDB数据库连接
+        :param settings:
+        :return:
+        """
+        mongo_uri = settings.get('ANDAMAN_MONGO_URI')
+        if mongo_uri:
+            return connect(host=mongo_uri)
+        else:
+            logging.error('Cannot find setting ANDAMAN_MONGO_URI, MongoDB connection is disabled')
 
     def process_item(self, item, spider):
         # 惰性初始化数据库
@@ -75,6 +78,10 @@ class ProxyPipeline(object):
             conn = self.init_db(settings)
             if conn:
                 self._conn[spider_name] = conn
+        else:
+            conn = self._conn[spider_name]
+        if not conn:
+            return item
 
         scheme = item['scheme']
         host = item['host']

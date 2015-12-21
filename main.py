@@ -118,6 +118,12 @@ def register(dir_name, criteria_func, key_func, value_func=lambda v, p: v):
 
 
 def register_spiders():
+    """
+    将Spider进行注册. 判断标准:
+    * 继承自Spider类
+    * 包含name属性
+    :return:
+    """
     def criteria_func(cls, full_name):
         import inspect
 
@@ -130,6 +136,12 @@ def register_spiders():
 
 
 def register_pipelines():
+    """
+    将pipeline进行注册. 判断标准:
+    * 类名以Pipeline结尾
+    * 包含process_item方法
+    :return:
+    """
     def criteria_func(cls, full_name):
         import inspect
 
