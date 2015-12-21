@@ -1,5 +1,6 @@
 # coding=utf-8
 import logging
+import threading
 from scrapy.exceptions import NotConfigured
 
 __author__ = 'zephyre'
@@ -26,13 +27,29 @@ class DynoProxyMiddleware(object):
         self.max_fail = max_fail
         # Pool of proxy servers, e.g. {'http://224.224.224.224:3128': {'fail_cnt': 3, 'latency': 0.2}}
         self.proxy_pool = {}
+
+        # Proxies that are disabled (possibly due to pool health condition)
         self.disabled_proxies = set([])
 
-    def update_proxy_pool(self):
+        self._lock = threading.Lock()
+        self.logger = logging.getLogger('andaman-proxy')
+
+    def update_proxy_pool(self, new_proxies):
         """
         Update the existing proxy pool
         """
-        raise NotImplementedError
+        try:
+            self._lock.acquire()
+            proxy_map = {entry[0]: {'fail_cnt': 0, 'latency': entry[1]} for entry in new_proxies if
+                         entry[0] not in self.disabled_proxies}
+
+            for k, v in proxy_map.items():
+                self.proxy_pool[k] = v
+        finally:
+            self._lock.release()
+
+        logging.getLogger('scrapy').info(
+            'Proxy pool has been updated. There are %d proxies in all' % len(self.proxy_pool))
 
     def process_request(self, request, spider):
         # Conditions in which the dyno-proxy mechanism is bypassed
@@ -41,14 +58,17 @@ class DynoProxyMiddleware(object):
 
         import random
 
+        proxy = None
         try:
             proxy = random.choice(self.proxy_pool.keys())
-            spider.logger.debug('Randomly selecting a proxy: %s' % proxy)
+            self.logger.debug('Randomly selecting a proxy: %s' % proxy)
+        except IndexError:
+            self.logger.warning('The middleware is bypassed because the proxy pool is empty')
+
+        if proxy:
             request.meta['proxy'] = proxy
             # This flag indicates that the middleware has successfully applied a proxy server on the request
             request.meta['dyno_proxy_flag'] = True
-        except IndexError:
-            spider.logger.warning('The middleware is bypassed because the proxy pool is empty')
 
     @staticmethod
     def _strip_meta(meta):
@@ -67,34 +87,43 @@ class DynoProxyMiddleware(object):
         return meta
 
     def reset_fail_cnt(self, proxy, spider):
+        """
+        重置某个proxy的失败计数器
+        """
         try:
             self.proxy_pool[proxy]['fail_cnt'] = 0
         except KeyError:
             pass
 
     def add_fail_cnt(self, proxy, spider):
+        """
+        某个proxy的失败计数器自增1
+        """
         try:
+            self._lock.acquire()
             fail_cnt = self.proxy_pool[proxy]['fail_cnt'] + 1
             self.proxy_pool[proxy]['fail_cnt'] = fail_cnt
             if fail_cnt > self.max_fail:
                 self.deregister_proxy(proxy, spider)
         except KeyError:
             pass
+        finally:
+            self._lock.release()
 
     def deregister_proxy(self, proxy, spider):
         """
-        Remove a proxy from the pool
-        :param proxy:
-        :param spider:
-        :return:
+        将某个proxy移除出proxy pool
         """
         logging.getLogger('scrapy').warning(
             'Removing %s from the proxy pool. %d proxies left.' % (proxy, len(self.proxy_pool)))
         self.disabled_proxies.add(proxy)
         try:
+            self._lock.acquire()
             del self.proxy_pool[proxy]
         except KeyError:
             pass
+        finally:
+            self._lock.release()
 
     def process_response(self, request, response, spider):
         meta = request.meta

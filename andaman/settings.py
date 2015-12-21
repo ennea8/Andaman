@@ -49,7 +49,7 @@ NEWSPIDER_MODULE = 'andaman.spiders'
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    # 'andaman.middlewares.AndamanProxyMiddleware': 1100
+    'andaman.middlewares.proxy.AndamanProxyMiddleware': 1100
 }
 
 # Enable or disable extensions

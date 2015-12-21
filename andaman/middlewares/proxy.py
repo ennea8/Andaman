@@ -40,7 +40,6 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
     设置项：
 
     * DYNO_PROXY_VAL_SRC: 代理服务器的验证对象
-    * DYNO_PROXY_REFRESH_INTERVAL: 代理服务器的最大延迟（秒）
     * DYNO_PROXY_REFRESH_INTERVAL: 代理服务器的刷新频率（秒）
     """
 
@@ -54,18 +53,15 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
     @staticmethod
     def init_db(settings):
         """
-        Initializing the database connection
+        初始化MongoDB数据库连接
         :param settings:
         :return:
         """
-        mongos = settings.getdict('ANDAMAN_SERVICES')['mongo']
-        endpoints = ['%s:%d' % (server['host'], server['port']) for server in mongos.values()]
-        mongo_conf = settings.getdict('ANDAMAN_CONF')['mongo']
-        user = mongo_conf['user']
-        password = mongo_conf['password']
-        db = mongo_conf['db']
-        mongo_uri = 'mongodb://%s:%s@%s/%s' % (user, password, ','.join(endpoints), db)
-        return connect(host=mongo_uri)
+        mongo_uri = settings.get('ANDAMAN_MONGO_URI')
+        if mongo_uri:
+            return connect(host=mongo_uri)
+        else:
+            logging.error('Cannot find setting ANDAMAN_MONGO_URI, MongoDB connection is disabled')
 
     @staticmethod
     def _fetch_proxies(validation_src, max_latency):
@@ -98,30 +94,26 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
         self.refresh_interval = settings.getint('DYNO_PROXY_REFRESH_INTERVAL', 1800)
 
         # Initializing the proxy pool
-        # self.update_proxy_pool()
         self.schedule_proxies_refresh()
 
     def schedule_proxies_refresh(self):
-        self.update_proxy_pool()
+        """
+        Schedule a periodically invoked proxy-fetching task
+        """
+        self.refresh_proxy_pool()
 
         interval = self.refresh_interval
         stopped = threading.Event()
 
         def loop():  # executed in another thread
             while not stopped.wait(interval):  # until stopped
-                self.update_proxy_pool()
+                self.refresh_proxy_pool()
 
         t = threading.Thread(target=loop)
         t.daemon = True  # stop if the program exits
         t.start()
 
-    def update_proxy_pool(self):
-        proxy_map = {entry[0]: {'fail_cnt': 0, 'latency': entry[1]} for entry in
-                     self._fetch_proxies(self.validation_src, self.max_latency) if
-                     entry[0] not in self.disabled_proxies}
+    def refresh_proxy_pool(self):
+        fetched_proxies = self._fetch_proxies(self.validation_src, self.max_latency)
+        self.update_proxy_pool(fetched_proxies)
 
-        for k, v in proxy_map.items():
-            self.proxy_pool[k] = v
-
-        logging.getLogger('scrapy').info(
-            'Proxy pool has been updated. There are %d proxies in all' % len(self.proxy_pool))
