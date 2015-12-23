@@ -2,14 +2,14 @@
 import json
 from urlparse import urljoin
 import re
-
+import logging
 import scrapy
 from scrapy.http import Request
 from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
 from andaman.items.qa import QAItem
-
+from andaman.items.jieban import MafengwoItem
 
 __author__ = 'zephyre'
 
@@ -175,4 +175,71 @@ class MafengwoQaSpider(scrapy.Spider):
             item['vote_cnt'] = vote_cnt
             item['accepted'] = accepted
 
+            yield item
+
+
+class MafengwoSpider(scrapy.Spider):
+    name = "mafengwo-jieban"
+    allowed_domains = ["mafengwo.cn"]
+
+    def start_requests(self):
+        total_page = self.crawler.settings.getint('MAFENGWO_JIEBAN_PAGES', 10)
+        session_id = self.crawler.settings.get('MAFENGWO_SESSION_ID')
+        cookies = {'PHPSESSID': session_id} if session_id else {}
+        for i in range(total_page):
+            url = 'http://www.mafengwo.cn/together/ajax.php?act=getTogetherMore&flag=3&offset=%d&mddid=0&timeFlag=1' \
+                  '&timestart=' % i
+            yield scrapy.Request(url, cookies=cookies)
+
+    def parse(self, response):
+        hrefs = scrapy.Selector(text=json.loads(response.body)['data']['html']).xpath('//li/a/@href').extract()
+        for href in hrefs:
+            url = 'http://www.mafengwo.cn/together/' + href
+            yield scrapy.Request(url, callback=self.parse_dir_contents)
+
+    def parse_dir_contents(self, response):
+        tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
+        url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
+        total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
+        summary = response.xpath('//div[@class="summary"]')
+        item = MafengwoItem()
+        item['start_time'] = summary.xpath('//div[@class="summary"]/ul/li[1]/span/text()').extract()[0].encode("UTF-8")[
+                             15:]
+        item['days'] = summary.xpath('//div[@class="summary"]/ul/li[2]/span/text()').extract()[0].encode("UTF-8")[9:]
+        item['destination'] = summary.xpath('//div[@class="summary"]/ul/li[3]/span/text()').extract()[0].encode(
+            "UTF-8")[12:].split("/")
+        item['departure'] = summary.xpath('//div[@class="summary"]/ul/li[4]/span/text()').extract()[0].encode("UTF-8")[
+                            12:]
+        item['people'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
+        item['description'] = '\n'.join(filter(lambda v: v, [tmp.strip() for tmp in summary.xpath(
+            '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
+        item['author_avatar'] = summary.xpath('//div[@class="sponsor clearfix"]/a/img/@src').extract()[0].encode(
+            "UTF-8")
+        item['comments'] = []
+        item['tid'] = tid
+        yield scrapy.Request(url,
+                             meta={'item': item, 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments)
+
+    def parse_comments(self, response):
+        item = response.meta['item']
+        page = response.meta['page'] + 1
+        body = scrapy.Selector(text=json.loads(response.body)['data']['html'])
+        if body.extract() != '<html></html>':
+            for node in body.xpath('//div[@class="vc_comment"]'):
+                try:
+                    author_avatar = node.xpath('.//div[@class= "avatar"]/a/img/@src').extract()[0].encode("UTF-8")
+                    author = node.xpath('.//a[@class="comm_name"]/text()').extract()[0].encode("UTF-8")
+                    cid = int(node.xpath('.//div[@class="comm_reply"]/a/@data-cid').extract()[0].encode("UTF-8"))
+                    comment = '\n'.join(
+                        filter(lambda v: v, [tmp.strip() for tmp in node.xpath('.//p/text()').extract()])).encode(
+                        "UTF-8")
+                    comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
+                    item['comments'].append(comment_item)
+                except IndexError:
+                    self.logger.warning('Unable to extract comment from: %s' % (node.extract()))
+        if page <= response.meta['total']:
+            url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (page, item['tid'])
+            yield scrapy.Request(url, meta={'item': item, 'page': page, 'total': response.meta['total']},
+                                 callback=self.parse_comments)
+        else:
             yield item
