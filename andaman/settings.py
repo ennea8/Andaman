@@ -49,7 +49,7 @@ NEWSPIDER_MODULE = 'andaman.spiders'
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    'andaman.middlewares.proxy.AndamanProxyMiddleware': 1100
+    # 'andaman.middlewares.proxy.AndamanProxyMiddleware': 1100
 }
 
 # Enable or disable extensions
@@ -61,7 +61,8 @@ EXTENSIONS = {
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'andaman.pipelines.proxy.ProxyPipeline': 100,
+    #'andaman.pipelines.proxy.ProxyPipeline': 100,
+    'andaman.pipelines.mafengwo_jieban.JiebanPipeline': 105,
     # 'andaman.pipelines.baidu.BaiduNotePipeline': 300,
     # 'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     # 'andaman.pipelines.qa.QAPipeline': 110
