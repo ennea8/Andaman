@@ -8,45 +8,45 @@ __author__ = 'golmic'
 
 
 class Comments(EmbeddedDocument):
-    #评论内容
+    # 评论内容
     comment = StringField()
 
-    #评论作者
+    # 评论作者
     author = StringField()
 
-    #作者头像Url
+    # 作者头像Url
     author_avatar = StringField()
 
-    #评论id
+    # 评论id
     cid = IntField()
 
 
 class JiebanDocument(Document):
-    #出发时间
+    # 出发时间
     startTime = StringField()
 
-    #预计天数
+    # 预计天数
     days = StringField()
 
-    #目的地
+    # 目的地
     destination = ListField()
 
-    #出发地
+    # 出发地
     departure = StringField()
 
-    #预计人数
+    # 预计人数
     groupSize = StringField()
 
-    #文章描述
+    # 文章描述
     description = StringField()
 
-    #作者头像Url
+    # 作者头像Url
     authorAvatar = StringField()
 
-    #文章id
+    # 文章id
     tid = IntField()
 
-    #文章评论
+    # 文章评论
     comments = ListField(EmbeddedDocumentField(Comments))
 
 
@@ -88,6 +88,6 @@ class JiebanPipeline(object):
                'set__description': description,
                'set__comments': comments,
                'set__authorAvatar': author_avatar,
-            }
+               }
         JiebanDocument.objects(tid=tid).update_one(upsert=True, **ops)
         return item
