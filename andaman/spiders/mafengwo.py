@@ -194,7 +194,17 @@ class MafengwoSpider(scrapy.Spider):
             yield scrapy.Request(url, callback=self.parse_dir_contents)
 
     def parse_dir_contents(self, response):
-        tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
+        data = {}
+        for node_text in response.xpath('//script/text()'):
+            match = node_text.re(r'window\.Env\s*=\s*(.+);\s*$')
+            if match:
+                try:
+                    data = json.loads(match[0])
+                except ValueError:
+                    pass
+        if data:
+            tid = data['tid']
+        #tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
         url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
         summary = response.xpath('//div[@class="summary"]')
