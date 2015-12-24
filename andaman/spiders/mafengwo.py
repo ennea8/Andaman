@@ -199,6 +199,8 @@ class MafengwoSpider(scrapy.Spider):
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
         summary = response.xpath('//div[@class="summary"]')
         item = MafengwoItem()
+        item['title'] = response.xpath('//title/text()').extract()[0]
+
         item['start_time'] = summary.xpath('//div[@class="summary"]/ul/li[1]/span/text()').extract()[0].encode("UTF-8")[
                              15:]
         item['days'] = summary.xpath('//div[@class="summary"]/ul/li[2]/span/text()').extract()[0].encode("UTF-8")[9:]

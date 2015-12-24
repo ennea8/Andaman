@@ -21,24 +21,24 @@ class Comments(EmbeddedDocument):
     cid = IntField()
 
 
-class JiebanDocument(Document):
+class PintourDocument(Document):
     #文章标题
     title = StringField()
 
     #出发时间
     startTime = StringField()
 
-    #预计天数
-    days = StringField()
+    #作者
+    author = StringField()
+
+    #旅行方式
+    type = StringField()
 
     #目的地
     destination = ListField()
 
     #出发地
     departure = StringField()
-
-    #预计人数
-    groupSize = StringField()
 
     #文章描述
     description = StringField()
@@ -53,10 +53,10 @@ class JiebanDocument(Document):
     comments = ListField(EmbeddedDocumentField(Comments))
 
 
-class JiebanPipeline(object):
+class PintourPipeline(object):
     @classmethod
     def from_crawler(cls, crawler):
-        if not crawler.settings.getbool('PIPELINE_MAFENGWO_JIEBAN_ENABLED', False):
+        if not crawler.settings.getbool('PIPELINE_PINTOUR_ENABLED', False):
             from scrapy.exceptions import NotConfigured
             raise NotConfigured
         return cls(crawler.settings)
@@ -75,21 +75,21 @@ class JiebanPipeline(object):
 
     def process_item(self, item, spider):
         title = item['title']
+        type = item['type']
+        author = item['author']
         start_time = item['start_time']
-        days = item['days']
         destination = item['destination']
         departure = item['departure']
-        people = item['people']
         description = item['description']
         author_avatar = item['author_avatar']
         tid = item['tid']
         comments = item['comments']
         ops = {'set__startTime': start_time,
                'set__title': title,
-               'set__days': days,
+               'set__type': type,
+               'set__author': author,
                'set__destination': destination,
                'set__departure': departure,
-               'set__groupSize': people,
                'set__description': description,
                'set__comments': comments,
                'set__authorAvatar': author_avatar,

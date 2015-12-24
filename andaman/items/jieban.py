@@ -2,6 +2,7 @@ import scrapy
 
 
 class MafengwoItem(scrapy.Item):
+    title = scrapy.Field()
     start_time = scrapy.Field()
     days = scrapy.Field()
     destination = scrapy.Field()
