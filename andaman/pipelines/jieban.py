@@ -85,12 +85,12 @@ class JiebanPipeline(object):
     def process_item(self, item, spider):
         source = item['source']
         title = item['title']
-        author = item.get('author', '')
+        author = item.get('author', None)
         start_time = item['start_time']
-        days = item['days']
+        days = item.get('days', None)
         destination = item['destination']
         departure = item['departure']
-        people = item['people']
+        group_size = item.get('groupSize', None)
         description = item['description']
         author_avatar = item['author_avatar']
         tid = item['tid']
@@ -102,7 +102,7 @@ class JiebanPipeline(object):
                'set__days': days,
                'set__destination': destination,
                'set__departure': departure,
-               'set__groupSize': people,
+               'set__groupSize': group_size,
                'set__description': description,
                'set__comments': comments,
                'set__authorAvatar': author_avatar

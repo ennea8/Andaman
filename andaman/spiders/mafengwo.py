@@ -223,7 +223,7 @@ class MafengwoSpider(scrapy.Spider):
             "UTF-8")[12:].split("/")
         item['departure'] = summary.xpath('//div[@class="summary"]/ul/li[4]/span/text()').extract()[0].encode("UTF-8")[
                             12:]
-        item['people'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
+        item['groupSize'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
         item['description'] = '\n'.join(filter(lambda v: v, [tmp.strip() for tmp in summary.xpath(
             '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
         item['author_avatar'] = summary.xpath('//div[@class="sponsor clearfix"]/a/img/@src').extract()[0].encode(
