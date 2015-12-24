@@ -9,7 +9,7 @@ from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
 from andaman.items.qa import QAItem
-from andaman.items.jieban import MafengwoItem
+from andaman.items.jieban import JiebanItem
 
 __author__ = 'zephyre'
 
@@ -212,7 +212,10 @@ class MafengwoSpider(scrapy.Spider):
         url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
         summary = response.xpath('//div[@class="summary"]')
-        item = MafengwoItem()
+        item = JiebanItem()
+        item['source'] = 'mafengwo'
+        item['title'] = response.xpath('//title/text()').extract()[0]
+
         item['start_time'] = summary.xpath('//div[@class="summary"]/ul/li[1]/span/text()').extract()[0].encode("UTF-8")[
                              15:]
         item['days'] = summary.xpath('//div[@class="summary"]/ul/li[2]/span/text()').extract()[0].encode("UTF-8")[9:]
