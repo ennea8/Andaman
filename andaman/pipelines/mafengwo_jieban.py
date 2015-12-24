@@ -52,6 +52,12 @@ class JiebanDocument(Document):
     # 文章评论
     comments = ListField(EmbeddedDocumentField(Comments))
 
+    #作者
+    author = StringField()
+
+    #旅行方式
+    type = StringField()
+
 
 class JiebanPipeline(object):
     @classmethod
@@ -75,6 +81,8 @@ class JiebanPipeline(object):
 
     def process_item(self, item, spider):
         title = item['title']
+        type = item['type']
+        author = item['author']
         start_time = item['start_time']
         days = item['days']
         destination = item['destination']
@@ -93,6 +101,7 @@ class JiebanPipeline(object):
                'set__description': description,
                'set__comments': comments,
                'set__authorAvatar': author_avatar,
-               }
+               'set__type': type,
+            }
         JiebanDocument.objects(tid=tid).update_one(upsert=True, **ops)
         return item
