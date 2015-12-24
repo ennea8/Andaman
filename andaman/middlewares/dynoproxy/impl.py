@@ -16,13 +16,6 @@ class DynoProxyMiddleware(object):
     and try again. If a proxy server fails in succession for a certain number of times, it will be removed from the
     pool. The default value is 3.
     """
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        if not crawler.settings.getbool('DYNO_PROXY_ENABLED'):
-            raise NotConfigured
-        return cls(max_fail=crawler.settings.getint('DYNO_PROXY_MAX_FAIL', 3))
-
     def __init__(self, max_fail):
         self.max_fail = max_fail
         # Pool of proxy servers, e.g. {'http://224.224.224.224:3128': {'fail_cnt': 3, 'latency': 0.2}}
@@ -118,12 +111,13 @@ class DynoProxyMiddleware(object):
             'Removing %s from the proxy pool. %d proxies left.' % (proxy, len(self.proxy_pool)))
         self.disabled_proxies.add(proxy)
         try:
-            self._lock.acquire()
+            # self._lock.acquire()
             del self.proxy_pool[proxy]
         except KeyError:
             pass
         finally:
-            self._lock.release()
+            # self._lock.release()
+            pass
 
     def process_response(self, request, response, spider):
         meta = request.meta
