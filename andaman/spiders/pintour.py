@@ -9,7 +9,7 @@ from scrapy.http import Request
 from scrapy.selector import Selector
 
 from andaman.utils.html import html2text, parse_time
-from andaman.items.pintour import PintourItem
+from andaman.items.jieban import JiebanItem
 
 
 class PintourSpider(scrapy.Spider):
@@ -29,7 +29,8 @@ class PintourSpider(scrapy.Spider):
             yield Request(url, callback=self.parse_dir_contents)
 
     def parse_dir_contents(self, response):
-        item = PintourItem()
+        item = JiebanItem()
+        item['source'] = 'pintour'
         item['tid'] = int(response.url.split('/')[3])
         item['title'] = response.xpath('//title/text()').extract()[0]
         data = response.xpath('//div[@class="colBox clearfix"]')[0]

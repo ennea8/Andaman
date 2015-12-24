@@ -2,7 +2,6 @@
 import logging
 import threading
 from scrapy.exceptions import NotConfigured
-from mongoengine import connect
 
 from andaman.middlewares.dynoproxy import DynoProxyMiddleware
 from andaman.pipelines.proxy import ProxyDocument
@@ -59,6 +58,8 @@ class AndamanProxyMiddleware(DynoProxyMiddleware):
         """
         mongo_uri = settings.get('ANDAMAN_MONGO_URI')
         if mongo_uri:
+            from mongoengine import connect
+
             return connect(host=mongo_uri)
         else:
             logging.error('Cannot find setting ANDAMAN_MONGO_URI, MongoDB connection is disabled')
