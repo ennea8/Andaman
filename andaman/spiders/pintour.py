@@ -30,6 +30,7 @@ class PintourSpider(scrapy.Spider):
 
     def parse_dir_contents(self, response):
         item = JiebanItem()
+        item['source'] = 'pintour'
         item['tid'] = int(response.url.split('/')[3])
         item['title'] = response.xpath('//title/text()').extract()[0]
         data = response.xpath('//div[@class="colBox clearfix"]')[0]

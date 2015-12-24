@@ -3,6 +3,9 @@ import scrapy
 
 
 class JiebanItem(scrapy.Item):
+    # 数据来源
+    source = scrapy.Field()
+
     #标题
     title = scrapy.Field()
 

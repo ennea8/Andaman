@@ -30,3 +30,4 @@ class CtripSpider(scrapy.Spider):
             yield Request(url, callback=self.parse_city)
 
     def parse_city(self, response):
+        pass

@@ -63,7 +63,7 @@ EXTENSIONS = {
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     'andaman.pipelines.proxy.ProxyPipeline': 100,
-    'andaman.pipelines.mafengwo_jieban.JiebanPipeline': 105,
+    'andaman.pipelines.jieban.JiebanPipeline': 105,
     # 'andaman.pipelines.baidu.BaiduNotePipeline': 300,
     # 'andaman.pipelines.qiniumedia.QiniuPipeline': 1,
     # 'andaman.pipelines.qa.QAPipeline': 110
