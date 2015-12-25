@@ -64,7 +64,7 @@ class MafengwoQaSpider(scrapy.Spider):
         if author_avatar.endswith('pp48.gif'):
             author_avatar = None
         author_name = response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
+                '//div[@class="q-content"]/div[@class="user-bar"]/a[@class="name"]/text()').extract()[0]
 
         title = response.selector.xpath('//div[@class="q-content"]/div[@class="q-title"]/h1/text()').extract()[0]
 
@@ -73,22 +73,22 @@ class MafengwoQaSpider(scrapy.Spider):
         contents = html2text(raw_contents)
 
         tmp = response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="visit"]/text()').extract()[0]
+                '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="visit"]/text()').extract()[0]
         view_cnt = int(re.search(ur'(\d+)\s*浏览', tmp).group(1))
 
         time_str = response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
+                '//div[@class="q-content"]/div[@class="user-bar"]//span[@class="time"]/text()').extract()[0]
         timestamp = parse_time(time_str)
 
         tmp = response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="user-bar"]/span[@class="fr"]/a[@href]/text()').extract()
+                '//div[@class="q-content"]/div[@class="user-bar"]/span[@class="fr"]/a[@href]/text()').extract()
         if tmp and tmp[0].strip():
             topic = tmp[0].strip()
         else:
             topic = None
 
         raw_tags = response.selector.xpath(
-            '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-tags"]/a[@class="a-tag"]/text()').extract()
+                '//div[@class="q-content"]/div[@class="q-info"]/div[@class="q-tags"]/a[@class="a-tag"]/text()').extract()
         tags = [tmp.strip() for tmp in raw_tags if tmp.strip()]
 
         match = re.search(r'detail-(\d+)\.html', response.url)
@@ -210,22 +210,24 @@ class MafengwoSpider(scrapy.Spider):
                              15:]
         item['days'] = summary.xpath('//div[@class="summary"]/ul/li[2]/span/text()').extract()[0].encode("UTF-8")[9:]
         item['destination'] = summary.xpath('//div[@class="summary"]/ul/li[3]/span/text()').extract()[0].encode(
-            "UTF-8")[12:].split("/")
+                "UTF-8")[12:].split("/")
         item['departure'] = summary.xpath('//div[@class="summary"]/ul/li[4]/span/text()').extract()[0].encode("UTF-8")[
                             12:]
         item['people'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
         item['description'] = '\n'.join(filter(lambda v: v, [tmp.strip() for tmp in summary.xpath(
-            '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
+                '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
         item['author_avatar'] = summary.xpath('//div[@class="sponsor clearfix"]/a/img/@src').extract()[0].encode(
-            "UTF-8")
+                "UTF-8")
         item['comments'] = []
         item['tid'] = tid
         yield scrapy.Request(url,
-                             meta={'item': item, 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments())
+                             meta={'item': item, 'total': total}, callback=self.parse_contact())
 
     def parse_contact(self, response):
-
-
+        frmdata = {'act': 'saveAddUser', 'phone': '13513872244', 'gender': '1', 'tid': '1309464&', 'uid': '92980898'}
+        url = 'http://www,mafengwo.cn/together/ajax.php'
+        yield FormRequest(url, formdata=frmdata, method='POST',
+                          meta={'item': response.meta['item'], 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments())
 
     def parse_comments(self, response):
         item = response.meta['item']
@@ -238,8 +240,8 @@ class MafengwoSpider(scrapy.Spider):
                     author = node.xpath('.//a[@class="comm_name"]/text()').extract()[0].encode("UTF-8")
                     cid = int(node.xpath('.//div[@class="comm_reply"]/a/@data-cid').extract()[0].encode("UTF-8"))
                     comment = '\n'.join(
-                        filter(lambda v: v, [tmp.strip() for tmp in node.xpath('.//p/text()').extract()])).encode(
-                        "UTF-8")
+                            filter(lambda v: v, [tmp.strip() for tmp in node.xpath('.//p/text()').extract()])).encode(
+                            "UTF-8")
                     comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
                     item['comments'].append(comment_item)
                 except IndexError:
