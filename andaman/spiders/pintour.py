@@ -17,7 +17,7 @@ class PintourSpider(scrapy.Spider):
     allowed_domains = ['pintour.com']
 
     def start_requests(self):
-        total_page = self.crawler.settings.getint('MAFENGWO_JIEBAN_PAGES', 10)
+        total_page = self.crawler.settings.getint('PINTOUR_JIEBAN_PAGES', 10)
         for i in range(1, total_page):
             url = 'http://www.pintour.com/list/0-0-0-0-2-1-s-0_%d' % i
             yield scrapy.Request(url)
