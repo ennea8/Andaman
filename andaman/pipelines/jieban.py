@@ -40,6 +40,9 @@ class JiebanDocument(Document):
     # 出发地
     departure = StringField()
 
+    # 联系方式
+    contact - StringFieldI()
+
     # 预计人数
     groupSize = StringField()
 
@@ -88,6 +91,7 @@ class JiebanPipeline(object):
         author = item.get('author', '')
         start_time = item['start_time']
         days = item['days']
+        contact = item['contact']
         destination = item['destination']
         departure = item['departure']
         people = item['people']
@@ -99,6 +103,7 @@ class JiebanPipeline(object):
                'set__source': source,
                'set__author': author,
                'set__title': title,
+               'set__contact': contact,
                'set__days': days,
                'set__destination': destination,
                'set__departure': departure,

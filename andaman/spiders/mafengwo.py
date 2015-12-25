@@ -221,7 +221,11 @@ class MafengwoSpider(scrapy.Spider):
         item['comments'] = []
         item['tid'] = tid
         yield scrapy.Request(url,
-                             meta={'item': item, 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments)
+                             meta={'item': item, 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments())
+
+    def parse_contact(self, response):
+
+
 
     def parse_comments(self, response):
         item = response.meta['item']

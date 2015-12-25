@@ -33,18 +33,11 @@ class MofangJiebanSpider(scrapy.Spider):
         for city in response.xpath('//div[@class="sel_list"]/dl/dd/a/@href').extract():
             num = int(re.search(r'\d+', str(city)).group(0))
             url = 'http://you.ctrip.com/DangdiSite/events/%d.html' % num
-            yield Request(url, callback=self.parse_city)
-
-    def parse_city(self, response):
-
-        # 爬取每个城市对应的页面的文章列表
-        for href in response.xpath('//ul[@class="cf"]/li/a/@href').extract():
-            url = urljoin(response.url, href)
             yield Request(url, callback=self.parse_article)
 
     def parse_article(self, response):
         item = JiebanItem()
-        item['source'] = 'ctrip'
+        item['source'] = 'mofang'
         item['title'] = response.xpath('//title/text()').extract()[0]
         item['tid'] = int(response.url.split('/')[5].split('.')[0])
         if response.xpath(
