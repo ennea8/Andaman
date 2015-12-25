@@ -25,7 +25,7 @@ class JiebanDocument(Document):
     # 数据来源
     source = StringField()
 
-    #文章标题
+    # 文章标题
     title = StringField()
 
     # 出发时间
@@ -55,10 +55,10 @@ class JiebanDocument(Document):
     # 文章评论
     comments = ListField(EmbeddedDocumentField(Comments))
 
-    #作者
+    # 作者
     author = StringField()
 
-    #旅行方式
+    # 旅行方式
     type = StringField()
 
 
@@ -92,7 +92,7 @@ class JiebanPipeline(object):
         departure = item['departure']
         group_size = item.get('groupSize', None)
         description = item['description']
-        author_avatar = item['author_avatar']
+        author_avatar = item.get('author_avatar', None)
         tid = item['tid']
         comments = item['comments']
         ops = {'set__startTime': start_time,
@@ -106,6 +106,6 @@ class JiebanPipeline(object):
                'set__description': description,
                'set__comments': comments,
                'set__authorAvatar': author_avatar
-            }
+               }
         JiebanDocument.objects(tid=tid).update_one(upsert=True, **ops)
         return item

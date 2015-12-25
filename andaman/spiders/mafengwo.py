@@ -273,7 +273,7 @@ class MafengwoSpider(scrapy.Spider):
                     comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
                     item['comments'].append(comment_item)
                 except IndexError:
-                    self.logger.warning('Unable to extract comment from: %s' % (node.extract()))
+                    self.logger.warning('Unable to extract comment from: %s' % response.url)
         if page <= response.meta['total']:
             url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (page, item['tid'])
             yield scrapy.Request(url, callback=self.parse_comments,
