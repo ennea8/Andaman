@@ -302,7 +302,7 @@ class QyerSpider(scrapy.Spider):
         author_avatar = response.xpath('//div[@class="bbs_detail_title clearfix"]/a/img/@src').extract()[0]
         author = response.xpath('//div[@class="bbs_detail_title clearfix"]/h3/a/text()').extract()[0]
         cid = int(response.xpath('//div[@class="bbs_detail_title clearfix"]/a[@class="click"]/@data-clipboard-text').extract()[0][45:])
-        comment = ''
+        comment = ''.join(filter(lambda v: v, [tmp.strip() for tmp in response.xpath('//li[@class="xlast xmt20"]/descendant-or-self::text()').extract()]))
         comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
         item['comments'].append(comment_item)
         yield item
