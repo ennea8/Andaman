@@ -226,8 +226,9 @@ class MafengwoSpider(scrapy.Spider):
     def parse_contact(self, response):
         frmdata = {'act': 'saveAddUser', 'phone': '13513872244', 'gender': '1', 'tid': '1309464&', 'uid': '92980898'}
         url = 'http://www,mafengwo.cn/together/ajax.php'
-        yield FormRequest(url, formdata=frmdata, method='POST',
-                          meta={'item': response.meta['item'], 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments())
+        yield scrapy.FormRequest(url, formdata=frmdata, method='POST',
+                                 meta={'item': response.meta['item'], 'page': 0, 'total': response.meta['total']},
+                                 callback=self.parse_comments())
 
     def parse_comments(self, response):
         item = response.meta['item']
