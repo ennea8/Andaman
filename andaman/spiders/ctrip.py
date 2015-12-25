@@ -87,7 +87,6 @@ class CtripJiebanSpider(scrapy.Spider):
 
         reply_boxes = response.xpath('//div[@class="reply_conbox"]')
         for node in reply_boxes:
-            logging.info(node)
             cid = node.xpath('.//@data-replyid').extract()[0]
             author = node.xpath('.//div/p/a[@class="user_name"]/text()').extract()[0]
             avatar = node.xpath('.//div/a/img/@src').extract()[0]
