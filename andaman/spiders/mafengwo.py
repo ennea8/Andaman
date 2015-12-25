@@ -197,6 +197,25 @@ class MafengwoSpider(scrapy.Spider):
             url = 'http://www.mafengwo.cn/together/' + href
             yield scrapy.Request(url, callback=self.parse_dir_contents)
 
+    @staticmethod
+    def validate_comments_req(response):
+        """
+        获取评论列表的请求, 会返回一个JSON格式的数据. 通过这一点验证代理服务器是否生效
+        :param response:
+        :return:
+        """
+        status_code = getattr(response, 'status', 500)
+
+        is_valid = 200 <= status_code < 400 and response.body.strip()
+        if not is_valid:
+            return False
+
+        try:
+            json.loads(response.body)
+            return True
+        except ValueError:
+            return False
+
     def parse_dir_contents(self, response):
         data = {}
         for node_text in response.xpath('//script/text()'):
@@ -208,7 +227,10 @@ class MafengwoSpider(scrapy.Spider):
                     pass
         if data:
             tid = data['tid']
-        #tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
+        else:
+            return
+
+        # tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
         url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
         summary = response.xpath('//div[@class="summary"]')
@@ -223,15 +245,17 @@ class MafengwoSpider(scrapy.Spider):
             "UTF-8")[12:].split("/")
         item['departure'] = summary.xpath('//div[@class="summary"]/ul/li[4]/span/text()').extract()[0].encode("UTF-8")[
                             12:]
-        item['groupSize'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
+        item['groupSize'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[
+                            15:]
         item['description'] = '\n'.join(filter(lambda v: v, [tmp.strip() for tmp in summary.xpath(
             '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
         item['author_avatar'] = summary.xpath('//div[@class="sponsor clearfix"]/a/img/@src').extract()[0].encode(
             "UTF-8")
         item['comments'] = []
         item['tid'] = tid
-        yield scrapy.Request(url,
-                             meta={'item': item, 'page': 0, 'total': total, 'tid': tid}, callback=self.parse_comments)
+        yield scrapy.Request(url, meta={'item': item, 'page': 0, 'total': total, 'tid': tid,
+                                        'dyno_proxy_validator': self.validate_comments_req},
+                             callback=self.parse_comments)
 
     def parse_comments(self, response):
         item = response.meta['item']
@@ -252,7 +276,8 @@ class MafengwoSpider(scrapy.Spider):
                     self.logger.warning('Unable to extract comment from: %s' % (node.extract()))
         if page <= response.meta['total']:
             url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (page, item['tid'])
-            yield scrapy.Request(url, meta={'item': item, 'page': page, 'total': response.meta['total']},
-                                 callback=self.parse_comments)
+            yield scrapy.Request(url, callback=self.parse_comments,
+                                 meta={'item': item, 'page': page, 'total': response.meta['total'],
+                                       'dyno_proxy_validator': self.validate_comments_req})
         else:
             yield item
