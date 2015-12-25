@@ -5,6 +5,7 @@ import scrapy
 from scrapy.http import FormRequest, Request
 from andaman.utils.html import html2text, parse_time
 from andaman.items.qa import QAItem
+from andaman.items.jieban import JiebanItem
 
 __author__ = 'zephyre'
 
@@ -136,7 +137,7 @@ class QyerQaSpider(scrapy.Spider):
         contents = html2text(raw_contents)
 
         tags = [html2text(tmp) for tmp in q_contents.xpath(
-            './div[contains(@class,"ask_detail_content_tag")]/a[@href and @class="ask_tag"]').extract()]
+                './div[contains(@class,"ask_detail_content_tag")]/a[@href and @class="ask_tag"]').extract()]
 
         timestamp = None
         for time_str in q_contents.xpath('./div[contains(@class,"question-info")]//p[contains(@class,"asker")]/span'
@@ -148,7 +149,7 @@ class QyerQaSpider(scrapy.Spider):
                 continue
 
         tmp = q_contents.xpath(
-            './div[contains(@class,"question-info")]/div[contains(@class,"from-bbs")]/a[@title and @href]')
+                './div[contains(@class,"question-info")]/div[contains(@class,"from-bbs")]/a[@title and @href]')
         if tmp:
             tmp = tmp[0]
             topic_list = [t.strip() for t in tmp.xpath('./@title').extract()[0].split('/') if t.strip()]
@@ -266,6 +267,42 @@ class QyerQaSpider(scrapy.Spider):
             item['file_urls'] = [avatar]
 
         item['author_nickname'] = sel.xpath(
-            '//div[@class="infos"]/*[@class="name"]/*[@data-bn-ipg="usercenter-username"]/text()').extract()[0]
+                '//div[@class="infos"]/*[@class="name"]/*[@data-bn-ipg="usercenter-username"]/text()').extract()[0]
 
+        yield item
+
+
+class QyerSpider(scrapy.Spider):
+    name = "qyer"
+    allowed_domains = ["qyer.com"]
+
+    def start_requests(self):
+        total_page = self.crawler.settings.getint('QYER_PAGES', 10)
+        for page in range(1, total_page):
+            url = 'http://bbs.qyer.com/forum-2-%d.html' % page
+            yield scrapy.Request(url)
+
+    def parse(self, response):
+        for li in response.xpath('//ul[@id="list-id"]/li[@class="clearfix"]'):
+            url = li.xpath('.//a/@href').extract()[2]
+            yield scrapy.Request(url, callback=self.parse_dir_contents)
+
+    def parse_dir_contents(self, response):
+        item = JiebanItem()
+        item['source'] = 'qyer'
+        item['tid'] = int(response.url.split('/')[3].split('-')[1])
+        item['title'] = response.xpath('//title/text()').extract()[0]
+        item['author'] = response.xpath('//div[@class="names names-nohp"]/dl/dt/strong/a/text()').extract()[0]
+        item['author_avatar'] = response.xpath('//div[@class="bbs_detail_title clearfix"]/a/img/@src').extract()[0]
+        item['destination'] = response.xpath('//div[@class="xdest"]/a/text()').extract()[0]
+        item['start_time'] = response.xpath('//em[@class="xmr13"]/text()').extract()[0]
+        item['days'] = response.xpath('//em[@class="dqj"]/text()').extract()[0]
+        item['description'] = response.xpath('//li[@class="xlast xmt20"]/text()').extract()
+        item['comments'] = []
+        author_avatar = response.xpath('//div[@class="bbs_detail_title clearfix"]/a/img/@src').extract()[0]
+        author = response.xpath('//div[@class="bbs_detail_title clearfix"]/h3/a/text()').extract()[0]
+        cid = int(response.xpath('//div[@class="bbs_detail_title clearfix"]/a[@class="click"]/@data-clipboard-text').extract()[0][45:])
+        comment = ''
+        comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
+        item['comments'].append(comment_item)
         yield item
