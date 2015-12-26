@@ -178,7 +178,15 @@ class MafengwoQaSpider(scrapy.Spider):
             yield item
 
 
-class MafengwoSpider(scrapy.Spider):
+class MafengwoJiebanSpider(scrapy.Spider):
+    """
+    抓取蚂蜂窝的结伴信息
+
+    配置项目说明:
+    * MAFENGWO_JIEBAN_PAGES: 抓取前多少页的结伴信息
+    * MAFENGWO_SESSION_ID: 蚂蜂窝登录以后, cookie中需要指定PHPSESSID, 表示一个session
+    * MAFENGWO_USER_ID: 蚂蜂窝登录以后, 分配的用户ID
+    """
     name = "mafengwo-jieban"
     allowed_domains = ["mafengwo.cn"]
 
@@ -194,12 +202,11 @@ class MafengwoSpider(scrapy.Spider):
     def parse(self, response):
         hrefs = scrapy.Selector(text=json.loads(response.body)['data']['html']).xpath('//li/a/@href').extract()
         for href in hrefs:
-            url = 'http://www.mafengwo.cn/together/' + href
+            url = urljoin('http://www.mafengwo.cn/together/', href)
             yield scrapy.Request(url, callback=self.parse_dir_contents)
 
     def parse_dir_contents(self, response):
         tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
-        url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
         summary = response.xpath('//div[@class="summary"]')
         item = JiebanItem()
@@ -220,16 +227,71 @@ class MafengwoSpider(scrapy.Spider):
                 "UTF-8")
         item['comments'] = []
         item['tid'] = tid
-        yield scrapy.Request(url,
-                             meta={'item': item, 'total': total}, callback=self.parse_contact())
+
+        contact_info = self.extract_contact(response)
+        if contact_info:
+            item['contact'] = contact_info
+
+            # 不用再请求联系人信息, 直接开始获取评论
+            url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
+            yield scrapy.Request(url, meta={'item': item, 'total': total, 'page': 0}, callback=self.parse_comments)
+        else:
+            # 构造报名请求
+            uid = str(self.crawler.settings.get('MAFENGWO_USER_ID', ''))
+            tel = '13800138000'
+            form_data = {'act': 'saveAddUser', 'phone': tel, 'gender': '1', 'tid': str(tid), 'uid': uid}
+            url = 'http://www.mafengwo.cn/together/ajax.php'
+            yield scrapy.FormRequest(url, formdata=form_data, method='POST', dont_filter=True,
+                                     meta={'item': item, 'total': total}, callback=self.parse_contact)
+
+    @staticmethod
+    def extract_contact(response):
+        """
+        尝试从response中提取联系信息
+        :param response:
+        :return:
+        """
+        tmp = response.xpath('//div[@class="contact _j_contact"]'
+                             '/span[not(contains(@class,"invisible"))]'
+                             '/descendant-or-self::text()').extract()
+        return ' '.join(filter(lambda v: v, [t.strip() for t in tmp]))
 
     def parse_contact(self, response):
-        frmdata = {'act': 'saveAddUser', 'phone': '13513872244', 'gender': '1', 'tid': response.meta['item']['tid'],
-                   'uid': '92980898'}
-        url = 'http://www,mafengwo.cn/together/ajax.php'
-        yield scrapy.FormRequest(url, formdata=frmdata, method='POST',
-                                 meta={'item': response.meta['item'], 'page': 0, 'total': response.meta['total']},
-                                 callback=self.parse_comments())
+        """
+        解析报名后返回的联系信息
+        :param response:
+        :return:
+        """
+        meta = response.meta
+        item = meta['item']
+        total = meta['total']
+        tid = item['tid']
+
+        # TODO 解析返回的联系信息
+        try:
+            tmp = Selector(text=json.loads(response.body)['data']['html']) \
+                .xpath('//descendant-or-self::text()').extract()
+            contact_info = ' '.join(filter(lambda v: v, [t.strip() for t in tmp]))
+            if contact_info:
+                item['contact'] = contact_info
+        except ValueError:
+            pass
+        contact_info = self.extract_contact(response)
+        if contact_info:
+            item['contact'] = contact_info
+
+        url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (0, tid)
+        yield scrapy.Request(url, meta={'item': item, 'total': total, 'page': 0}, callback=self.parse_comments)
+
+    # def parse_contact(self, response):
+    #     uid = str(self.crawler.settings.get('MAFENGWO_USER_ID', ''))
+    #     tel = '13800138000'
+    #     frmdata = {'act': 'saveAddUser', 'phone': tel, 'gender': '1',
+    #                'tid': str(response.meta['item']['tid']), 'uid': uid}
+    #     url = 'http://www.mafengwo.cn/together/ajax.php'
+    #     yield scrapy.FormRequest(url, formdata=frmdata, method='POST', dont_filter=True,
+    #                              meta={'item': response.meta['item'], 'page': 0, 'total': response.meta['total']},
+    #                              callback=self.parse_comments)
 
     def parse_comments(self, response):
         item = response.meta['item']
