@@ -12,6 +12,9 @@ class JiebanItem(scrapy.Item):
     # 出发时间
     start_time = scrapy.Field()
 
+    # 联系方式
+    contact = scrapy.Field()
+
     # 天数
     days = scrapy.Field()
 
