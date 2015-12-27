@@ -205,6 +205,25 @@ class MafengwoJiebanSpider(scrapy.Spider):
             url = urljoin('http://www.mafengwo.cn/together/', href)
             yield scrapy.Request(url, callback=self.parse_dir_contents)
 
+    @staticmethod
+    def validate_comments_req(response):
+        """
+        获取评论列表的请求, 会返回一个JSON格式的数据. 通过这一点验证代理服务器是否生效
+        :param response:
+        :return:
+        """
+        status_code = getattr(response, 'status', 500)
+
+        is_valid = 200 <= status_code < 400 and response.body.strip()
+        if not is_valid:
+            return False
+
+        try:
+            json.loads(response.body)
+            return True
+        except ValueError:
+            return False
+
     def parse_dir_contents(self, response):
         tid = int(str(response.xpath('//script[1]/text()').re(r'"tid":\d+')[0])[6:])
         total = int(str(response.xpath('//script[1]/text()').re(r'"total":\d+')[0][8:])) / 10 + 1
@@ -220,7 +239,8 @@ class MafengwoJiebanSpider(scrapy.Spider):
                 "UTF-8")[12:].split("/")
         item['departure'] = summary.xpath('//div[@class="summary"]/ul/li[4]/span/text()').extract()[0].encode("UTF-8")[
                             12:]
-        item['people'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[15:]
+        item['groupSize'] = summary.xpath('//div[@class="summary"]/ul/li[5]/span/text()').extract()[0].encode("UTF-8")[
+                            15:]
         item['description'] = '\n'.join(filter(lambda v: v, [tmp.strip() for tmp in summary.xpath(
                 '//div[@class="desc _j_description"]/text()').extract()])).encode("UTF-8")
         item['author_avatar'] = summary.xpath('//div[@class="sponsor clearfix"]/a/img/@src').extract()[0].encode(
@@ -309,10 +329,11 @@ class MafengwoJiebanSpider(scrapy.Spider):
                     comment_item = {'cid': cid, 'author_avatar': author_avatar, 'author': author, 'comment': comment}
                     item['comments'].append(comment_item)
                 except IndexError:
-                    self.logger.warning('Unable to extract comment from: %s' % (node.extract()))
+                    self.logger.warning('Unable to extract comment from: %s' % response.url)
         if page <= response.meta['total']:
             url = 'http://www.mafengwo.cn/together/ajax.php?act=moreComment&page=%d&tid=%d' % (page, item['tid'])
-            yield scrapy.Request(url, meta={'item': item, 'page': page, 'total': response.meta['total']},
-                                 callback=self.parse_comments)
+            yield scrapy.Request(url, callback=self.parse_comments,
+                                 meta={'item': item, 'page': page, 'total': response.meta['total'],
+                                       'dyno_proxy_validator': self.validate_comments_req})
         else:
             yield item
