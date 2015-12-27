@@ -44,3 +44,7 @@ class JiebanItem(scrapy.Item):
 
     # 文章作者
     author = scrapy.Field()
+
+    file_urls = scrapy.Field()
+
+    files = scrapy.Field()

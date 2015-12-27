@@ -1,15 +1,15 @@
 # coding=utf-8
 import json
-from urlparse import urljoin
 import re
-import logging
+from urlparse import urljoin
+
 import scrapy
 from scrapy.http import Request
 from scrapy.selector import Selector
 
-from andaman.utils.html import html2text, parse_time
-from andaman.items.qa import QAItem
 from andaman.items.jieban import JiebanItem
+from andaman.items.qa import QAItem
+from andaman.utils.html import html2text, parse_time
 
 __author__ = 'zephyre'
 
@@ -185,6 +185,7 @@ class MafengwoJiebanSpider(scrapy.Spider):
     配置项目说明:
     * MAFENGWO_JIEBAN_PAGES: 抓取前多少页的结伴信息
     * MAFENGWO_SESSION_ID: 蚂蜂窝登录以后, cookie中需要指定PHPSESSID, 表示一个session
+    * MAFENGWO_JOIN_EVENT: 是否报名以获取详细的联系信息?
     * MAFENGWO_USER_ID: 蚂蜂窝登录以后, 分配的用户ID
     """
     name = "mafengwo-jieban"
@@ -200,7 +201,18 @@ class MafengwoJiebanSpider(scrapy.Spider):
             yield scrapy.Request(url, cookies=cookies)
 
     def parse(self, response):
-        hrefs = scrapy.Selector(text=json.loads(response.body)['data']['html']).xpath('//li/a/@href').extract()
+        data = json.loads(response.body)
+        try:
+            if data['error']['msg'] == 'login:required':
+                self.logger.error('Login required, mission aborted.')
+                return
+        except ValueError:
+            self.logger.error('Invalid response, mission aborted.')
+            return
+        except KeyError:
+            pass
+
+        hrefs = scrapy.Selector(text=data['data']['html']).xpath('//li/a/@href').extract()
         for href in hrefs:
             url = urljoin('http://www.mafengwo.cn/together/', href)
             yield scrapy.Request(url, callback=self.parse_dir_contents)
@@ -249,7 +261,7 @@ class MafengwoJiebanSpider(scrapy.Spider):
         item['tid'] = tid
 
         contact_info = self.extract_contact(response)
-        if contact_info:
+        if contact_info or not self.crawler.settings.getbool('MAFENGWO_JOIN_EVENT', False):
             item['contact'] = contact_info
 
             # 不用再请求联系人信息, 直接开始获取评论
@@ -257,7 +269,7 @@ class MafengwoJiebanSpider(scrapy.Spider):
             yield scrapy.Request(url, meta={'item': item, 'total': total, 'page': 0}, callback=self.parse_comments)
         else:
             # 构造报名请求
-            uid = str(self.crawler.settings.get('MAFENGWO_USER_ID', ''))
+            uid = str(self.crawler.settings.get('MAFENGWO_USER_ID'))
             tel = '13800138000'
             form_data = {'act': 'saveAddUser', 'phone': tel, 'gender': '1', 'tid': str(tid), 'uid': uid}
             url = 'http://www.mafengwo.cn/together/ajax.php'

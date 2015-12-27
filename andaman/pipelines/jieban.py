@@ -1,8 +1,8 @@
 # coding=utf-8
-from datetime import datetime
+
+import logging
 
 from mongoengine import Document, EmbeddedDocument, EmbeddedDocumentField, StringField, IntField, ListField, connect
-import logging
 
 __author__ = 'golmic'
 
