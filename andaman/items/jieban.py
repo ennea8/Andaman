@@ -25,7 +25,7 @@ class JiebanItem(scrapy.Item):
     departure = scrapy.Field()
 
     # 预订人数
-    people = scrapy.Field()
+    groupSize = scrapy.Field()
 
     # 文章描述
     description = scrapy.Field()
@@ -44,3 +44,7 @@ class JiebanItem(scrapy.Item):
 
     # 文章作者
     author = scrapy.Field()
+
+    file_urls = scrapy.Field()
+
+    files = scrapy.Field()
