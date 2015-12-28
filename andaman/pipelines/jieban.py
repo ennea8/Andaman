@@ -41,7 +41,7 @@ class JiebanDocument(Document):
     departure = StringField()
 
     # 联系方式
-    contact - StringFieldI()
+    contact = StringField()
 
     # 预计人数
     groupSize = StringField()

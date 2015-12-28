@@ -8,6 +8,8 @@ from scrapy.http import Request
 from scrapy.http import FormRequest
 
 from andaman.items.jieban import JiebanItem
+import time
+import hashlib
 
 
 class CtripJiebanSpider(scrapy.Spider):
@@ -16,13 +18,16 @@ class CtripJiebanSpider(scrapy.Spider):
     """
     name = 'ctrip-jieban'
 
+    cookies = {
+        'ticket_ctrip': 'uoeOwviAJ6VQEgTNwLuTqSV9j/bS+aOP3Riia1P+kyQbgkQZsD2giSaBfTbLnBMl6ICvUZvt1xX40Mk99lGNMsb+2+AW4jMrl6CUuDairGQvaC/rT2k+PogdfVdoHpOel3nzaUdFVNXang7f9acb57c0tT6TPSsK0BW2wrx1GQhHsdW20r58h+89IS0vmKqgoK7Yp3j8+WkjRTufOcEQHj64tSovAvstiZDeZFEwiq6iCxaxI/vCoZ0ytKJJDfwRONCxTmMnxB4Oh0nEJ6m1iQ=='}
+
     def start_requests(self):
         start_urls = [
             'http://vacations.ctrip.com/tours',
             'http://vacations.ctrip.com/tours/inter'
         ]
         for url in start_urls:
-            yield Request(url)
+            yield Request(url, meta={'proxy': 'http://127.0.0.1:8080'}, cookies=self.cookies)
 
     def parse(self, response):
 
@@ -47,7 +52,7 @@ class CtripJiebanSpider(scrapy.Spider):
         if response.xpath(
                 '//div[@class="gsn-inputbox"]/input[@id="receiver_id"]/../input[@type="text"]/@value').extract():
             item['author'] = response.xpath(
-                '//div[@class="gsn-inputbox"]/input[@id="receiver_id"]/../input[@type="text"]/@value').extract()[0]
+                    '//div[@class="gsn-inputbox"]/input[@id="receiver_id"]/../input[@type="text"]/@value').extract()[0]
         else:
             item['author'] = ''
         eventsummaryinfoview = response.xpath('//div[@id="eventsummaryinfoview"]')
@@ -73,18 +78,36 @@ class CtripJiebanSpider(scrapy.Spider):
             item['type'] = ''
         if response.xpath('//div[@class="events_infotext"]/p/text()').extract():
             item['description'] = ' '.join(filter(lambda v: v, [tmp.strip() for tmp in response.xpath(
-                '//div[@class="events_infotext"]/p/text()').extract()]))
+                    '//div[@class="events_infotext"]/p/text()').extract()]))
         else:
             item['description'] = ''
         item['comments'] = []
-        frmdata = {'page': '1', 'eventId': str(item['tid'])}
-        url = 'http://you.ctrip.com/CommunitySite/Activity/EventDetail/EventReplyListOrCommentList'
-        yield FormRequest(url, formdata=frmdata, method='POST',
-                          meta={'item': item, 'page': 1}, callback=self.parse_comments)
+
+        eventId = str(item['tid'])
+        ageRange = '90后'
+        gender = '男'
+        locationId = '1'
+        locationName = '北京，中国'
+        contactType = 'qq'
+        contactValue = '10000'
+        random = str(time.time() * 1000)
+
+        token = 'userage:90后&usersex:男&userplace:北京，中国&userplacecode:1&usercontact:10000&usercontacttype:qq&random:%s' % random
+        m2 = hashlib.md5()
+        m2.update(token)
+        token = m2.hexdigest()
+        frmdata = {'eventId': eventId, 'ageRange': ageRange, 'gender': gender, 'locationId': locationId,
+                   'locationName': locationName, 'contactType': contactType, 'contactValue': contactValue,
+                   'random': random, 'token': token}
+        url = 'http://you.ctrip.com/CommunitySite/Activity/EventDetail/AddSignupEvent'
+        yield FormRequest(url, meta={'proxy': 'http://127.0.0.1:8080'}, cookies=self.cookies, formdata=frmdata, method='POST', callback=self.parse_contact)
+
+    def parse_contact(self, response):
+        logging.info(response.body)
+        pass
 
     def parse_comments(self, response):
         item = response.meta['item']
-
         reply_boxes = response.xpath('//div[@class="reply_conbox"]')
         for node in reply_boxes:
             logging.info(node)
