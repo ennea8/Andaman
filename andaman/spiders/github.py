@@ -126,18 +126,23 @@ class GithubRepo(scrapy.Spider):
                 for repo in repos:
                     yield self.build_api_req('/repos/%s' % repo, callback=self.parse_repo)
 
-            if self.settings.getbool('GITHUB_REPOS_SEARCH', False):
+            search_str = self.settings.get('GITHUB_REPOS_SEARCH', '')
+            page_cnt = self.settings.getint('GITHUB_REPOS_SEARCH_PAGES', 5)
+            # 只取前1000个结果
+            if page_cnt > 10:
+                page_cnt = 10
+            if search_str:
                 # 抓取repo排行榜
-                for req in self.repo_search_req(page_cnt=5):
+                for req in self.repo_search_req(search_str, page_cnt=page_cnt):
                     yield req
 
-    def repo_search_req(self, sortby='stars', per_page=100, page_start=1, page_cnt=1):
+    def repo_search_req(self, search_str, per_page=100, page_start=1, page_cnt=1):
         """
         搜索repo
         """
         for page in xrange(page_start, page_start + page_cnt):
-            yield self.build_api_req(path='/search/repositories?q=stars:>1&sort=%s&order=desc&page=%d&per_page=%d' % (
-            sortby, page, per_page), callback=self.parse_repo_search)
+            yield self.build_api_req(path='/search/repositories?%s&page=%d&per_page=%d' % (search_str, page, per_page),
+                                     callback=self.parse_repo_search)
 
     def start_requests(self):
         self.access_tokens = {t: {'quota_limit': None, 'quota_remaining': None, 'quota_reset': None}
